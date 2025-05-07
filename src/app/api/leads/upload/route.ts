@@ -1,49 +1,57 @@
 // src/app/api/leads/upload/route.ts
-import { createClient } from '@supabase/supabase-js'; // For service role client
-import { cookies } from 'next/headers'; // Still needed if you were to use @supabase/ssr for user context
+import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
 import Papa from 'papaparse';
 import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Helper function to convert header keys to snake_case
-const toSnakeCase = (str: string): string => {
+// Utility function to convert strings to snake_case
+const convertToSnakeCase = (str: string): string => {
   if (!str) return '';
-  return str
-    .replace(/[\s-]+/g, '_') 
-    .replace(/([A-Z]+)/g, (match) => `_${match.toLowerCase()}`)
-    .replace(/^_/, '') 
-    .replace(/__+/g, '_') 
-    .toLowerCase(); 
+  return (
+    str
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '')
+      .replace(/__+/g, '_')
+  );
 };
 
-// Define the expected shape of a row after header transformation
-type LeadStagingRow = Record<string, any>; 
+type LeadStagingRow = Record<string, any>;
 
 export async function POST(request: NextRequest) {
+  console.log('API: /api/leads/upload POST request received.');
+
   const formData = await request.formData();
   const file = formData.get('file') as File;
   const marketRegion = formData.get('market_region') as string;
 
+  console.log('API: FormData file object:', file ? { name: file.name, type: file.type, size: file.size } : 'No file object found');
+  console.log('API: FormData market_region:', marketRegion);
+
   if (!file) {
+    console.error('API Error: No file provided.');
     return NextResponse.json({ ok: false, error: 'No file provided.' }, { status: 400 });
   }
   if (!marketRegion || marketRegion.trim() === '') {
+    console.error('API Error: No market region provided or market region is empty.');
     return NextResponse.json({ ok: false, error: 'No market region provided.' }, { status: 400 });
   }
 
-  // Service role client for backend operations
-  // Ensure NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set in your .env.local
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
   
   try {
-    /* ---------- 1. PUSH THE RAW FILE TO STORAGE ---------- */
+    console.log('API: Attempting to upload to storage...');
     const fileBytes = await file.arrayBuffer();
     const bucket = 'lead-uploads'; 
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const objectPath = `raw/${randomUUID()}/${Date.now()}-${sanitizedFileName}`;
+    const objectPath = `${randomUUID()}-${Date.now()}-${sanitizedFileName}`;
 
     const { error: uploadErr } = await supabaseAdmin.storage 
       .from(bucket)
@@ -62,66 +70,105 @@ export async function POST(request: NextRequest) {
     }
     console.log('File uploaded to storage:', objectPath);
 
-    /* ---------- 2. PARSE + BULK INSERT INTO staging 'leads' TABLE ---------- */
-    const csvText = new TextDecoder().decode(fileBytes);
-    const parsed = Papa.parse<Record<string, any>>(csvText, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (header: string): string => toSnakeCase(header.trim()),
-    });
+    console.log('API: Attempting to parse CSV...');
+    const fileContent = Buffer.from(fileBytes).toString('utf8');
+    const parsed = Papa.parse(fileContent, { header: true, skipEmptyLines: true });
 
-    if (parsed.errors.length) {
-      console.error('CSV parse errors:', parsed.errors);
+    if (parsed.errors.length > 0) {
+      console.error('API Error: CSV parsing errors:', parsed.errors);
       return NextResponse.json(
-        { ok: false, error: 'CSV parse errors.', details: parsed.errors.map((err: Papa.ParseError) => err.message) }, 
+        { ok: false, error: 'Failed to parse CSV.', details: parsed.errors.slice(0, 5) }, 
         { status: 400 }
       );
     }
 
-    let leadsToInsert: LeadStagingRow[] = parsed.data;
+    let leadsToInsert: LeadStagingRow[] = parsed.data.map((leadData: any) => {
+      const leadForStaging: { [key: string]: any } = {};
+      for (const key in leadData) {
+        if (Object.prototype.hasOwnProperty.call(leadData, key)) {
+          let newKey = convertToSnakeCase(key);
+          
+          if (newKey === 'id') {
+            continue; 
+          }
+          
+          if (newKey === 'lot_size_sq_ft') { 
+            newKey = 'lot_size_sqft'; 
+          }
+          
+          // **** ADD THIS TRANSFORMATION ****
+          if (newKey === 'property_postal_code') {
+            newKey = 'property_zip';
+          }
+          // **** END OF ADDED TRANSFORMATION ****
+          
+          leadForStaging[newKey] = leadData[key];
+        }
+      }
+      leadForStaging.original_filename = file.name; 
+      leadForStaging.market_region = marketRegion; // Ensure market_region is added
+      return leadForStaging;
+    });
+
+    console.log('API: Number of leads to insert (before check):', leadsToInsert.length); 
 
     if (leadsToInsert.length === 0) {
+      console.error('API Error: No data found in CSV file after parsing.');
       return NextResponse.json({ ok: false, error: 'No data found in CSV file.' }, { status: 400 });
     }
 
-    const { error: insertErr } = await supabaseAdmin
-      .from('leads') 
-      .insert(leadsToInsert);
+    console.log('API: Sample of leadsToInsert (first 3 rows):');
+    for (let i = 0; i < Math.min(leadsToInsert.length, 3); i++) {
+      console.log(`Row ${i + 1}:`, JSON.stringify(leadsToInsert[i], null, 2));
+    }
+
+    console.log('API: Attempting to insert into staging table...'); 
+    const { error: insertErr, data: insertedData } = await supabaseAdmin
+      .from('leads')
+      .insert(leadsToInsert)
+      .select();
 
     if (insertErr) {
       console.error('Staging insert failed:', insertErr);
+      let errorMessage = `Failed to insert leads into staging table.`;
+      if (insertErr.message.includes("violates row-level security policy")) {
+        errorMessage += " Possible RLS policy violation.";
+      } else if (insertErr.message.includes("column") && insertErr.message.includes("does not exist")) {
+        errorMessage += ` A specified column might not exist in the 'leads' table. Details: ${insertErr.message}`;
+      } else if (insertErr.code === '22P02') {
+        errorMessage += ` Invalid input syntax for a column type. Check data for columns like UUIDs, numbers, dates. Details: ${insertErr.message}`;
+      } else if (insertErr.code) {
+        errorMessage += ` Code: ${insertErr.code}. Details: ${insertErr.details || insertErr.message}`;
+      } else {
+        errorMessage += ` Details: ${insertErr.message}`;
+      }
+      console.error('Full staging insert error object:', JSON.stringify(insertErr, null, 2));
+      return NextResponse.json({ ok: false, error: errorMessage, details: insertErr }, { status: 500 });
+    }
+    
+    console.log('API: Staging insert successful. Number of rows affected/returned:', insertedData ? insertedData.length : 0);
+    // console.log('API: Sample of insertedData from staging (first row):', insertedData && insertedData.length > 0 ? JSON.stringify(insertedData[0], null, 2) : 'No data returned');
+
+
+    // ---------- 3. CALL THE NORMALIZATION FUNCTION ----------
+    console.log('API: Attempting to call normalize_staged_leads function...');
+    const { error: rpcError } = await supabaseAdmin.rpc('normalize_staged_leads');
+
+    if (rpcError) {
+      console.error('RPC call to normalize_staged_leads failed:', rpcError);
       return NextResponse.json(
-        { ok: false, error: 'Failed to insert leads into staging table.', details: insertErr.message },
+        { ok: false, error: 'Failed to normalize staged leads.', details: rpcError.message },
         { status: 500 }
       );
     }
-    console.log(`${leadsToInsert.length} leads inserted into staging table.`);
 
-    /* ---------- 3. CALL NORMALIZATION FUNCTION ---------- */
-    const { error: normalizeErr } = await supabaseAdmin.rpc('normalize_staged_leads', {
-      p_market_region: marketRegion.trim()
-    });
+    console.log('API: normalize_staged_leads function called successfully.');
+    return NextResponse.json({ ok: true, message: 'File processed and leads normalized successfully.' });
 
-    if (normalizeErr) {
-      console.error('Normalization RPC failed:', normalizeErr);
-      return NextResponse.json(
-        { ok: false, error: 'Normalization failed.', details: normalizeErr.message },
-        { status: 500 }
-      );
-    }
-    console.log('Normalization function called successfully for market:', marketRegion.trim());
-
-    return NextResponse.json({
-      ok: true,
-      message: `Successfully uploaded and processed ${file.name}. ${leadsToInsert.length} leads staged. Market: ${marketRegion.trim()}`,
-      details: { filePath: objectPath, stagedCount: leadsToInsert.length }
-    });
-
-  } catch (error) {
-    console.error('Upload process error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+  } catch (error: any) {
+    console.error('API: Unhandled error in POST /api/leads/upload:', error);
     return NextResponse.json(
-      { ok: false, error: 'Upload process failed.', details: errorMessage }, 
+      { ok: false, error: 'An unexpected error occurred.', details: error.message },
       { status: 500 }
     );
   }
@@ -129,5 +176,5 @@ export async function POST(request: NextRequest) {
 
 // Basic GET handler for health check or testing
 export async function GET(request: NextRequest) {
-  return NextResponse.json({ status: 'ok', message: 'Lead upload API is active.' });
+  return NextResponse.json({ message: 'Lead upload API is active.' });
 }

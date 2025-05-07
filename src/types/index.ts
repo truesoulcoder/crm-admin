@@ -32,32 +32,43 @@ export interface Lead {
   property_address?: string; // Directly in NormalizedLead
   regional_market?: string; // Maps to market_region in NormalizedLead
   last_contacted_at?: string; // From previous type, maps to updated_at
+  lot_size_sqft?: string; // Added
+  price_per_sq_ft?: string; // Added
 }
 
 // New type representing the structure of the normalized_leads table from Supabase
 export interface NormalizedLead {
-  id: number; // BIGSERIAL PRIMARY KEY from normalized_leads
-  original_lead_id?: string | null; // UUID, from 'leads' staging table, if you join or carry it over
-  contact_name?: string | null;
-  contact_email?: string | null;
+  id: number; // From BIGSERIAL PRIMARY KEY
+  original_lead_id?: string | null; // UUID from the 'leads' staging table
+  
+  // Contact fields from the multi-contact schema
+  contact1_name?: string | null;
+  contact1_email_1?: string | null;
+  contact2_name?: string | null;
+  contact2_email_1?: string | null;
+  contact3_name?: string | null;
+  contact3_email_1?: string | null;
+  mls_curr_list_agent_name?: string | null;
+  mls_curr_list_agent_email?: string | null;
+
+  // Property details
   property_address?: string | null;
   property_city?: string | null;
   property_state?: string | null;
-  property_postal_code?: string | null;
+  property_postal_code?: string | null; // formerly property_zip in staging
   property_type?: string | null;
-  baths?: string | null;         // Stored as TEXT, consider conversion in UI if needed for numeric ops
-  beds?: string | null;          // Stored as TEXT
-  year_built?: string | null;    // Stored as TEXT
-  square_footage?: string | null;// Stored as TEXT
-  wholesale_value?: string | null; // Stored as TEXT, consider NUMERIC if used for calculations
-  assessed_total?: string | null;  // Stored as TEXT, consider NUMERIC
-  avm_value?: number | null;       // NUMERIC in DB
+  baths?: string | null; // Note: these are TEXT in DB as per original SQL
+  beds?: string | null;  // If they should be numbers, schema & parsing needs change
+  year_built?: string | null;
+  square_footage?: string | null;          
+  wholesale_value?: number | string | null; // NUMERIC in DB
+  assessed_total?: number | string | null;  // NUMERIC in DB
   mls_curr_status?: string | null;
-  mls_curr_days_on_market?: string | null; // Stored as TEXT, consider INTEGER
-  market_region?: string | null;   // TEXT
-  created_at: string; // TIMESTAMPTZ - will be string when fetched
-  updated_at?: string | null; // TIMESTAMPTZ - will be string when fetched
-  // Add any other relevant fields from your normalized_leads table as needed for display
+  mls_curr_days_on_market?: string | null;
+  market_region?: string | null; // Added for filtering
+  
+  created_at: string; // TIMESTAMPTZ from DB comes as string
+  updated_at: string; // TIMESTAMPTZ from DB comes as string
 }
 
 // Example EmailTemplate type

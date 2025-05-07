@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useMemo, ChangeEvent, FormEvent, useEffect } from 'react';
-import { Users, PlusCircle, Edit3, Trash2, Eye, Search, Filter, ChevronUp, ChevronDown, Briefcase, AtSign, Phone, CalendarDays, Tag, UserCheck, Save, XCircle, AlertTriangle } from 'lucide-react';
+import React, { useState, useMemo, ChangeEvent, FormEvent, useEffect, useRef } from 'react';
+import { Users, PlusCircle, Edit3, Trash2, Eye, Search, Filter, ChevronUp, ChevronDown, Briefcase, AtSign, Phone, CalendarDays, Tag, UserCheck, Save, XCircle, AlertTriangle, UploadCloud } from 'lucide-react';
 import { Background } from '../../once-ui/components/Background';
 
 import { NormalizedLead } from '../../types'; 
@@ -13,6 +13,7 @@ const LeadsView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMlsStatus, setFilterMlsStatus] = useState<'All' | string>('All'); 
   const [filterMarketRegion, setFilterMarketRegion] = useState<'All' | string>('All');
+  const [uploadMarketRegion, setUploadMarketRegion] = useState<string>(""); // New state for upload
 
   const [sortField, setSortField] = useState<keyof NormalizedLead | ''>('created_at'); 
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc'); 
@@ -21,10 +22,32 @@ const LeadsView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // State for modals - temporarily disable triggers
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newLeadData, setNewLeadData] = useState<any>({}); 
+  // Define initial state for the new lead form, based on NormalizedLead
+  const initialNewNormalizedLeadData: Partial<NormalizedLead> = {
+    contact_name: '',
+    contact_email: '',
+    property_address: '',
+    property_city: '',
+    property_state: '',
+    property_postal_code: '',
+    property_type: '',
+    market_region: '',
+    mls_curr_status: '', // Perhaps a default like 'New' or 'Active'
+    avm_value: null, // Or 0
+    // Add other relevant fields, ensuring types match NormalizedLead
+    // Fields like id, created_at, updated_at will be handled by DB or later logic
+  };
+  const [newLeadData, setNewLeadData] = useState<Partial<NormalizedLead>>(initialNewNormalizedLeadData);
   const [editingLead, setEditingLead] = useState<NormalizedLead | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // State for CSV Upload
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
   // Moved useMemo hooks before conditional returns to fix lint error
   const uniqueMarketRegions = useMemo(() => 
@@ -111,8 +134,10 @@ const LeadsView: React.FC = () => {
     return sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />;
   };
 
+  // --- Modal handlers - Temporarily disabled or simplified ---
   const handleOpenModal = () => {
-    alert('Adding new leads is temporarily disabled while we upgrade the system.');
+    setNewLeadData(initialNewNormalizedLeadData); // Reset form data
+    setIsModalOpen(true);
   };
   const handleCloseModal = () => setIsModalOpen(false);
 
@@ -122,13 +147,61 @@ const LeadsView: React.FC = () => {
   const handleCloseEditModal = () => { setIsEditModalOpen(false); setEditingLead(null); };
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    setNewLeadData(prev => ({
+      ...prev,
+      [name]: type === 'number' ? (parseFloat(value) || null) : value,
+    }));
   };
 
   const handleEditInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
   };
 
-  const handleSaveLead = (e: FormEvent<HTMLFormElement>) => {
+  const handleSaveLead = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!newLeadData.contact_name || !newLeadData.contact_email || !newLeadData.market_region) {
+      alert('Contact Name, Email, and Market Region are required.');
+      return;
+    }
+
+    setIsLoading(true); // Use a more specific loading state for the modal if preferred
+    setError(null);
+
+    try {
+      const leadToInsert: Omit<NormalizedLead, 'id' | 'created_at' | 'updated_at'> & { original_lead_id: string } = {
+        ...initialNewNormalizedLeadData, // Start with defaults for any potentially missing fields
+        ...newLeadData, // Overlay with user-entered data
+        original_lead_id: crypto.randomUUID(), // Generate UUID
+        // Ensure all required fields for DB that aren't auto-generated are present
+        // Convert empty strings to null for optional numeric/text fields if DB expects null
+        avm_value: newLeadData.avm_value ? Number(newLeadData.avm_value) : null,
+        // Ensure other fields like property_city, property_state etc. are handled
+      };
+
+      // Remove undefined properties that might have come from Partial<NormalizedLead>
+      Object.keys(leadToInsert).forEach(key => leadToInsert[key as keyof typeof leadToInsert] === undefined && delete leadToInsert[key as keyof typeof leadToInsert]);
+
+      const { data: insertedLead, error: insertError } = await supabase
+        .from('normalized_leads')
+        .insert(leadToInsert as any) // Using 'as any' temporarily if TS complains about exact type match for insert
+        .select()
+        .single(); // Assuming you want the inserted record back
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      if (insertedLead) {
+        setLeads(prevLeads => [insertedLead, ...prevLeads]); // Add to local state
+      }
+      handleCloseModal();
+    } catch (err) {
+      console.error('Error saving new lead:', err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred while saving the lead.');
+      // Keep modal open for user to see error or retry, or close and show a toast
+    } finally {
+      setIsLoading(false); // Reset general loading state, or modal-specific loading state
+    }
   };
 
   const handleSaveEditedLead = (e: FormEvent<HTMLFormElement>) => {
@@ -139,7 +212,89 @@ const LeadsView: React.FC = () => {
     alert(`Deleting lead ${leadId} is temporarily disabled.`);
   };
 
-  if (isLoading) {
+  // --- CSV Upload Handlers ---
+  const handleUploadButtonClick = () => {
+    fileInputRef.current?.click(); // Trigger hidden file input
+  };
+
+  const fetchLeadsAndResetUpload = async () => {
+    // Re-fetch leads (assuming fetchNormalizedLeads is defined in the useEffect or can be extracted)
+    // For simplicity, we'll trigger the useEffect by changing a dummy state or calling a refetch function if available
+    // A more direct way if fetchNormalizedLeads is callable:
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { data, error: supabaseError } = await supabase
+        .from('normalized_leads')
+        .select('*')
+        .order(sortField || 'created_at', { ascending: sortDirection === 'asc' });
+      if (supabaseError) throw supabaseError;
+      setLeads(data || []);
+    } catch (err) {
+      console.error('Error refetching leads:', err);
+      setError(err instanceof Error ? err.message : 'Error refetching leads.');
+    }
+    setIsLoading(false);
+  };
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (!uploadMarketRegion || uploadMarketRegion.trim() === "") {
+        const errorMsg = 'Please enter a Market Region for the upload before selecting a file.';
+        console.error('Upload error: LeadsView -', errorMsg);
+        setUploadStatus(`Upload failed: ${errorMsg}`);
+        // Clear file input and selected file state
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        setSelectedFile(null);
+        setIsUploading(false); // Ensure uploading state is reset
+        return; // Stop the upload process
+      }
+
+      setSelectedFile(file);
+      // Immediately attempt to upload
+      setIsUploading(true);
+      setUploadStatus('Uploading... Please wait.');
+      setError(null); // Clear previous main errors
+
+      const formData = new FormData();
+      formData.append('file', file); 
+      formData.append('market_region', uploadMarketRegion); // Use the new state here
+
+      try {
+        const response = await fetch('/api/leads/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.message || `Upload failed with status: ${response.status}`);
+        }
+        
+        setUploadStatus(`Upload successful: ${result.message || 'Leads processed.'}. Refreshing table...`);
+        await fetchLeadsAndResetUpload(); // Refresh data
+        setTimeout(() => setUploadStatus(null), 5000); // Clear status after 5s
+      } catch (err) {
+        console.error('Upload error:', err);
+        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred during upload.';
+        setUploadStatus(`Upload failed: ${errorMessage}`);
+        // setError(`Upload failed: ${errorMessage}`); // Optionally set main error too
+      } finally {
+        setIsUploading(false);
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ''; // Reset file input
+        }
+      }
+    }
+  };
+  // --- End CSV Upload Handlers ---
+
+  if (isLoading && !isUploading) { // Don't show main loading if only uploading
     return <div className="flex justify-center items-center h-screen"><span className="loading loading-spinner loading-lg"></span></div>;
   }
 
@@ -201,10 +356,39 @@ const LeadsView: React.FC = () => {
             {uniqueMarketRegions.map(region => <option key={region} value={region}>{region}</option>)}
           </select>
         </div>
-        <button onClick={handleOpenModal} className="btn btn-primary btn-outline" disabled>
-          <PlusCircle size={20} className="mr-2" /> Add New Lead (Disabled)
+        <button onClick={handleOpenModal} className="btn btn-primary">
+          <PlusCircle size={20} className="mr-2" /> Add New Lead
         </button>
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          onChange={handleFileChange}
+          accept=".csv"
+          style={{ display: 'none' }} 
+        />
+        <button onClick={handleUploadButtonClick} className="btn btn-secondary" disabled={isUploading}>
+          {isUploading ? (
+            <><span className="loading loading-spinner loading-xs mr-2"></span> Uploading...</>
+          ) : (
+            <><UploadCloud size={20} className="mr-2" /> Upload CSV</>
+          )}
+        </button>
+        <div className="ml-4">
+          <input 
+            type="text" 
+            placeholder="Market Region for Upload"
+            value={uploadMarketRegion}
+            onChange={(e) => setUploadMarketRegion(e.target.value)}
+            className="w-auto"
+          />
+        </div>
       </div>
+
+      {uploadStatus && (
+        <div className={`p-4 my-4 rounded-md ${uploadStatus.startsWith('Upload failed') ? 'bg-error text-error-content' : 'bg-success text-success-content'}`}>
+          {uploadStatus}
+        </div>
+      )}
 
       <div className="overflow-x-auto bg-base-100 rounded-lg shadow">
         <table className="table table-zebra w-full">
@@ -264,20 +448,47 @@ const LeadsView: React.FC = () => {
       </div>
 
       {isModalOpen && (
-        <dialog open className="modal modal-open">
-          <div className="modal-box w-11/12 max-w-2xl">
-            <h3 className="font-bold text-lg mb-4">Add New Lead (Temporarily Disabled)</h3>
+        <dialog open className="modal modal-open modal-bottom sm:modal-middle">
+          <div className="modal-box w-11/12 max-w-3xl">
+            <button type="button" onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+            <h3 className="font-bold text-lg mb-6">Add New Normalized Lead</h3>
             <form onSubmit={handleSaveLead} className="space-y-4">
-              <div><label className="label"><span className="label-text">Contact Name</span></label><input type="text" name="contact_name" className="input input-bordered w-full" disabled /></div>
-              <div className="modal-action">
+              {/* Form fields would need to map to NormalizedLead or a creation DTO */}
+              {/* Row 1 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="label"><span className="label-text">Contact Name <span className="text-error">*</span></span></label><input type="text" name="contact_name" value={newLeadData.contact_name || ''} onChange={handleInputChange} className="input input-bordered w-full" required /></div>
+                <div><label className="label"><span className="label-text">Contact Email <span className="text-error">*</span></span></label><input type="email" name="contact_email" value={newLeadData.contact_email || ''} onChange={handleInputChange} className="input input-bordered w-full" required /></div>
+              </div>
+              {/* Row 2 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="label"><span className="label-text">Market Region <span className="text-error">*</span></span></label><input type="text" name="market_region" value={newLeadData.market_region || ''} onChange={handleInputChange} className="input input-bordered w-full" required /></div>
+                <div><label className="label"><span className="label-text">MLS Current Status</span></label><input type="text" name="mls_curr_status" value={newLeadData.mls_curr_status || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              </div>
+              {/* Row 3: Property Address Details */}
+              <div><label className="label"><span className="label-text">Property Full Address</span></label><input type="text" name="property_address" value={newLeadData.property_address || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div><label className="label"><span className="label-text">Property City</span></label><input type="text" name="property_city" value={newLeadData.property_city || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+                <div><label className="label"><span className="label-text">Property State</span></label><input type="text" name="property_state" value={newLeadData.property_state || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+                <div><label className="label"><span className="label-text">Property Postal Code</span></label><input type="text" name="property_postal_code" value={newLeadData.property_postal_code || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              </div>
+              {/* Row 4 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><label className="label"><span className="label-text">Property Type</span></label><input type="text" name="property_type" value={newLeadData.property_type || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+                <div><label className="label"><span className="label-text">AVM Value</span></label><input type="number" name="avm_value" value={newLeadData.avm_value || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              </div>
+              
+              {error && <p className="text-error text-sm">Error: {error}</p>}
+
+              <div className="modal-action mt-6">
                 <button type="button" onClick={handleCloseModal} className="btn btn-ghost">Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled>Save Lead</button>
+                <button type="submit" className="btn btn-primary" disabled={isLoading}>{isLoading ? <span className='loading loading-spinner loading-xs'></span> : 'Save Lead'}</button>
               </div>
             </form>
           </div>
         </dialog>
       )}
 
+      {/* Edit Lead Modal (Example - kept for structure, but trigger is disabled) */}
       {isEditModalOpen && editingLead && (
          <dialog open className="modal modal-open">
           <div className="modal-box w-11/12 max-w-2xl">

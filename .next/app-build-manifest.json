@@ -14,14 +14,22 @@
     "/leads/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/css/app/leads/page.css",
       "static/chunks/app/leads/page.js"
     ],
-    "/campaigns/page": [
+    "/api/normalized-leads/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/css/app/campaigns/page.css",
-      "static/chunks/app/campaigns/page.js"
+      "static/chunks/app/api/normalized-leads/route.js"
+    ],
+    "/api/leads/upload/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/leads/upload/route.js"
+    ],
+    "/_not-found/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }
