@@ -3,15 +3,8 @@
 import React, { useState } from 'react';
 import { UserCog, PlusCircle, Edit3, Trash2, ShieldCheck, ShieldAlert, Search, Filter, Users, KeyRound } from 'lucide-react';
 
-interface UserAccount {
-  id: string;
-  name: string;
-  email: string;
-  role: 'Admin' | 'Manager' | 'Agent' | 'Viewer';
-  status: 'Active' | 'Pending' | 'Suspended';
-  lastLogin: string;
-  avatarUrl?: string;
-}
+import { UserAccount } from '../../types';
+import { supabase } from '../../lib/supabaseClient';
 
 const mockUserAccounts: UserAccount[] = [
   {

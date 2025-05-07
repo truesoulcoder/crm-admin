@@ -4,15 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { Mail, BarChart2, Edit3, Trash2, PlayCircle, PauseCircle, AlertTriangle, X, UserPlus, Users as UsersIcon } from 'lucide-react';
 import { Avatar, AvatarGroup, AvatarProps, LetterFx } from '../../once-ui/components';
 
-interface Campaign {
-  id: string;
-  name: string;
-  status: 'Draft' | 'Active' | 'Paused' | 'Completed' | 'Error';
-  emailsSent: number;
-  openRate: number;
-  clickRate: number;
-  creationDate: string;
-}
+import { Campaign } from '../../types';
+import { supabase } from '../../lib/supabaseClient';
 
 interface User {
   id: string;

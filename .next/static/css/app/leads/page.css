@@ -1,0 +1,29 @@
+/*!*****************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** css ./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[13].oneOf[7].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[13].oneOf[7].use[3]!./node_modules/next/dist/build/webpack/loaders/resolve-url-loader/index.js??ruleSet[1].rules[13].oneOf[7].use[4]!./node_modules/next/dist/compiled/sass-loader/cjs.js??ruleSet[1].rules[13].oneOf[7].use[5]!./src/once-ui/components/Background.module.scss ***!
+  \*****************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+.Background_mask__niEBy {
+  -webkit-mask-size: 100% 100%;
+          mask-size: 100% 100%;
+  -webkit-mask-image: radial-gradient(var(--mask-radius) at var(--mask-position-x) var(--mask-position-y), black 0%, transparent 100%);
+          mask-image: radial-gradient(var(--mask-radius) at var(--mask-position-x) var(--mask-position-y), black 0%, transparent 100%);
+}
+
+.Background_gradient__7xPCl {
+  background: radial-gradient(ellipse var(--gradient-width) var(--gradient-height) at var(--gradient-position-x) var(--gradient-position-y), var(--gradient-color-start), var(--gradient-color-end));
+  width: 400%;
+  height: 400%;
+  left: -150%;
+  top: -150%;
+  transform: rotate(var(--gradient-tilt));
+  transform-origin: center;
+}
+
+.Background_lines__jASbR {
+  background-size: var(--lines-size) var(--lines-size);
+  background-position: center;
+}
+
+.Background_dots__lE6Uv {
+  background-image: radial-gradient(var(--dots-color) 1px, var(--static-transparent) 1px);
+  background-size: var(--dots-size) var(--dots-size);
+}

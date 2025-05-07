@@ -1,149 +1,87 @@
 'use client';
 
-import React, { useState, useMemo, ChangeEvent, FormEvent } from 'react';
-import { Users, PlusCircle, Edit3, Trash2, Eye, Search, Filter, ChevronUp, ChevronDown, Briefcase, AtSign, Phone, CalendarDays, Tag, UserCheck, Save, XCircle } from 'lucide-react';
+import React, { useState, useMemo, ChangeEvent, FormEvent, useEffect } from 'react';
+import { Users, PlusCircle, Edit3, Trash2, Eye, Search, Filter, ChevronUp, ChevronDown, Briefcase, AtSign, Phone, CalendarDays, Tag, UserCheck, Save, XCircle, AlertTriangle } from 'lucide-react';
 import { Background } from '../../once-ui/components/Background';
 
-interface Lead {
-  id: string;
-  firstName: string;
-  lastName: string;
-  company: string;
-  email: string;
-  phone?: string;
-  status: 'New' | 'Contacted' | 'Qualified' | 'Lost' | 'Won';
-  source: 'Website' | 'Referral' | 'Advertisement' | 'Cold Call' | 'Event';
-  assignedTo: string; // User ID or name
-  lastContactDate: string;
-  potentialValue?: number;
-  notes?: string;
-}
-
-const initialMockLeads: Lead[] = [
-  {
-    id: 'lead-001',
-    firstName: 'John',
-    lastName: 'Doe',
-    company: 'Acme Corp',
-    email: 'john.doe@acmecorp.com',
-    phone: '555-1234',
-    status: 'New',
-    source: 'Website',
-    assignedTo: 'Alice Wonderland',
-    lastContactDate: '2024-05-01',
-    potentialValue: 5000,
-  },
-  {
-    id: 'lead-002',
-    firstName: 'Jane',
-    lastName: 'Smith',
-    company: 'Beta Solutions',
-    email: 'jane.smith@betasolutions.com',
-    status: 'Contacted',
-    source: 'Referral',
-    assignedTo: 'Bob The Builder',
-    lastContactDate: '2024-05-03',
-    potentialValue: 12000,
-  },
-  {
-    id: 'lead-003',
-    firstName: 'Mike',
-    lastName: 'Johnson',
-    company: 'Gamma Inc.',
-    email: 'mike.j@gamma.co',
-    phone: '555-5678',
-    status: 'Qualified',
-    source: 'Advertisement',
-    assignedTo: 'Alice Wonderland',
-    lastContactDate: '2024-04-28',
-    potentialValue: 8500,
-  },
-  {
-    id: 'lead-004',
-    firstName: 'Sarah',
-    lastName: 'Williams',
-    company: 'Delta LLC',
-    email: 's.williams@deltallc.net',
-    status: 'Lost',
-    source: 'Cold Call',
-    assignedTo: 'Charlie Brown',
-    lastContactDate: '2024-03-15',
-  },
-  {
-    id: 'lead-005',
-    firstName: 'David',
-    lastName: 'Brown',
-    company: 'Epsilon Ltd.',
-    email: 'david.brown@epsilon.org',
-    phone: '555-9012',
-    status: 'Won',
-    source: 'Event',
-    assignedTo: 'Diana Prince',
-    lastContactDate: '2024-05-05',
-    potentialValue: 25000,
-  },
-];
-
-const defaultNewLead: Omit<Lead, 'id' | 'lastContactDate'> = {
-  firstName: '',
-  lastName: '',
-  company: '',
-  email: '',
-  phone: '',
-  status: 'New',
-  source: 'Website',
-  assignedTo: '',
-  potentialValue: 0,
-  notes: '',
-};
-
-type SortField = keyof Lead | '';
-type SortDirection = 'asc' | 'desc';
-
-const getStatusBadge = (status: Lead['status']) => {
-  const colorMap: Record<Lead['status'], string> = {
-    New: 'badge-info',
-    Contacted: 'badge-primary',
-    Qualified: 'badge-success',
-    Lost: 'badge-error',
-    Won: 'badge-accent',
-  };
-  return <span className={`badge ${colorMap[status]} badge-sm`}>{status}</span>;
-};
+import { NormalizedLead } from '../../types'; 
+import { createClient } from '../../lib/supabase/client'; 
 
 const LeadsView: React.FC = () => {
+  const supabase = createClient(); 
+
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'All' | Lead['status']>('All');
-  const [filterSource, setFilterSource] = useState<'All' | Lead['source']>('All');
-  const [sortField, setSortField] = useState<SortField>('lastName');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-  const [leads, setLeads] = useState<Lead[]>(initialMockLeads);
+  const [filterMlsStatus, setFilterMlsStatus] = useState<'All' | string>('All'); 
+  const [filterMarketRegion, setFilterMarketRegion] = useState<'All' | string>('All');
+
+  const [sortField, setSortField] = useState<keyof NormalizedLead | ''>('created_at'); 
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc'); 
+  
+  const [leads, setLeads] = useState<NormalizedLead[]>([]); 
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newLeadData, setNewLeadData] = useState<Omit<Lead, 'id' | 'lastContactDate'>>(defaultNewLead);
-  // State for editing a lead
-  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [newLeadData, setNewLeadData] = useState<any>({}); 
+  const [editingLead, setEditingLead] = useState<NormalizedLead | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // Moved useMemo hooks before conditional returns to fix lint error
+  const uniqueMarketRegions = useMemo(() => 
+    ['All', ...Array.from(new Set(leads.map(lead => lead.market_region).filter(Boolean) as string[]))], 
+    [leads]
+  );
+  const uniqueMlsStatuses = useMemo(() => 
+    ['All', ...Array.from(new Set(leads.map(lead => lead.mls_curr_status).filter(Boolean) as string[]))], 
+    [leads]
+  );
+
+  useEffect(() => {
+    const fetchNormalizedLeads = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const { data, error: supabaseError } = await supabase
+          .from('normalized_leads')
+          .select('*')
+          .order(sortField || 'created_at', { ascending: sortDirection === 'asc' }); 
+
+        if (supabaseError) {
+          throw supabaseError;
+        }
+        setLeads(data || []);
+      } catch (err) {
+        console.error('Error fetching normalized leads:', err);
+        setError(err instanceof Error ? err.message : 'An unknown error occurred while fetching leads.');
+      }
+      setIsLoading(false);
+    };
+
+    fetchNormalizedLeads();
+  }, [sortField, sortDirection, supabase]); 
 
   const sortedAndFilteredLeads = useMemo(() => {
     let filtered = leads.filter(lead => {
-      const fullName = `${lead.firstName} ${lead.lastName}`.toLowerCase();
       const search = searchTerm.toLowerCase();
-      const matchesSearch = fullName.includes(search) ||
-                            lead.company.toLowerCase().includes(search) ||
-                            lead.email.toLowerCase().includes(search);
-      const matchesStatus = filterStatus === 'All' || lead.status === filterStatus;
-      const matchesSource = filterSource === 'All' || lead.source === filterSource;
-      return matchesSearch && matchesStatus && matchesSource;
+      const matchesSearch = 
+        (lead.contact_name?.toLowerCase().includes(search) || false) ||
+        (lead.contact_email?.toLowerCase().includes(search) || false) ||
+        (lead.property_address?.toLowerCase().includes(search) || false) ||
+        (lead.market_region?.toLowerCase().includes(search) || false);
+
+      const matchesMlsStatus = filterMlsStatus === 'All' || lead.mls_curr_status === filterMlsStatus;
+      const matchesMarketRegion = filterMarketRegion === 'All' || lead.market_region === filterMarketRegion;
+      
+      return matchesSearch && matchesMlsStatus && matchesMarketRegion;
     });
 
-    if (sortField) {
+    if (sortField && leads.length > 0) {
       filtered.sort((a, b) => {
         const valA = a[sortField];
         const valB = b[sortField];
 
-        if (valA === undefined && valB === undefined) return 0;
-        if (valA === undefined) return sortDirection === 'asc' ? 1 : -1;
-        if (valB === undefined) return sortDirection === 'asc' ? -1 : 1;
+        if (valA === undefined || valA === null) return sortDirection === 'asc' ? 1 : -1;
+        if (valB === undefined || valB === null) return sortDirection === 'asc' ? -1 : 1;
 
         if (typeof valA === 'string' && typeof valB === 'string') {
           return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
@@ -151,16 +89,15 @@ const LeadsView: React.FC = () => {
         if (typeof valA === 'number' && typeof valB === 'number') {
           return sortDirection === 'asc' ? valA - valB : valB - valA;
         }
-        // Basic fallback for other types (dates as strings)
         const strA = String(valA);
         const strB = String(valB);
         return sortDirection === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
       });
     }
     return filtered;
-  }, [searchTerm, filterStatus, filterSource, sortField, sortDirection, leads]);
+  }, [searchTerm, filterMlsStatus, filterMarketRegion, sortField, sortDirection, leads]);
 
-  const handleSort = (field: SortField) => {
+  const handleSort = (field: keyof NormalizedLead | '') => {
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
@@ -169,286 +106,194 @@ const LeadsView: React.FC = () => {
     }
   };
 
-  const SortIndicator = ({ field }: { field: SortField }) => {
+  const SortIndicator = ({ field }: { field: keyof NormalizedLead | '' }) => {
     if (sortField !== field) return null;
     return sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />;
   };
 
   const handleOpenModal = () => {
-    setNewLeadData(defaultNewLead);
-    setIsModalOpen(true);
+    alert('Adding new leads is temporarily disabled while we upgrade the system.');
   };
+  const handleCloseModal = () => setIsModalOpen(false);
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
+  const handleOpenEditModal = (lead: NormalizedLead) => {
+    alert('Editing leads is temporarily disabled while we upgrade the system.');
   };
-
-  // Handlers for Edit Modal
-  const handleOpenEditModal = (lead: Lead) => {
-    setEditingLead(lead); // Set the lead to be edited
-    setIsEditModalOpen(true); // Open the edit modal
-  };
-
-  const handleCloseEditModal = () => {
-    setIsEditModalOpen(false);
-    setEditingLead(null); // Clear the editing lead state
-  };
+  const handleCloseEditModal = () => { setIsEditModalOpen(false); setEditingLead(null); };
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setNewLeadData(prev => ({ ...prev, [name]: name === 'potentialValue' ? parseFloat(value) || 0 : value }));
   };
 
   const handleEditInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    if (!editingLead) return;
-    const { name, value } = e.target;
-    setEditingLead({
-      ...editingLead,
-      [name]: name === 'potentialValue' ? parseFloat(value) || 0 : value,
-    });
   };
 
   const handleSaveLead = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const newLeadWithId: Lead = {
-      ...newLeadData,
-      id: `lead-${Date.now()}`,
-      lastContactDate: new Date().toISOString().split('T')[0], // YYYY-MM-DD
-    };
-    setLeads(prevLeads => [newLeadWithId, ...prevLeads]);
-    console.log('New Lead Saved:', newLeadWithId);
-    handleCloseModal();
   };
 
-  const handleUpdateLead = (e: FormEvent<HTMLFormElement>) => {
+  const handleSaveEditedLead = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!editingLead) return;
-    
-    // Update the lead in the main leads array
-    setLeads(prevLeads => 
-      prevLeads.map(lead => 
-        lead.id === editingLead.id ? editingLead : lead
-      )
-    );
-    console.log('Lead Updated:', editingLead); // For debugging
-    handleCloseEditModal();
+  };
+
+  const handleDeleteLead = (leadId: number) => {
+    alert(`Deleting lead ${leadId} is temporarily disabled.`);
+  };
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center h-screen"><span className="loading loading-spinner loading-lg"></span></div>;
+  }
+
+  if (error) {
+    return <div className="flex flex-col justify-center items-center h-screen text-error">
+      <AlertTriangle size={48} className="mb-4" />
+      <p className="text-xl">Error loading leads:</p>
+      <p>{error}</p>
+    </div>;
+  }
+
+  const getStatusBadge = (status: string | null | undefined) => {
+    if (!status) return <span className="badge badge-ghost badge-sm">Unknown</span>;
+    const normalizedStatus = status.toLowerCase();
+    let badgeClass = 'badge-ghost'; 
+
+    if (normalizedStatus.includes('active') || normalizedStatus.includes('new')) badgeClass = 'badge-info';
+    else if (normalizedStatus.includes('pending') || normalizedStatus.includes('contract')) badgeClass = 'badge-warning';
+    else if (normalizedStatus.includes('sold') || normalizedStatus.includes('closed')) badgeClass = 'badge-success';
+    else if (normalizedStatus.includes('expired') || normalizedStatus.includes('cancelled')) badgeClass = 'badge-error';
+  
+    return <span className={`badge ${badgeClass} badge-sm`}>{status}</span>;
   };
 
   return (
-    <div className="relative min-h-screen">
-      <Background
-        gradient={{
-          display: true,
-          colorStart: 'rgba(var(--brand-primary-rgb), 0.1)',
-          colorEnd: 'rgba(var(--brand-secondary-rgb), 0.05)',
-          tilt: 45,
-          opacity: 0.5
-        }}
-        dots={{
-          display: true,
-          color: 'rgba(var(--brand-on-background-rgb), 0.1)',
-          size: '32',
-          opacity: 0.3
-        }}
-        className="absolute inset-0 z-0"
-      />
-      <div className="relative z-10 p-4 md:p-6 lg:p-8 h-[calc(100vh-4rem)] flex flex-col">
-        <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-          <h1 className="text-3xl font-bold text-base-content flex items-center"><Users className="mr-3 text-primary"/> Lead Management</h1>
-          <button className="btn btn-primary w-full sm:w-auto" onClick={handleOpenModal}>
-            <PlusCircle size={18} className="mr-2" /> Create New Lead
-          </button>
-        </div>
+    <Background className="p-4 md:p-6 lg:p-8">
+      <header className="mb-6">
+        <h1 className="text-3xl font-bold text-neutral-content flex items-center">
+          <Users size={32} className="mr-3 text-primary" /> Normalized Leads Management
+        </h1>
+      </header>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6 p-4 bg-base-200 rounded-lg shadow">
-          <div>
-            <label htmlFor="search" className="label"><span className="label-text">Search</span></label>
-            <input
-              id="search"
-              type="text"
-              placeholder="Search leads..."
-              className="input input-bordered w-full"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <div>
-            <label htmlFor="statusFilter" className="label"><span className="label-text">Status</span></label>
-            <select 
-              id="statusFilter"
-              className="select select-bordered w-full"
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as Lead['status'] | 'All')}
-            >
-              <option value="All">All Statuses</option>
-              <option value="New">New</option>
-              <option value="Contacted">Contacted</option>
-              <option value="Qualified">Qualified</option>
-              <option value="Lost">Lost</option>
-              <option value="Won">Won</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="sourceFilter" className="label"><span className="label-text">Source</span></label>
-            <select 
-              id="sourceFilter"
-              className="select select-bordered w-full"
-              value={filterSource}
-              onChange={(e) => setFilterSource(e.target.value as Lead['source'] | 'All')}
-            >
-              <option value="All">All Sources</option>
-              <option value="Website">Website</option>
-              <option value="Referral">Referral</option>
-              <option value="Advertisement">Advertisement</option>
-              <option value="Cold Call">Cold Call</option>
-              <option value="Event">Event</option>
-            </select>
-          </div>
+      <div className="mb-6 p-4 bg-base-200 rounded-lg shadow flex flex-wrap gap-4 items-center">
+        <div className="relative flex-grow min-w-[200px]">
+          <input 
+            type="text" 
+            placeholder="Search leads (name, email, address, market)..." 
+            className="input input-bordered w-full pl-10"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-base-content opacity-50" />
         </div>
+        <div className="form-control min-w-[150px]">
+          <select 
+            className="select select-bordered"
+            value={filterMlsStatus}
+            onChange={(e) => setFilterMlsStatus(e.target.value)}
+          >
+            {uniqueMlsStatuses.map(status => <option key={status} value={status}>{status}</option>)}
+          </select>
+        </div>
+        <div className="form-control min-w-[150px]">
+          <select 
+            className="select select-bordered"
+            value={filterMarketRegion}
+            onChange={(e) => setFilterMarketRegion(e.target.value)}
+          >
+            {uniqueMarketRegions.map(region => <option key={region} value={region}>{region}</option>)}
+          </select>
+        </div>
+        <button onClick={handleOpenModal} className="btn btn-primary btn-outline" disabled>
+          <PlusCircle size={20} className="mr-2" /> Add New Lead (Disabled)
+        </button>
+      </div>
 
-        <div className="flex-1 overflow-hidden">
-          {sortedAndFilteredLeads.length === 0 ? (
-            <div className="h-full flex items-center justify-center"> 
-              <div className="text-center py-10 card bg-base-100 shadow-md">
-                <Users size={48} className="mx-auto text-base-content/30 mb-4" />
-                <h2 className="text-xl font-semibold mb-2">No Leads Found</h2>
-                <p className="text-base-content/70">Try adjusting your search or filters, or create a new lead.</p>
-              </div>
-            </div>
-          ) : (
-            <div className="h-full overflow-auto">
-              <table className="table table-zebra w-full">
-                <thead>
-                  <tr className="sticky top-0 bg-base-100 z-10">
-                    <th onClick={() => handleSort('lastName')} className="cursor-pointer">
-                      <div className="flex items-center">Name <SortIndicator field='lastName'/></div>
-                    </th>
-                    <th onClick={() => handleSort('company')} className="cursor-pointer">
-                       <div className="flex items-center">Company <SortIndicator field='company'/></div>
-                    </th>
-                    <th>Contact</th>
-                    <th onClick={() => handleSort('status')} className="cursor-pointer">
-                       <div className="flex items-center">Status <SortIndicator field='status'/></div>
-                    </th>
-                    <th onClick={() => handleSort('source')} className="cursor-pointer">
-                       <div className="flex items-center">Source <SortIndicator field='source'/></div>
-                    </th>
-                    <th onClick={() => handleSort('assignedTo')} className="cursor-pointer">
-                      <div className="flex items-center">Assigned To <SortIndicator field='assignedTo'/></div>
-                    </th>
-                    <th onClick={() => handleSort('lastContactDate')} className="cursor-pointer">
-                      <div className="flex items-center">Last Contact <SortIndicator field='lastContactDate'/></div>
-                    </th>
-                    <th className="text-center">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedAndFilteredLeads.map((lead) => (
-                    <tr key={lead.id} className="hover">
-                      <td>
-                        <div className="font-bold">{lead.firstName} {lead.lastName}</div>
-                        <div className="text-xs text-base-content/70">ID: {lead.id}</div>
-                      </td>
-                      <td>{lead.company}</td>
-                      <td>
-                        <div>{lead.email}</div>
-                        {lead.phone && <div className="text-xs text-base-content/70">{lead.phone}</div>}
-                      </td>
-                      <td><span className={`badge ${getStatusBadge(lead.status)}`}>{lead.status}</span></td>
-                      <td>{lead.source}</td>
-                      <td>{lead.assignedTo}</td>
-                      <td>{new Date(lead.lastContactDate).toLocaleDateString()}</td>
-                      <td>
-                        <div className="flex items-center justify-center space-x-1">
-                          <button className="btn btn-ghost btn-xs" title="Edit Lead" onClick={() => handleOpenEditModal(lead)}><Edit3 size={16}/></button>
-                          <button className="btn btn-ghost btn-xs text-error" title="Delete Lead"><Trash2 size={16}/></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-        {isEditModalOpen && editingLead && (
-          <dialog id="edit_lead_modal" className="modal modal-open">
-            <form onSubmit={handleUpdateLead} className="modal-box w-11/12 max-w-2xl">
-              <button type="button" onClick={handleCloseEditModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-              <h3 className="font-bold text-lg mb-4">Edit Lead: {editingLead.firstName} {editingLead.lastName}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* First Name */}
-                <div className="form-control">
-                  <label className="label"><span className="label-text">First Name</span></label>
-                  <input type="text" name="firstName" placeholder="John" className="input input-bordered" value={editingLead.firstName} onChange={handleEditInputChange} required />
-                </div>
-                {/* Last Name */}
-                <div className="form-control">
-                  <label className="label"><span className="label-text">Last Name</span></label>
-                  <input type="text" name="lastName" placeholder="Doe" className="input input-bordered" value={editingLead.lastName} onChange={handleEditInputChange} required />
-                </div>
-                {/* Company */}
-                <div className="form-control">
-                  <label className="label"><span className="label-text">Company</span></label>
-                  <input type="text" name="company" placeholder="Acme Corp" className="input input-bordered" value={editingLead.company} onChange={handleEditInputChange} required />
-                </div>
-                {/* Email */}
-                <div className="form-control">
-                  <label className="label"><span className="label-text">Email</span></label>
-                  <input type="email" name="email" placeholder="john.doe@example.com" className="input input-bordered" value={editingLead.email} onChange={handleEditInputChange} required />
-                </div>
-                {/* Phone */}
-                <div className="form-control">
-                  <label className="label"><span className="label-text">Phone (Optional)</span></label>
-                  <input type="tel" name="phone" placeholder="555-1234" className="input input-bordered" value={editingLead.phone || ''} onChange={handleEditInputChange} />
-                </div>
-                {/* Status */}
-                <div className="form-control">
-                  <label className="label"><span className="label-text">Status</span></label>
-                  <select name="status" className="select select-bordered" value={editingLead.status} onChange={handleEditInputChange}>
-                    <option value="New">New</option>
-                    <option value="Contacted">Contacted</option>
-                    <option value="Qualified">Qualified</option>
-                    <option value="Lost">Lost</option>
-                    <option value="Won">Won</option>
-                  </select>
-                </div>
-                {/* Source */}
-                <div className="form-control">
-                  <label className="label"><span className="label-text">Source</span></label>
-                  <select name="source" className="select select-bordered" value={editingLead.source} onChange={handleEditInputChange}>
-                    <option value="Website">Website</option>
-                    <option value="Referral">Referral</option>
-                    <option value="Advertisement">Advertisement</option>
-                    <option value="Cold Call">Cold Call</option>
-                    <option value="Event">Event</option>
-                  </select>
-                </div>
-                {/* Assigned To */}
-                <div className="form-control">
-                  <label className="label"><span className="label-text">Assigned To</span></label>
-                  <input type="text" name="assignedTo" placeholder="User Name" className="input input-bordered" value={editingLead.assignedTo} onChange={handleEditInputChange} required />
-                </div>
-                {/* Potential Value */}
-                <div className="form-control">
-                  <label className="label"><span className="label-text">Potential Value (Optional)</span></label>
-                  <input type="number" name="potentialValue" placeholder="5000" className="input input-bordered" value={editingLead.potentialValue || ''} onChange={handleEditInputChange} />
-                </div>
-                
-                <div className="form-control md:col-span-2">
-                  <label className="label"><span className="label-text">Notes (Optional)</span></label>
-                  <textarea name="notes" className="textarea textarea-bordered h-24" placeholder="Any relevant notes..." value={editingLead.notes || ''} onChange={handleEditInputChange}></textarea>
-                </div>
-              </div>
-              <div className="modal-action mt-6">
-                <button type="button" onClick={handleCloseEditModal} className="btn btn-ghost">Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Changes</button>
+      <div className="overflow-x-auto bg-base-100 rounded-lg shadow">
+        <table className="table table-zebra w-full">
+          <thead>
+            <tr className="text-base-content">
+              <th onClick={() => handleSort('contact_name')} className="cursor-pointer hover:bg-base-200">
+                Contact Name <SortIndicator field="contact_name" />
+              </th>
+              <th onClick={() => handleSort('contact_email')} className="cursor-pointer hover:bg-base-200">
+                Email <SortIndicator field="contact_email" />
+              </th>
+              <th onClick={() => handleSort('property_address')} className="cursor-pointer hover:bg-base-200">
+                Property Address <SortIndicator field="property_address" />
+              </th>
+              <th onClick={() => handleSort('market_region')} className="cursor-pointer hover:bg-base-200">
+                Market Region <SortIndicator field="market_region" />
+              </th>
+              <th onClick={() => handleSort('avm_value')} className="cursor-pointer hover:bg-base-200">
+                AVM Value <SortIndicator field="avm_value" />
+              </th>
+              <th onClick={() => handleSort('mls_curr_status')} className="cursor-pointer hover:bg-base-200">
+                MLS Status <SortIndicator field="mls_curr_status" />
+              </th>
+              <th onClick={() => handleSort('created_at')} className="cursor-pointer hover:bg-base-200">
+                Created At <SortIndicator field="created_at" />
+              </th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedAndFilteredLeads.length > 0 ? (
+              sortedAndFilteredLeads.map((lead) => (
+                <tr key={lead.id} className="hover:bg-base-200 transition-colors duration-150">
+                  <td>{lead.contact_name || 'N/A'}</td>
+                  <td>{lead.contact_email || 'N/A'}</td>
+                  <td>{lead.property_address || 'N/A'}</td>
+                  <td>{lead.market_region || 'N/A'}</td>
+                  <td>{lead.avm_value ? `$${lead.avm_value.toLocaleString()}` : 'N/A'}</td>
+                  <td>{getStatusBadge(lead.mls_curr_status)}</td>
+                  <td>{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : 'N/A'}</td>
+                  <td className="space-x-1">
+                    <button onClick={() => handleOpenEditModal(lead)} className="btn btn-xs btn-ghost text-info btn-disabled" title="Edit Lead (Disabled)" disabled><Edit3 size={16} /></button>
+                    <button onClick={() => handleDeleteLead(lead.id)} className="btn btn-xs btn-ghost text-error btn-disabled" title="Delete Lead (Disabled)" disabled><Trash2 size={16} /></button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={8} className="text-center py-8 text-base-content opacity-70">
+                  <Users size={32} className="mx-auto mb-2" />
+                  No leads found. Try adjusting your search or filters.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {isModalOpen && (
+        <dialog open className="modal modal-open">
+          <div className="modal-box w-11/12 max-w-2xl">
+            <h3 className="font-bold text-lg mb-4">Add New Lead (Temporarily Disabled)</h3>
+            <form onSubmit={handleSaveLead} className="space-y-4">
+              <div><label className="label"><span className="label-text">Contact Name</span></label><input type="text" name="contact_name" className="input input-bordered w-full" disabled /></div>
+              <div className="modal-action">
+                <button type="button" onClick={handleCloseModal} className="btn btn-ghost">Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled>Save Lead</button>
               </div>
             </form>
-          </dialog>
-        )}
-      </div>
-    </div>
+          </div>
+        </dialog>
+      )}
+
+      {isEditModalOpen && editingLead && (
+         <dialog open className="modal modal-open">
+          <div className="modal-box w-11/12 max-w-2xl">
+            <h3 className="font-bold text-lg mb-4">Edit Lead (Temporarily Disabled) - {editingLead.contact_name}</h3>
+            <form onSubmit={handleSaveEditedLead} className="space-y-4">
+              <div><label className="label"><span className="label-text">Contact Name</span></label><input type="text" name="contact_name" defaultValue={editingLead.contact_name || ''} className="input input-bordered w-full" disabled /></div>
+              <div className="modal-action">
+                <button type="button" onClick={handleCloseEditModal} className="btn btn-ghost">Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled>Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </dialog>
+      )}
+
+    </Background>
   );
 };
 
