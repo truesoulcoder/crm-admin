@@ -1,0 +1,10 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/campaigns/page": "app/campaigns/page.js",
+  "/accounts/page": "app/accounts/page.js",
+  "/leads/page": "app/leads/page.js",
+  "/page": "app/page.js",
+  "/settings/page": "app/settings/page.js",
+  "/templates/page": "app/templates/page.js",
+  "/dashboard/page": "app/dashboard/page.js"
+}
