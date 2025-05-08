@@ -1,8 +1,25 @@
 // File: src/actions/testEmailSender.script.ts
-// To run from project root: ts-node src/actions/testEmailSender.script.ts 
-// Ensure your .env.local is loaded. If running this script directly and not via Next.js,
-// you might need to explicitly load .env.local if it's not automatically picked up.
-// One way: import dotenv from 'dotenv'; dotenv.config({ path: '.env.local' }); (ensure .env.local is at project root)
+// To run from project root: npx tsx src/actions/testEmailSender.script.ts 
+
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load .env.local variables
+const envConfigPath = path.resolve(process.cwd(), '.env.local');
+console.log(`[dotenv-debug] Attempting to load .env file from: ${envConfigPath}`);
+
+const result = dotenv.config({ path: envConfigPath });
+
+if (result.error) {
+  console.error('[dotenv-debug] Error loading .env.local file:', result.error);
+} else {
+  console.log('[dotenv-debug] .env.local file loaded. Parsed variables keys:', result.parsed ? Object.keys(result.parsed) : 'No variables parsed');
+  // For security, avoid logging all parsed values unless absolutely necessary for debugging
+  // console.log('[dotenv-debug] Parsed content:', result.parsed);
+}
+
+console.log('[testEmailSender.script.ts] GOOGLE_SERVICE_ACCOUNT_KEY_PATH (after dotenv):', process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH);
+console.log('[testEmailSender.script.ts] TEST_RECIPIENT_EMAIL (after dotenv):', process.env.TEST_RECIPIENT_EMAIL);
 
 import { 
   prepareAndSendOfferEmail, 
