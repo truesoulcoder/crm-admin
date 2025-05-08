@@ -45,6 +45,28 @@
     - Modifying the backend API route `/api/leads/upload/route.ts` to receive the `market_region`, pass it to the updated Supabase normalization function, and update Supabase client initialization (removing deprecated `@supabase/auth-helpers-nextjs` and confirming correct usage of `@supabase/supabase-js` for service role client).
     - This change simplifies lead categorization and management by directly associating leads with a market region upon upload, replacing a more complex archiving system.
 
+### API Endpoints for Document Templates
+- **Status:** Completed
+- **Description:** Created API endpoints for managing document templates.
+    - Created `src/app/api/document-templates/route.ts`.
+    - Implemented `GET` handler to fetch all active document templates.
+    - Implemented `POST` handler to create a new document template with Zod validation.
+    - Created `src/app/api/document-templates/[id]/route.ts` for individual template operations.
+    - Implemented `GET` handler in `[id]/route.ts` to fetch a single template by ID.
+    - Implemented `PUT` handler in `[id]/route.ts` to update a template.
+    - Implemented `DELETE` handler in `[id]/route.ts` to deactivate/delete a template.
+
+### Document Template Management UI
+- **Status:** Completed
+- **Description:** Developed the user interface for managing document templates.
+  - [x] **List Templates:** Fetch and display all document templates from the API.
+  - [x] **Create Template:** Implement a modal/form to create new templates (name, type, subject, content, placeholders).
+  - [x] **Edit Template:** Implement functionality to edit existing templates.
+  - [x] **Delete Template:** Implement functionality to soft-delete templates.
+  - [ ] **Rich Text Editor:** Integrate a rich text editor for the `content` field.
+  - [ ] **Filtering & Sorting:** Add options to filter templates (e.g., by type, active status) and sort them.
+  - [ ] **UI/UX Enhancements:** Improve overall look, feel, and user experience (e.g., toast notifications, better loading/error states).
+
 ## Next Steps
 - Define shared types/schema for core CRM entities (contacts, companies, deals, users, activities)
 - Implement Supabase connection and authentication
