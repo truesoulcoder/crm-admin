@@ -3,11 +3,15 @@ import { google } from 'googleapis';
 
 // Fetch authenticated user's profile via Google People API
 export async function GET(req: NextRequest) {
-  try {
-    const clientId = process.env.GOOGLE_CLIENT_ID!;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
-    const refreshToken = process.env.GOOGLE_REFRESH_TOKEN!;
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
+  if (!clientId || !clientSecret || !refreshToken) {
+    console.warn('Missing Google credentials, returning empty profile');
+    return NextResponse.json({ name: null, picture: null });
+  }
 
+  try {
     const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret);
     oAuth2Client.setCredentials({ refresh_token: refreshToken });
 
