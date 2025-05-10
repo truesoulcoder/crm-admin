@@ -32,7 +32,7 @@ const Sidebar: React.FC = () => {
     leads: '/leads',
     campaigns: '/campaigns',
     templates: '/templates',
-    senders: '/senders',
+    senders: '/email-senders',
     settings: '/settings',
   };
 

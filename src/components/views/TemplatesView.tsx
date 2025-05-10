@@ -196,18 +196,23 @@ const TemplatesView: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/document-templates');
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to fetch templates');
+      const [docRes, emailRes] = await Promise.all([
+        fetch('/api/document-templates'),
+        fetch('/api/email-templates'),
+      ]);
+      if (!docRes.ok || !emailRes.ok) {
+        const errResp = !docRes.ok ? await docRes.json() : await emailRes.json();
+        throw new Error(errResp.error || 'Failed to fetch templates');
       }
-      const data = await response.json();
-      setDocumentTemplates(data as DocumentTemplate[]);
+      const docData = (await docRes.json()) as DocumentTemplate[];
+      const emailData = (await emailRes.json()) as DocumentTemplate[];
+      setDocumentTemplates([...docData, ...emailData]);
     } catch (err: any) {
       setError(err.message);
       console.error('Error fetching templates:', err);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
   useEffect(() => {

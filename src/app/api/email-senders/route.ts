@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { google } from 'googleapis';
 
 // Initialize Supabase client
 // Ensure your environment variables are set up for these
@@ -30,6 +31,7 @@ export interface EmailSender {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  photo_url?: string;
 }
 
 /**
@@ -64,7 +66,29 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data as EmailSender[], { status: 200 });
+    // Initialize Google Admin SDK client
+    const auth = new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL!,
+      undefined,
+      process.env.GOOGLE_PRIVATE_KEY!.replace(/\\n/g, '\n'),
+      ['https://www.googleapis.com/auth/admin.directory.user.readonly'],
+      process.env.GOOGLE_DELEGATED_ADMIN_EMAIL
+    );
+    const directory = google.admin({ version: 'directory_v1', auth });
+
+    // Fetch profile photos for each sender
+    const senders: EmailSender[] = data as EmailSender[];
+    const sendersWithPhoto = await Promise.all(
+      senders.map(async (sender) => {
+        try {
+          const res = await directory.users.get({ userKey: sender.employee_email, fields: 'thumbnailPhotoUrl' });
+          return { ...sender, photo_url: res.data.thumbnailPhotoUrl! };
+        } catch {
+          return sender;
+        }
+      })
+    );
+    return NextResponse.json(sendersWithPhoto, { status: 200 });
   } catch (err: any) {
     console.error('Unexpected error in GET /api/email-senders:', err);
     return NextResponse.json({ error: err.message || 'An unexpected error occurred' }, { status: 500 });
@@ -196,6 +220,10 @@ export async function POST(req: NextRequest) {
  *           type: string
  *           format: date-time
  *           description: The date and time the sender was last updated.
+ *         photo_url:
+ *           type: string
+ *           format: uri
+ *           description: The URL of the sender's Google profile picture.
  *       example:
  *         id: 1
  *         employee_name: 'Jane Doe'
@@ -203,4 +231,5 @@ export async function POST(req: NextRequest) {
  *         is_active: true
  *         created_at: '2023-10-26T10:00:00Z'
  *         updated_at: '2023-10-26T10:00:00Z'
+ *         photo_url: 'https://lh3.googleusercontent.com/.../photo.jpg'
  */

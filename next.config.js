@@ -4,7 +4,7 @@ const path = require('path');
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    domains: ['localhost', 'i.pravatar.cc'],
+    domains: ['localhost','lh3.googleusercontent.com'],
   },
 
   webpack: (config, { isServer }) => {

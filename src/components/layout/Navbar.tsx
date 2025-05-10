@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { Menu, Bell, UserCircle, Sun, Moon, Search } from 'lucide-react';
 
 interface NavbarProps {
@@ -9,12 +10,24 @@ interface NavbarProps {
 
 const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
   const [currentTheme, setCurrentTheme] = useState('light');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [fullName, setFullName] = useState<string | null>(null);
 
   useEffect(() => {
     // Initialize theme from localStorage or default
     const savedTheme = localStorage.getItem('theme') || 'light';
     setCurrentTheme(savedTheme);
     document.documentElement.setAttribute('data-theme', savedTheme);
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/gmail/profile')
+      .then(res => res.json())
+      .then(profile => {
+        setAvatarUrl(profile.picture || null);
+        setFullName(profile.name || null);
+      })
+      .catch(err => console.error('Gmail profile error:', err));
   }, []);
 
   const toggleTheme = () => {
@@ -67,7 +80,11 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
         <div className="dropdown dropdown-end ml-2">
           <button tabIndex={0} className="btn btn-ghost btn-circle avatar">
             <div className="w-8 rounded-full ring ring-primary ring-offset-base-100 ring-offset-1">
-              <img src={`https://placehold.co/80x80/661AE6/FFFFFF?text=A`} alt="User avatar" />
+              {avatarUrl ? (
+                <Image src={avatarUrl} alt={fullName || 'User avatar'} width={32} height={32} />
+              ) : (
+                <div className="bg-gray-200 w-8 h-8 rounded-full" />
+              )}
             </div>
           </button>
           <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">

@@ -1,13 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { UserCog, PlusCircle, Edit3, Trash2, ShieldCheck, ShieldAlert, Search, Filter, Users, KeyRound, Mail, Power, PowerOff } from 'lucide-react';
 
 import { Sender } from '../../types';
-import { supabase } from '../../lib/supabaseClient'; // This might not be used directly if all data comes via API
-
-
-
 
 
 const SendersView: React.FC = () => {
@@ -22,15 +19,15 @@ const SendersView: React.FC = () => {
   // Modal State for Senders
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSender, setEditingSender] = useState<Sender | null>(null);
-  const [senderFormData, setSenderFormData] = useState({ name: '', email: '' });
+  const [senderFormData, setSenderFormData] = useState<{ employee_name: string; employee_email: string }>({ employee_name: '', employee_email: '' });
   const [modalError, setModalError] = useState<string | null>(null);
 
   // TODO: Replace with real user accounts data fetching and filtering
   const filteredUsers: any[] = [];
 
   const filteredSenders = senders.filter(sender =>
-    sender.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sender.email.toLowerCase().includes(searchTerm.toLowerCase())
+    sender.employee_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    sender.employee_email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Fetch Senders (only @truesoulpartners.com)
@@ -44,7 +41,15 @@ const SendersView: React.FC = () => {
         throw new Error(errorData.error || `Failed to fetch senders: ${response.statusText}`);
       }
       const data = await response.json();
-      setSenders(data.filter((s: Sender) => s.email.endsWith('@truesoulpartners.com')));
+      setSenders(
+        data
+          .map((s: any) => ({
+            ...s,
+            employee_name: s.employee_name ?? s.name,
+            employee_email: s.employee_email ?? s.email,
+          }))
+          .filter((s: Sender) => s.employee_email.endsWith('@truesoulpartners.com'))
+      );
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
     }
@@ -57,14 +62,14 @@ const SendersView: React.FC = () => {
 
   const openModalToAdd = () => {
     setEditingSender(null);
-    setSenderFormData({ name: '', email: '' });
+    setSenderFormData({ employee_name: '', employee_email: '' });
     setModalError(null);
     setIsModalOpen(true);
   };
 
   const openModalToEdit = (sender: Sender) => {
     setEditingSender(sender);
-    setSenderFormData({ name: sender.name, email: sender.email });
+    setSenderFormData({ employee_name: sender.employee_name, employee_email: sender.employee_email });
     setModalError(null);
     setIsModalOpen(true);
   };
@@ -72,7 +77,7 @@ const SendersView: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingSender(null);
-    setSenderFormData({ name: '', email: '' });
+    setSenderFormData({ employee_name: '', employee_email: '' });
     setModalError(null);
   };
 
@@ -85,12 +90,12 @@ const SendersView: React.FC = () => {
     e.preventDefault();
     setModalError(null);
 
-    if (!senderFormData.name.trim() || !senderFormData.email.trim()) {
-      setModalError('Both name and email are required.');
+    if (!senderFormData.employee_name.trim() || !senderFormData.employee_email.trim()) {
+      setModalError('Both employee name and email are required.');
       return;
     }
     // Basic email validation (can be more robust)
-    if (!/\S+@\S+\.\S+/.test(senderFormData.email)) {
+    if (!/\S+@\S+\.\S+/.test(senderFormData.employee_email)) {
       setModalError('Please enter a valid email address.');
       return;
     }
@@ -118,11 +123,11 @@ const SendersView: React.FC = () => {
     }
   };
 
-  const handleDeleteSender = async (senderId: string) => {
+  const handleDeleteSender = async (senderId: number) => {
     if (!window.confirm('Are you sure you want to delete this email sender?')) {
       return;
     }
-    setSendersError(null);
+    setError(null);
     try {
       const response = await fetch(`/api/email-senders/${senderId}`, {
         method: 'DELETE',
@@ -132,16 +137,15 @@ const SendersView: React.FC = () => {
         throw new Error(errorData.error || `Failed to delete sender: ${response.statusText}`);
       }
       setSenders((prevSenders: Sender[]) => prevSenders.filter((s: Sender) => s.id !== senderId));
-      // alert('Sender deleted successfully.'); // Consider a less disruptive notification
     } catch (err: any) {
       console.error('Error deleting sender:', err);
-      setSendersError(err.message || 'An unexpected error occurred while deleting.');
+      setError(err.message || 'An unexpected error occurred while deleting.');
     }
   };
 
-  const handleToggleSenderActiveStatus = async (sender: EmailSender) => {
+  const handleToggleSenderActiveStatus = async (sender: Sender) => {
     const newStatus = !sender.is_active;
-    setSendersError(null);
+    setError(null);
     try {
       const response = await fetch(`/api/email-senders/${sender.id}`, {
         method: 'PUT',
@@ -158,7 +162,7 @@ const SendersView: React.FC = () => {
       );
     } catch (err: any) {
       console.error('Error toggling active status:', err);
-      setSendersError(err.message || 'An unexpected error occurred while updating status.');
+      setError(err.message || 'An unexpected error occurred while updating status.');
     }
   };
 
@@ -271,11 +275,20 @@ const SendersView: React.FC = () => {
                         <div className="flex items-center space-x-3">
                           <div className="avatar">
                             <div className="mask mask-squircle w-10 h-10">
-                              <img src={sender.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(sender.name)}&background=random`} alt={`${sender.name}'s avatar`} />
+                              <Image
+                                src={
+                                  sender.photo_url ??
+                                  `https://ui-avatars.com/api/?name=${encodeURIComponent(sender.employee_name)}&background=random`
+                                }
+                                alt={`${sender.employee_name}'s avatar`}
+                                width={40}
+                                height={40}
+                                className="mask mask-squircle"
+                              />
                             </div>
                           </div>
                           <div>
-                            <div className="font-bold text-base-content">{sender.name}</div>
+                            <div className="font-bold text-base-content">{sender.employee_name}</div>
                             <div className="text-xs text-base-content/70">ID: {sender.id}</div>
                           </div>
                           <button className="btn btn-ghost btn-xs" title="Manage Permissions">
@@ -304,21 +317,21 @@ const SendersView: React.FC = () => {
             </button>
           </div>
 
-          {sendersError && (
+          {error && (
             <div className="alert alert-error shadow-lg mb-4">
               <div>
                 <ShieldAlert size={24} />
-                <span><strong>Error:</strong> {sendersError}</span>
+                <span><strong>Error:</strong> {error}</span>
               </div>
             </div>
           )}
 
-          {isLoadingSenders ? (
+          {isLoading ? (
             <div className="text-center py-10">
               <span className="loading loading-lg loading-spinner text-primary"></span>
               <p className="mt-2">Loading email senders...</p>
             </div>
-          ) : emailSenders.length === 0 && !sendersError ? (
+          ) : senders.length === 0 && !error ? (
             <div className="text-center py-10 card bg-base-100 shadow-md">
               <Mail size={48} className="mx-auto text-base-content/30 mb-4" />
               <h2 className="text-xl font-semibold mb-2">No Email Senders Found</h2>
@@ -336,7 +349,7 @@ const SendersView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {emailSenders.map((sender) => (
+                  {senders.map((sender) => (
                     <tr key={sender.id} className="hover">
                       <td>
                         <div className="font-semibold text-base-content">{sender.employee_name}</div>

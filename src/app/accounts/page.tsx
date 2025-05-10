@@ -1,2 +1,2 @@
-import UserAccountsView from '@/components/views/UserAccountsView';
-export default UserAccountsView;
+import EmailSendersView from '@/components/views/EmailSendersView';
+export default EmailSendersView;

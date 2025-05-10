@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import {
   Users, Send, FileText, DollarSign, TrendingUp, TrendingDown, AlertCircle, Crown, BarChart3, LineChart as LineChartIcon, Activity, Target, Award, Star, MessageSquare, UserCheck, UserX, UserPlus
 } from 'lucide-react';
@@ -262,7 +263,7 @@ const DashboardView: React.FC = () => {
                         <div className="flex items-center space-x-3">
                           <div className="avatar">
                             <div className="mask mask-squircle w-10 h-10">
-                              <img src={user.avatarUrl} alt={`${user.name}'s avatar`} />
+                              <Image src={user.avatarUrl} alt={`${user.name}'s avatar`} width={40} height={40} className="mask mask-squircle" />
                             </div>
 
       

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition, useRef, useEffect } from 'react';
+import { supabase } from '../../lib/supabaseClient';
 
 // Define the expected response structure from the upload API
 interface UploadResponse {
@@ -19,7 +20,8 @@ interface LeadUploaderProps {
 
 export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing }: LeadUploaderProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [marketRegion, setMarketRegion] = useState<string>(''); 
+  const [marketRegion, setMarketRegion] = useState<string>('');
+  const [marketRegions, setMarketRegions] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition(); 
   const successAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -34,6 +36,19 @@ export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing
     } catch (err) {
       console.warn('Audio initialization error:', err);
     }
+  }, []);
+
+  // Fetch available market regions
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from('normalized_leads')
+        .select('market_region');
+      if (!error && data) {
+        const regions = Array.from(new Set(data.map((row: any) => row.market_region)));
+        setMarketRegions(regions);
+      }
+    })();
   }, []);
 
   async function onSubmit(e: React.FormEvent) {
@@ -96,16 +111,19 @@ export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing
       <form onSubmit={onSubmit} className="space-y-4 p-4 border border-gray-200 rounded-lg shadow-sm bg-white">
         <div>
           <label htmlFor="market-region" className="block text-sm font-medium text-gray-700 mb-1">Market Region</label>
-          <input
+          <select
             id="market-region"
-            type="text"
             value={marketRegion}
             onChange={(e) => setMarketRegion(e.target.value)}
-            placeholder="e.g., Dallas, TX or SoCal"
             className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isPending || isProcessing}
-            required 
-          />
+            required
+          >
+            <option value="" disabled>Select region</option>
+            {marketRegions.map((region) => (
+              <option key={region} value={region}>{region}</option>
+            ))}
+          </select>
         </div>
         <div>
           <label htmlFor="file-upload" className="block text-sm font-medium text-gray-700 mb-1">Leads CSV File</label>
