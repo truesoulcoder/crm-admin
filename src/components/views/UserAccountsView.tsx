@@ -3,146 +3,68 @@
 import React, { useState, useEffect } from 'react';
 import { UserCog, PlusCircle, Edit3, Trash2, ShieldCheck, ShieldAlert, Search, Filter, Users, KeyRound, Mail, Power, PowerOff } from 'lucide-react';
 
-import { UserAccount } from '../../types';
+import { Sender } from '../../types';
 import { supabase } from '../../lib/supabaseClient'; // This might not be used directly if all data comes via API
-import type { EmailSender } from '../../app/api/email-senders/route'; // Import EmailSender type
 
-const mockUserAccounts: UserAccount[] = [
-  {
-    id: 'user-001',
-    name: 'Alice Wonderland',
-    email: 'alice.w@example.com',
-    role: 'Admin',
-    status: 'Active',
-    lastLogin: '2024-05-06T10:30:00Z',
-    avatarUrl: 'https://i.pravatar.cc/150?u=alice',
-  },
-  {
-    id: 'user-002',
-    name: 'Bob The Builder',
-    email: 'bob.b@example.com',
-    role: 'Manager',
-    status: 'Active',
-    lastLogin: '2024-05-05T15:00:00Z',
-    avatarUrl: 'https://i.pravatar.cc/150?u=bob',
-  },
-  {
-    id: 'user-003',
-    name: 'Charlie Brown',
-    email: 'charlie.b@example.com',
-    role: 'Agent',
-    status: 'Pending',
-    lastLogin: 'Never',
-    avatarUrl: 'https://i.pravatar.cc/150?u=charlie',
-  },
-  {
-    id: 'user-004',
-    name: 'Diana Prince',
-    email: 'diana.p@example.com',
-    role: 'Agent',
-    status: 'Active',
-    lastLogin: '2024-05-07T09:00:00Z',
-    avatarUrl: 'https://i.pravatar.cc/150?u=diana',
-  },
-  {
-    id: 'user-005',
-    name: 'Edward Scissorhands',
-    email: 'edward.s@example.com',
-    role: 'Viewer',
-    status: 'Suspended',
-    lastLogin: '2024-04-15T12:00:00Z',
-    avatarUrl: 'https://i.pravatar.cc/150?u=edward',
-  },
-];
 
-const getRoleIcon = (role: UserAccount['role']) => {
-  switch (role) {
-    case 'Admin':
-      return <ShieldCheck size={16} className="text-error mr-1" />;
-    case 'Manager':
-      return <UserCog size={16} className="text-accent mr-1" />;
-    case 'Agent':
-      return <Users size={16} className="text-info mr-1" />;
-    case 'Viewer':
-      return <KeyRound size={16} className="text-neutral-focus mr-1" />;
-    default:
-      return null;
-  }
-};
 
-const getStatusBadge = (status: UserAccount['status']) => {
-  switch (status) {
-    case 'Active':
-      return <span className="badge badge-success badge-sm">{status}</span>;
-    case 'Pending':
-      return <span className="badge badge-warning badge-sm">{status}</span>;
-    case 'Suspended':
-      return <span className="badge badge-error badge-sm">{status}</span>;
-    default:
-      return <span className="badge badge-ghost badge-sm">{status}</span>;
-  }
-};
 
-const UserAccountsView: React.FC = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterRole, setFilterRole] = useState<'All' | UserAccount['role']>('All');
-  const [filterStatus, setFilterStatus] = useState<'All' | UserAccount['status']>('All');
+
+const SendersView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'senders'>('users');
+  const [filterRole, setFilterRole] = useState<'All' | 'Admin' | 'Manager' | 'Agent' | 'Viewer'>('All');
+  const [filterStatus, setFilterStatus] = useState<'All' | 'Active' | 'Pending' | 'Suspended'>('All');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [senders, setSenders] = useState<Sender[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // State for Email Senders
-  const [emailSenders, setEmailSenders] = useState<EmailSender[]>([]);
-  const [isLoadingSenders, setIsLoadingSenders] = useState(true);
-  const [sendersError, setSendersError] = useState<string | null>(null);
-
-  // Modal State for Email Senders
+  // Modal State for Senders
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingSender, setEditingSender] = useState<EmailSender | null>(null);
-  const [senderFormData, setSenderFormData] = useState({ employee_name: '', employee_email: '' });
+  const [editingSender, setEditingSender] = useState<Sender | null>(null);
+  const [senderFormData, setSenderFormData] = useState({ name: '', email: '' });
   const [modalError, setModalError] = useState<string | null>(null);
 
-  const filteredUsers = mockUserAccounts.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = filterRole === 'All' || user.role === filterRole;
-    const matchesStatus = filterStatus === 'All' || user.status === filterStatus;
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+  // TODO: Replace with real user accounts data fetching and filtering
+  const filteredUsers: any[] = [];
 
-  // Fetch Email Senders
-  const fetchEmailSenders = React.useCallback(async () => {
-    setIsLoadingSenders(true);
-    setSendersError(null);
+  const filteredSenders = senders.filter(sender =>
+    sender.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    sender.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Fetch Senders (only @truesoulpartners.com)
+  const fetchSenders = React.useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
     try {
       const response = await fetch('/api/email-senders');
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to fetch email senders: ${response.statusText}`);
+        throw new Error(errorData.error || `Failed to fetch senders: ${response.statusText}`);
       }
       const data = await response.json();
-      setEmailSenders(data);
+      setSenders(data.filter((s: Sender) => s.email.endsWith('@truesoulpartners.com')));
     } catch (err: any) {
-      console.error('Error fetching email senders:', err);
-      setSendersError(err.message || 'An unexpected error occurred.');
+      setError(err.message || 'An unexpected error occurred.');
     }
-    setIsLoadingSenders(false);
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'senders') {
-      fetchEmailSenders();
-    }
-  }, [activeTab, fetchEmailSenders]);
+    fetchSenders();
+  }, [fetchSenders]);
 
   const openModalToAdd = () => {
     setEditingSender(null);
-    setSenderFormData({ employee_name: '', employee_email: '' });
+    setSenderFormData({ name: '', email: '' });
     setModalError(null);
     setIsModalOpen(true);
   };
 
-  const openModalToEdit = (sender: EmailSender) => {
+  const openModalToEdit = (sender: Sender) => {
     setEditingSender(sender);
-    setSenderFormData({ employee_name: sender.employee_name, employee_email: sender.employee_email });
+    setSenderFormData({ name: sender.name, email: sender.email });
     setModalError(null);
     setIsModalOpen(true);
   };
@@ -150,7 +72,7 @@ const UserAccountsView: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingSender(null);
-    setSenderFormData({ employee_name: '', employee_email: '' });
+    setSenderFormData({ name: '', email: '' });
     setModalError(null);
   };
 
@@ -163,12 +85,12 @@ const UserAccountsView: React.FC = () => {
     e.preventDefault();
     setModalError(null);
 
-    if (!senderFormData.employee_name.trim() || !senderFormData.employee_email.trim()) {
+    if (!senderFormData.name.trim() || !senderFormData.email.trim()) {
       setModalError('Both name and email are required.');
       return;
     }
     // Basic email validation (can be more robust)
-    if (!/\S+@\S+\.\S+/.test(senderFormData.employee_email)) {
+    if (!/\S+@\S+\.\S+/.test(senderFormData.email)) {
       setModalError('Please enter a valid email address.');
       return;
     }
@@ -188,17 +110,15 @@ const UserAccountsView: React.FC = () => {
         throw new Error(errorData.error || `Failed to ${editingSender ? 'update' : 'add'} sender`);
       }
 
-      // const result = await response.json(); // Result can be used if needed
-      await fetchEmailSenders(); // Re-fetch the list to show changes
+      await fetchSenders(); // Re-fetch the list to show changes
       closeModal();
 
     } catch (err: any) {
-      console.error(`Error ${editingSender ? 'updating' : 'adding'} sender:`, err);
       setModalError(err.message || `An unexpected error occurred.`);
     }
   };
 
-  const handleDeleteSender = async (senderId: number) => {
+  const handleDeleteSender = async (senderId: string) => {
     if (!window.confirm('Are you sure you want to delete this email sender?')) {
       return;
     }
@@ -211,7 +131,7 @@ const UserAccountsView: React.FC = () => {
         const errorData = await response.json();
         throw new Error(errorData.error || `Failed to delete sender: ${response.statusText}`);
       }
-      setEmailSenders(prevSenders => prevSenders.filter(s => s.id !== senderId));
+      setSenders((prevSenders: Sender[]) => prevSenders.filter((s: Sender) => s.id !== senderId));
       // alert('Sender deleted successfully.'); // Consider a less disruptive notification
     } catch (err: any) {
       console.error('Error deleting sender:', err);
@@ -233,8 +153,8 @@ const UserAccountsView: React.FC = () => {
         throw new Error(errorData.error || `Failed to update sender status: ${response.statusText}`);
       }
       const updatedSender = await response.json();
-      setEmailSenders(prevSenders => 
-        prevSenders.map(s => s.id === updatedSender.id ? updatedSender : s)
+      setSenders((prevSenders: Sender[]) =>
+        prevSenders.map((s: Sender) => s.id === updatedSender.id ? updatedSender : s)
       );
     } catch (err: any) {
       console.error('Error toggling active status:', err);
@@ -246,7 +166,7 @@ const UserAccountsView: React.FC = () => {
     openModalToAdd();
   };
 
-  const handleEditSender = (sender: EmailSender) => {
+  const handleEditSender = (sender: Sender) => {
     openModalToEdit(sender);
   };
 
@@ -345,34 +265,19 @@ const UserAccountsView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.map((user) => (
-                    <tr key={user.id} className="hover">
+                  {filteredSenders.map((sender) => (
+                    <tr key={sender.id} className="hover">
                       <td>
                         <div className="flex items-center space-x-3">
                           <div className="avatar">
                             <div className="mask mask-squircle w-10 h-10">
-                              <img src={user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random`} alt={`${user.name}'s avatar`} />
+                              <img src={sender.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(sender.name)}&background=random`} alt={`${sender.name}'s avatar`} />
                             </div>
                           </div>
                           <div>
-                            <div className="font-bold text-base-content">{user.name}</div>
-                            <div className="text-xs text-base-content/70">ID: {user.id}</div>
+                            <div className="font-bold text-base-content">{sender.name}</div>
+                            <div className="text-xs text-base-content/70">ID: {sender.id}</div>
                           </div>
-                        </div>
-                      </td>
-                      <td>{user.email}</td>
-                      <td>
-                        <div className="flex items-center">
-                          {getRoleIcon(user.role)} {user.role}
-                        </div>
-                      </td>
-                      <td>{getStatusBadge(user.status)}</td>
-                      <td>{user.lastLogin === 'Never' ? 'Never' : new Date(user.lastLogin).toLocaleString()}</td>
-                      <td className="text-center">
-                        <div className="flex items-center justify-center space-x-1">
-                          <button className="btn btn-ghost btn-xs" title="Edit User">
-                            <Edit3 size={16} />
-                          </button>
                           <button className="btn btn-ghost btn-xs" title="Manage Permissions">
                             <UserCog size={16} />
                           </button>
@@ -534,4 +439,4 @@ const UserAccountsView: React.FC = () => {
   );
 };
 
-export default UserAccountsView;
+export default SendersView;

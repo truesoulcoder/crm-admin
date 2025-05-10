@@ -6,7 +6,7 @@ export type CrmView =
   | 'leads'
   | 'campaigns'
   | 'templates'
-  | 'accounts'
+  | 'senders'
   | 'settings';
 
 // Example Lead type (align with your Supabase schema)
@@ -83,13 +83,14 @@ export interface EmailTemplate {
   updated_at: string;
 }
 
-// Example GmailAccount type
-export interface GmailAccount {
+// Sender type (unified)
+export interface Sender {
   id: string;
-  employee_name: string;
-  gmail_address: string;
-  last_authorized_at: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
   is_active: boolean;
+  last_authorized_at?: string;
   status_message?: string;
 }
 
@@ -104,16 +105,6 @@ export interface CampaignStep {
   sending_account_id: string;
 }
 
-// UserAccount type for user management
-export interface UserAccount {
-  id: string;
-  name: string;
-  email: string;
-  role: 'Admin' | 'Manager' | 'Agent' | 'Viewer';
-  status: 'Active' | 'Pending' | 'Suspended';
-  lastLogin: string;
-  avatarUrl?: string;
-}
 
 // Example Campaign type
 export interface Campaign {

@@ -29,7 +29,7 @@ const LeadsView: React.FC = () => {
     contact_name: '',
     contact_email: '',
     property_address: '',
-    property_city: '',
+    // property_city (legacy, now unused for filtering): '',
     property_state: '',
     property_postal_code: '',
     property_type: '',
@@ -49,26 +49,48 @@ const LeadsView: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
-  // Moved useMemo hooks before conditional returns to fix lint error
-  const uniqueMarketRegions = useMemo(() => 
-    ['All', ...Array.from(new Set(leads.map(lead => lead.market_region).filter(Boolean) as string[]))], 
-    [leads]
-  );
-  const uniqueMlsStatuses = useMemo(() => 
-    ['All', ...Array.from(new Set(leads.map(lead => lead.mls_curr_status).filter(Boolean) as string[]))], 
-    [leads]
-  );
+  // Server-side filter options
+  const [allMarketRegions, setAllMarketRegions] = useState<string[]>(['All']);
+  const [allMlsStatuses, setAllMlsStatuses] = useState<string[]>(['All']);
+
+  // Fetch distinct filter options on mount
+  useEffect(() => {
+    const fetchFilterOptions = async () => {
+      try {
+        const { data: regionsData, error: regionsError } = await supabase.rpc('get_distinct_market_regions');
+        if (regionsError) throw regionsError;
+        if (regionsData) {
+          setAllMarketRegions(['All', ...regionsData.map((r: any) => r.market_region)]);
+        }
+        const { data: statusesData, error: statusesError } = await supabase.rpc('get_distinct_mls_statuses');
+        if (statusesError) throw statusesError;
+        if (statusesData) {
+          setAllMlsStatuses(['All', ...statusesData.map((s: any) => s.mls_curr_status)]);
+        }
+      } catch (err) {
+        console.error('Error fetching filter options:', err);
+      }
+    };
+    fetchFilterOptions();
+    // eslint-disable-next-line
+  }, []);
 
   useEffect(() => {
     const fetchNormalizedLeads = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const { data, error: supabaseError } = await supabase
+        let query = supabase
           .from('normalized_leads')
-          .select('*')
-          .order(sortField || 'created_at', { ascending: sortDirection === 'asc' }); 
-
+          .select('*');
+        if (filterMarketRegion !== 'All') {
+          query = query.eq('market_region', filterMarketRegion);
+        }
+        if (filterMlsStatus !== 'All') {
+          query = query.eq('mls_curr_status', filterMlsStatus);
+        }
+        query = query.order(sortField || 'created_at', { ascending: sortDirection === 'asc' });
+        const { data, error: supabaseError } = await query;
         if (supabaseError) {
           throw supabaseError;
         }
@@ -79,46 +101,20 @@ const LeadsView: React.FC = () => {
       }
       setIsLoading(false);
     };
-
     fetchNormalizedLeads();
-  }, [sortField, sortDirection, supabase]); 
+  }, [sortField, sortDirection, supabase, filterMarketRegion, filterMlsStatus]);
 
+  // Only filter by search term on client; all other filters are server-side
   const sortedAndFilteredLeads = useMemo(() => {
-    let filtered = leads.filter(lead => {
-      const search = searchTerm.toLowerCase();
-      const matchesSearch = 
-        (lead.contact_name?.toLowerCase().includes(search) || false) ||
-        (lead.contact_email?.toLowerCase().includes(search) || false) ||
-        (lead.property_address?.toLowerCase().includes(search) || false) ||
-        (lead.market_region?.toLowerCase().includes(search) || false);
-
-      const matchesMlsStatus = filterMlsStatus === 'All' || lead.mls_curr_status === filterMlsStatus;
-      const matchesMarketRegion = filterMarketRegion === 'All' || lead.market_region === filterMarketRegion;
-      
-      return matchesSearch && matchesMlsStatus && matchesMarketRegion;
-    });
-
-    if (sortField && leads.length > 0) {
-      filtered.sort((a, b) => {
-        const valA = a[sortField];
-        const valB = b[sortField];
-
-        if (valA === undefined || valA === null) return sortDirection === 'asc' ? 1 : -1;
-        if (valB === undefined || valB === null) return sortDirection === 'asc' ? -1 : 1;
-
-        if (typeof valA === 'string' && typeof valB === 'string') {
-          return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-        }
-        if (typeof valA === 'number' && typeof valB === 'number') {
-          return sortDirection === 'asc' ? valA - valB : valB - valA;
-        }
-        const strA = String(valA);
-        const strB = String(valB);
-        return sortDirection === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
-      });
-    }
-    return filtered;
-  }, [searchTerm, filterMlsStatus, filterMarketRegion, sortField, sortDirection, leads]);
+    if (!searchTerm) return leads;
+    const search = searchTerm.toLowerCase();
+    return leads.filter(lead =>
+      (lead.contact_name?.toLowerCase().includes(search) || false) ||
+      (lead.contact_email?.toLowerCase().includes(search) || false) ||
+      (lead.property_address?.toLowerCase().includes(search) || false) ||
+      (lead.market_region?.toLowerCase().includes(search) || false)
+    );
+  }, [searchTerm, leads]);
 
   const handleSort = (field: keyof NormalizedLead | '') => {
     if (sortField === field) {
@@ -175,7 +171,7 @@ const LeadsView: React.FC = () => {
         // Ensure all required fields for DB that aren't auto-generated are present
         // Convert empty strings to null for optional numeric/text fields if DB expects null
         avm_value: newLeadData.avm_value ? Number(newLeadData.avm_value) : null,
-        // Ensure other fields like property_city, property_state etc. are handled
+        // Ensure other fields like // property_city (legacy, now unused for filtering), property_state etc. are handled
       };
 
       // Remove undefined properties that might have come from Partial<NormalizedLead>
@@ -344,7 +340,7 @@ const LeadsView: React.FC = () => {
             value={filterMlsStatus}
             onChange={(e) => setFilterMlsStatus(e.target.value)}
           >
-            {uniqueMlsStatuses.map(status => <option key={status} value={status}>{status}</option>)}
+            {allMlsStatuses.map(status => <option key={status} value={status}>{status}</option>) }
           </select>
         </div>
         <div className="form-control min-w-[150px]">
@@ -353,7 +349,7 @@ const LeadsView: React.FC = () => {
             value={filterMarketRegion}
             onChange={(e) => setFilterMarketRegion(e.target.value)}
           >
-            {uniqueMarketRegions.map(region => <option key={region} value={region}>{region}</option>)}
+            {allMarketRegions.map(region => <option key={region} value={region}>{region}</option>) }
           </select>
         </div>
         <button onClick={handleOpenModal} className="btn btn-primary">
@@ -467,7 +463,6 @@ const LeadsView: React.FC = () => {
               {/* Row 3: Property Address Details */}
               <div><label className="label"><span className="label-text">Property Full Address</span></label><input type="text" name="property_address" value={newLeadData.property_address || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><label className="label"><span className="label-text">Property City</span></label><input type="text" name="property_city" value={newLeadData.property_city || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
                 <div><label className="label"><span className="label-text">Property State</span></label><input type="text" name="property_state" value={newLeadData.property_state || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
                 <div><label className="label"><span className="label-text">Property Postal Code</span></label><input type="text" name="property_postal_code" value={newLeadData.property_postal_code || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
               </div>

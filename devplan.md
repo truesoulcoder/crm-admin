@@ -15,6 +15,7 @@
   - [x] Revamped with enhanced mock data structures.
   - [x] Implemented general statistics cards (Total Leads, Active Campaigns, Avg. Open Rate, Deals Closed).
   - [x] Added `recharts` bar chart for Campaign Performance (Sent, Opened, Clicked).
+  - [x] Add i.pravatar.cc to next/image domains for external avatars.
   - [x] Added `recharts` bar chart for Lead Conversion Funnel.
   - [x] Implemented User KPI Leaderboard table (Rank, Avatar, Name, Role, Leads, Deals, Revenue, Activity Score).
   - [x] Updated Recent Activity log with more relevant mock entries.
@@ -25,6 +26,8 @@
 - **Campaigns View:** Table display for email campaigns with status, metrics, and mock data.
   - [x] Functional "Create New Campaign" button opening a modal.
   - [x] Mock modal for creating new campaigns (name, subject, template selection).
+  - [x] Fix Avatar error by only passing either 'src' or 'value', not both, in CampaignsView when clicking new campaign.
+  - [x] Supabase integration for campaign creation (modal submission saves to DB, error handling, feedback, refreshes list).
 - **Templates View:** Card display for message templates (email/SMS) with filtering and mock data.
   - [x] Functional "Create New Template" button opening a modal.
   - [x] Mock modal for creating new templates (name, type, subject, category, body).

@@ -13,99 +13,93 @@ interface User {
   avatarUrl: string;
 }
 
-const mockCampaigns: Campaign[] = [
-  {
-    id: 'campaign-001',
-    name: 'Q1 Newsletter Blast',
-    status: 'Completed',
-    emailsSent: 12500,
-    openRate: 28.5,
-    clickRate: 4.2,
-    creationDate: '2024-01-15',
-  },
-  {
-    id: 'campaign-002',
-    name: 'New Product Launch: Gadget X',
-    status: 'Active',
-    emailsSent: 8500,
-    openRate: 35.1,
-    clickRate: 6.8,
-    creationDate: '2024-03-01',
-  },
-  {
-    id: 'campaign-003',
-    name: 'Summer Sale Early Access',
-    status: 'Paused',
-    emailsSent: 5000,
-    openRate: 15.0, // Assuming it was paused due to low performance initially
-    clickRate: 1.5,
-    creationDate: '2024-04-10',
-  },
-  {
-    id: 'campaign-004',
-    name: 'Win-Back Inactive Users',
-    status: 'Draft',
-    emailsSent: 0,
-    openRate: 0,
-    clickRate: 0,
-    creationDate: '2024-04-20',
-  },
-  {
-    id: 'campaign-005',
-    name: 'Holiday Season Promo',
-    status: 'Error',
-    emailsSent: 200,
-    openRate: 1.0,
-    clickRate: 0.1,
-    creationDate: '2024-04-25',
-  },
-];
-
-const allMockUsers: User[] = [
-  { id: 'user-1', name: 'Alice Wonderland', avatarUrl: 'https://i.pravatar.cc/150?u=alice' },
-  { id: 'user-2', name: 'Bob The Builder', avatarUrl: 'https://i.pravatar.cc/150?u=bob' },
-  { id: 'user-3', name: 'Charlie Brown', avatarUrl: 'https://i.pravatar.cc/150?u=charlie' },
-  { id: 'user-4', name: 'Diana Prince', avatarUrl: 'https://i.pravatar.cc/150?u=diana' },
-  { id: 'user-5', name: 'Edward Scissorhands', avatarUrl: 'https://i.pravatar.cc/150?u=edward' },
-  { id: 'user-6', name: 'Fiona Gallagher', avatarUrl: 'https://i.pravatar.cc/150?u=fiona' },
-];
-
-const getStatusBadge = (status: Campaign['status']) => {
-  switch (status) {
-    case 'Active':
-      return <span className="badge badge-success badge-outline"><PlayCircle size={14} className="mr-1" /> {status}</span>;
-    case 'Paused':
-      return <span className="badge badge-warning badge-outline"><PauseCircle size={14} className="mr-1" /> {status}</span>;
-    case 'Completed':
-      return <span className="badge badge-info badge-outline">{status}</span>;
-    case 'Draft':
-      return <span className="badge badge-ghost badge-outline">{status}</span>;
-    case 'Error':
-      return <span className="badge badge-error badge-outline"><AlertTriangle size={14} className="mr-1" /> {status}</span>;
-    default:
-      return <span className="badge badge-ghost">{status}</span>;
-  }
-};
-
 const CampaignsView: React.FC = () => {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newCampaignName, setNewCampaignName] = useState('');
   const [newCampaignSubject, setNewCampaignSubject] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('');
-  const [availableUsers, setAvailableUsers] = useState<User[]>(allMockUsers);
+  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [selectedUsersForCampaign, setSelectedUsersForCampaign] = useState<User[]>([]);
 
-  const handleCreateCampaign = () => {
-    console.log('Creating campaign:', {
-      name: newCampaignName,
-      subject: newCampaignSubject,
-      template: selectedTemplate,
-      assignedUsers: selectedUsersForCampaign.map(u => u.id)
-    });
-    setNewCampaignName('');
-    setNewCampaignSubject('');
-    setSelectedTemplate('');
-    setIsModalOpen(false);
+  useEffect(() => {
+    const fetchData = async () => {
+      // Fetch campaigns
+      const { data: campaignsData, error: campaignsError } = await supabase
+        .from('campaigns')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!campaignsError && campaignsData) setCampaigns(campaignsData);
+
+      // Fetch users (email_senders)
+      const { data: usersData, error: usersError } = await supabase
+        .from('email_senders')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!usersError && usersData) {
+        setAvailableUsers(usersData.map(u => ({
+          id: u.id.toString(),
+          name: u.employee_name,
+          avatarUrl: u.avatar_url || `https://i.pravatar.cc/150?u=${u.employee_email}`
+        })));
+      }
+    };
+    fetchData();
+  }, []);
+
+  const getStatusBadge = (status: string | undefined) => {
+    switch (status) {
+      case 'Active':
+        return <span className="badge badge-success badge-outline"><PlayCircle size={14} className="mr-1" /> {status}</span>;
+      case 'Paused':
+        return <span className="badge badge-warning badge-outline"><PauseCircle size={14} className="mr-1" /> {status}</span>;
+      case 'Completed':
+        return <span className="badge badge-info badge-outline">{status}</span>;
+      case 'Draft':
+        return <span className="badge badge-ghost badge-outline">{status}</span>;
+      case 'Error':
+        return <span className="badge badge-error badge-outline"><AlertTriangle size={14} className="mr-1" /> {status}</span>;
+      default:
+        return <span className="badge badge-ghost">{status || 'Draft'}</span>;
+    }
+  };
+
+  const handleCreateCampaign = async () => {
+    if (!newCampaignName || !selectedTemplate || selectedUsersForCampaign.length === 0) {
+      alert('Please fill in all required fields and select at least one user.');
+      return;
+    }
+    try {
+      const { data, error } = await supabase.from('campaigns').insert([
+        {
+          name: newCampaignName,
+          subject: newCampaignSubject,
+          template: selectedTemplate,
+          assigned_user_ids: selectedUsersForCampaign.map(u => u.id),
+          status: 'Draft',
+          created_at: new Date().toISOString(),
+          is_active: true
+        }
+      ]).select();
+      if (error) {
+        alert('Error creating campaign: ' + error.message);
+        return;
+      }
+      setNewCampaignName('');
+      setNewCampaignSubject('');
+      setSelectedTemplate('');
+      setSelectedUsersForCampaign([]);
+      setIsModalOpen(false);
+      // Refresh campaigns
+      const { data: campaignsData } = await supabase
+        .from('campaigns')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (campaignsData) setCampaigns(campaignsData);
+      alert('Campaign created successfully!');
+    } catch (e) {
+      alert('Unexpected error creating campaign.');
+    }
   };
 
   const handleSelectUser = (userId: string) => {
@@ -139,7 +133,7 @@ const CampaignsView: React.FC = () => {
 
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body">
-          {mockCampaigns.length === 0 ? (
+          {campaigns.length === 0 ? (
             <div className="text-center py-10">
               <Mail size={48} className="mx-auto text-base-content/30 mb-4" />
               <h2 className="text-xl font-semibold mb-2">No Campaigns Yet</h2>
@@ -161,7 +155,7 @@ const CampaignsView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {mockCampaigns.map((campaign) => (
+                  {campaigns.map((campaign) => (
                     <tr key={campaign.id} className="hover">
                       <td>
                         <div className="font-semibold text-base-content">{campaign.name}</div>
@@ -277,10 +271,9 @@ const CampaignsView: React.FC = () => {
                       title={`Add ${user.name}`}
                     >
                       <Avatar 
-                        src={user.avatarUrl} 
-                        value={user.name.split(' ').map(n => n[0]).join('')} 
-                        size="m" 
-                        title={user.name} 
+                        src={user.avatarUrl}
+                        size="m"
+                        title={user.name}
                       />
                     </button>
                   ))}
@@ -306,5 +299,4 @@ const CampaignsView: React.FC = () => {
     </div>
   );
 };
-
 export default CampaignsView;
