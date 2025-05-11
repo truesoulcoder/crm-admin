@@ -67,13 +67,38 @@ export async function GET(req: NextRequest) {
     }
 
     // Initialize Google Admin SDK client
-    const auth = new google.auth.JWT(
-      process.env.GOOGLE_CLIENT_EMAIL!,
-      undefined,
-      process.env.GOOGLE_PRIVATE_KEY!.replace(/\\n/g, '\n'),
-      ['https://www.googleapis.com/auth/admin.directory.user.readonly'],
-      process.env.GOOGLE_DELEGATED_ADMIN_EMAIL
-    );
+    const googleServiceAccountKeyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+    if (!googleServiceAccountKeyJson) {
+      throw new Error(
+        'GOOGLE_SERVICE_ACCOUNT_KEY environment variable is not defined. ' +
+        'This is required for Google Admin SDK. Please ensure it is set.'
+      );
+    }
+
+    let serviceKeyParsed;
+    try {
+      serviceKeyParsed = JSON.parse(googleServiceAccountKeyJson);
+    } catch (e) {
+      console.error('Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY:', e);
+      throw new Error(
+        'GOOGLE_SERVICE_ACCOUNT_KEY is not valid JSON. ' +
+        'Please ensure it is a correctly formatted JSON string.'
+      );
+    }
+
+    if (!serviceKeyParsed.client_email || !serviceKeyParsed.private_key) {
+      throw new Error(
+        'GOOGLE_SERVICE_ACCOUNT_KEY JSON is missing client_email or private_key.'
+      );
+    }
+
+    const auth = new google.auth.JWT({
+      email: serviceKeyParsed.client_email,
+      key: serviceKeyParsed.private_key, // Directly use the parsed private key
+      scopes: ['https://www.googleapis.com/auth/admin.directory.user.readonly'],
+      subject: process.env.GOOGLE_DELEGATED_ADMIN_EMAIL // User to impersonate for Admin SDK
+    });
+
     const directory = google.admin({ version: 'directory_v1', auth });
 
     // Fetch profile photos for each sender

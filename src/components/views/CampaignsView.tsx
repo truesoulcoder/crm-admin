@@ -1,52 +1,41 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Mail, BarChart2, Edit3, Trash2, PlayCircle, PauseCircle, AlertTriangle, X, UserPlus, Users as UsersIcon } from 'lucide-react';
-import { Avatar, AvatarGroup, AvatarProps, LetterFx } from '../../once-ui/components';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Mail, BarChart2, Edit3, Trash2, PlayCircle, PauseCircle, AlertTriangle, X, Check } from 'lucide-react';
+import { createBrowserClient } from '@supabase/ssr';
+import { LetterFx } from '../../once-ui/components';
 
 import { Campaign } from '../../types/engine';
-import { supabase } from '../../lib/supabaseClient';
 
+// Environment variables are automatically loaded in Next.js
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+// Define TypeScript interfaces
 interface User {
   id: string;
+  email: string;
   name: string;
-  avatarUrl: string;
+  avatarUrl?: string;
 }
 
+// Main component
 const CampaignsView: React.FC = () => {
+  // Initialize Supabase client with the modern SSR package
+  const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+  
+  // State management
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newCampaignName, setNewCampaignName] = useState('');
-  const [newCampaignSubject, setNewCampaignSubject] = useState('');
+  const [campaignName, setCampaignName] = useState('');
+  const [campaignSubject, setCampaignSubject] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
-  const [selectedUsersForCampaign, setSelectedUsersForCampaign] = useState<User[]>([]);
+  const [selectedUser, setSelectedUser] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      // Fetch campaigns
-      const { data: campaignsData, error: campaignsError } = await supabase
-        .from('campaigns')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!campaignsError && campaignsData) setCampaigns(campaignsData);
-
-      // Fetch users (email_senders)
-      const { data: usersData, error: usersError } = await supabase
-        .from('email_senders')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (!usersError && usersData) {
-        setAvailableUsers(usersData.map(u => ({
-          id: u.id.toString(),
-          name: u.employee_name,
-          avatarUrl: u.avatar_url || `https://i.pravatar.cc/150?u=${u.employee_email}`
-        })));
-      }
-    };
-    fetchData();
-  }, []);
-
+  // Status badge helper
   const getStatusBadge = (status: string | undefined) => {
     switch (status) {
       case 'Active':
@@ -64,75 +53,132 @@ const CampaignsView: React.FC = () => {
     }
   };
 
-  const handleCreateCampaign = async () => {
-    if (!newCampaignName || !selectedTemplate || selectedUsersForCampaign.length === 0) {
-      alert('Please fill in all required fields and select at least one user.');
-      return;
-    }
+  // Fetch campaigns data
+  const fetchCampaigns = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const { data, error } = await supabase.from('campaigns').insert([
-        {
-          name: newCampaignName,
-          subject: newCampaignSubject,
-          template: selectedTemplate,
-          assigned_user_ids: selectedUsersForCampaign.map(u => u.id),
-          status: 'Draft',
-          created_at: new Date().toISOString(),
-          is_active: true
-        }
-      ]).select();
-      if (error) {
-        alert('Error creating campaign: ' + error.message);
-        return;
-      }
-      setNewCampaignName('');
-      setNewCampaignSubject('');
-      setSelectedTemplate('');
-      setSelectedUsersForCampaign([]);
-      setIsModalOpen(false);
-      // Refresh campaigns
-      const { data: campaignsData } = await supabase
+      const { data, error } = await supabase
         .from('campaigns')
         .select('*')
         .order('created_at', { ascending: false });
-      if (campaignsData) setCampaigns(campaignsData);
-      alert('Campaign created successfully!');
-    } catch (e) {
-      alert('Unexpected error creating campaign.');
+      
+      if (error) throw error;
+      
+      setCampaigns(data || []);
+    } catch (err) {
+      console.error('Error fetching campaigns:', err);
+      setError('Failed to load campaigns. Please try again later.');
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, [supabase]);
 
-  const handleSelectUser = (userId: string) => {
-    const user = availableUsers.find(u => u.id === userId);
-    if (user) {
-      setSelectedUsersForCampaign([...selectedUsersForCampaign, user]);
-      setAvailableUsers(availableUsers.filter(u => u.id !== userId));
+  // Fetch users data
+  const fetchUsers = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('email_senders')
+        .select('*');
+      
+      if (error) throw error;
+      
+      if (data) {
+        const formattedUsers = data.map(u => ({
+          id: u.id.toString(),
+          name: u.employee_name || u.name,
+          email: u.employee_email || u.email,
+          avatarUrl: u.avatar_url
+        }));
+        
+        setAvailableUsers(formattedUsers);
+        
+        // Set the first user as selected by default if available
+        if (formattedUsers.length > 0 && !selectedUser) {
+          setSelectedUser(formattedUsers[0].id);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching users:', err);
     }
-  };
+  }, [supabase, selectedUser]);
 
-  const handleDeselectUser = (userId: string) => {
-    const user = selectedUsersForCampaign.find(u => u.id === userId);
-    if (user) {
-      setSelectedUsersForCampaign(selectedUsersForCampaign.filter(u => u.id !== userId));
-      setAvailableUsers([...availableUsers, user]);
-    }
-  };
+  // Load data on component mount
+  useEffect(() => {
+    fetchCampaigns();
+    fetchUsers();
+  }, [fetchCampaigns, fetchUsers]);
 
-  // Engine control handlers
+  // Handle campaign actions
   const handleStart = async (id: string) => {
-    await fetch(`/api/engine/campaigns/${id}/start`, { method: 'POST' });
-    // refresh status
-    const { data } = await supabase.from('campaigns').select('*').order('created_at', { ascending: false });
-    if (data) setCampaigns(data);
+    try {
+      await fetch(`/api/engine/campaigns/${id}/start`, { method: 'POST' });
+      // Refresh campaigns after action
+      fetchCampaigns();
+    } catch (err) {
+      console.error('Error starting campaign:', err);
+      setError('Failed to start campaign. Please try again.');
+    }
   };
+  
   const handleStop = async (id: string) => {
-    await fetch(`/api/engine/campaigns/${id}/stop`, { method: 'POST' });
-    const { data } = await supabase.from('campaigns').select('*').order('created_at', { ascending: false });
-    if (data) setCampaigns(data);
+    try {
+      await fetch(`/api/engine/campaigns/${id}/stop`, { method: 'POST' });
+      // Refresh campaigns after action
+      fetchCampaigns();
+    } catch (err) {
+      console.error('Error stopping campaign:', err);
+      setError('Failed to stop campaign. Please try again.');
+    }
+  };
+
+  // Form submission handler
+  const handleCreateCampaign = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!campaignName || !selectedTemplate || !selectedUser) {
+      setError('Please fill in all required fields.');
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('campaigns')
+        .insert([
+          {
+            name: campaignName,
+            subject: campaignSubject,
+            template: selectedTemplate,
+            assigned_user_id: selectedUser,
+            status: 'Draft',
+            created_at: new Date().toISOString(),
+            is_active: true
+          }
+        ])
+        .select();
+      
+      if (error) throw error;
+      
+      // Reset form
+      setCampaignName('');
+      setCampaignSubject('');
+      setSelectedTemplate('');
+      setIsModalOpen(false);
+      setError(null);
+      
+      // Refresh campaigns list
+      fetchCampaigns();
+    } catch (err) {
+      console.error('Error creating campaign:', err);
+      setError('Failed to create campaign. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
+      {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold text-base-content">
           <LetterFx trigger="instant" speed="medium">
@@ -144,74 +190,49 @@ const CampaignsView: React.FC = () => {
         </button>
       </div>
 
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          {campaigns.length === 0 ? (
+      {/* Debug alert */}
+      <div className="alert alert-info mb-6">
+        <AlertTriangle className="h-6 w-6" />
+        <span>Debug mode: Main campaign content temporarily removed to diagnose image display issue.</span>
+      </div>
+
+      {/* Loading state */}
+      {isLoading && (
+        <div className="flex justify-center items-center py-16">
+          <div className="loading loading-spinner loading-lg"></div>
+        </div>
+      )}
+      
+      {/* Error message */}
+      {error && !isLoading && (
+        <div className="alert alert-error mb-6">
+          <AlertTriangle className="h-6 w-6" />
+          <span>{error}</span>
+        </div>
+      )}
+      
+      {/* Empty state */}
+      {!isLoading && !error && campaigns.length === 0 && (
+        <div className="card bg-base-100 shadow-xl">
+          <div className="card-body">
             <div className="text-center py-10">
               <Mail size={48} className="mx-auto text-base-content/30 mb-4" />
               <h2 className="text-xl font-semibold mb-2">No Campaigns Yet</h2>
-              <p className="text-base-content/70 mb-4">Start by creating your first email campaign.</p>
-              <button className="btn btn-primary">Create Campaign</button>
+              <p className="text-base-content/70 mb-4">
+                Start by creating your first email campaign.
+              </p>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => setIsModalOpen(true)}
+              >
+                Create Campaign
+              </button>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="table w-full">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th className="text-right">Emails Sent</th>
-                    <th className="text-right">Open Rate</th>
-                    <th className="text-right">Click Rate</th>
-                    <th>Created</th>
-                    <th className="text-center">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {campaigns.map((campaign) => (
-                    <tr key={campaign.id} className="hover">
-                      <td>
-                        <div className="font-semibold text-base-content">{campaign.name}</div>
-                        <div className="text-xs text-base-content/70">ID: {campaign.id}</div>
-                      </td>
-                      <td>{getStatusBadge(campaign.status)}</td>
-                      <td className="text-right">{campaign.emailsSent.toLocaleString()}</td>
-                      <td className="text-right">{campaign.openRate.toFixed(1)}%</td>
-                      <td className="text-right">{campaign.clickRate.toFixed(1)}%</td>
-                      <td>{new Date(campaign.creationDate).toLocaleDateString()}</td>
-                      <td className="text-center">
-                        <div className="flex items-center justify-center space-x-1">
-                          {/* Start/Stop campaign */}
-                          {campaign.status !== 'ACTIVE' && (
-                            <button className="btn btn-ghost btn-xs" title="Start Campaign" onClick={() => handleStart(campaign.id)}>
-                              <PlayCircle size={16} />
-                            </button>
-                          )}
-                          {campaign.status === 'ACTIVE' && (
-                            <button className="btn btn-ghost btn-xs" title="Stop Campaign" onClick={() => handleStop(campaign.id)}>
-                              <PauseCircle size={16} />
-                            </button>
-                          )}
-                          <button className="btn btn-ghost btn-xs" title="View Stats">
-                            <BarChart2 size={16} />
-                          </button>
-                          <button className="btn btn-ghost btn-xs" title="Edit">
-                            <Edit3 size={16} />
-                          </button>
-                          <button className="btn btn-ghost btn-xs text-error" title="Delete">
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
+      {/* Create Campaign Modal */}
       {isModalOpen && (
         <div className="modal modal-open">
           <div className="modal-box w-11/12 max-w-2xl">
@@ -223,104 +244,99 @@ const CampaignsView: React.FC = () => {
             </button>
             <h3 className="font-bold text-xl mb-4">Create New Email Campaign</h3>
             
-            <div className="form-control mb-4">
-              <label className="label">
-                <span className="label-text">Campaign Name</span>
-              </label>
-              <input 
-                type="text" 
-                placeholder="e.g., Q2 Product Update" 
-                className="input input-bordered w-full" 
-                value={newCampaignName}
-                onChange={(e) => setNewCampaignName(e.target.value)}
-              />
-            </div>
-
-            <div className="form-control mb-4">
-              <label className="label">
-                <span className="label-text">Email Subject Line</span>
-              </label>
-              <input 
-                type="text" 
-                placeholder="e.g., Exciting News from Our Team!" 
-                className="input input-bordered w-full" 
-                value={newCampaignSubject}
-                onChange={(e) => setNewCampaignSubject(e.target.value)}
-              />
-            </div>
-
-            <div className="form-control mb-6">
-              <label className="label">
-                <span className="label-text">Choose Template (Mock)</span>
-              </label>
-              <select 
-                className="select select-bordered w-full"
-                value={selectedTemplate}
-                onChange={(e) => setSelectedTemplate(e.target.value)}
-              >
-                <option value="" disabled>Select a template</option>
-                <option value="template-001">Welcome Email - New User</option>
-                <option value="template-002">Monthly Newsletter</option>
-                <option value="template-003">Special Promotion Offer</option>
-                {/* Add more mock templates as needed */}
-              </select>
-            </div>
-
-            <div className="my-6">
-              <h4 className="text-md font-semibold mb-3 text-base-content/80 flex items-center"><UsersIcon size={18} className="mr-2"/> Selected for Campaign ({selectedUsersForCampaign.length})</h4>
-              {selectedUsersForCampaign.length > 0 ? (
-                <AvatarGroup
-                  avatars={selectedUsersForCampaign.map(user => ({
-                    src: user.avatarUrl,
-                    value: user.name.split(' ').map(n => n[0]).join(''), // Initials as fallback
-                    title: user.name // Tooltip with full name
-                  } as AvatarProps))}
-                  size="m"
-                  limit={5} // Show 5 avatars, then +N
+            <form onSubmit={handleCreateCampaign}>
+              <div className="form-control mb-4">
+                <label className="label">
+                  <span className="label-text">Campaign Name</span>
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="e.g., Spring 2025 Outreach" 
+                  className="input input-bordered w-full" 
+                  value={campaignName}
+                  onChange={(e) => setCampaignName(e.target.value)}
+                  required
                 />
-              ) : (
-                <p className="text-sm text-base-content/60">No users selected yet.</p>
-              )}
-            </div>
+              </div>
 
-            <div className="mb-4">
-              <h4 className="text-md font-semibold mb-2 text-base-content/80 flex items-center"><UserPlus size={18} className="mr-2"/> Available Users ({availableUsers.length})</h4>
-              {availableUsers.length > 0 ? (
-                <div className="flex flex-wrap gap-2 p-2 rounded-md max-h-48 overflow-y-auto bg-base-200/50">
-                  {availableUsers.map(user => (
-                    <button 
-                      key={user.id} 
-                      onClick={() => handleSelectUser(user.id)} 
-                      className="btn btn-ghost btn-sm p-1 h-auto rounded-full focus:ring-2 focus:ring-primary" 
-                      title={`Add ${user.name}`}
-                    >
-                      <Avatar 
-                        src={user.avatarUrl}
-                        size="m"
-                        title={user.name}
-                      />
-                    </button>
+              <div className="form-control mb-4">
+                <label className="label">
+                  <span className="label-text">Email Subject Line</span>
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="e.g., New Properties Available in Your Area!" 
+                  className="input input-bordered w-full" 
+                  value={campaignSubject}
+                  onChange={(e) => setCampaignSubject(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-control mb-4">
+                <label className="label">
+                  <span className="label-text">Choose Template</span>
+                </label>
+                <select 
+                  className="select select-bordered w-full"
+                  value={selectedTemplate}
+                  onChange={(e) => setSelectedTemplate(e.target.value)}
+                  required
+                >
+                  <option value="" disabled>Select a template</option>
+                  <option value="template-001">Welcome Email</option>
+                  <option value="template-002">Monthly Newsletter</option>
+                  <option value="template-003">Special Promotion</option>
+                </select>
+              </div>
+
+              <div className="form-control mb-4">
+                <label className="label">
+                  <span className="label-text">Select Sender</span>
+                </label>
+                <select 
+                  className="select select-bordered w-full"
+                  value={selectedUser}
+                  onChange={(e) => setSelectedUser(e.target.value)}
+                  required
+                >
+                  <option value="" disabled>Select a sender</option>
+                  {availableUsers.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name} ({user.email})
+                    </option>
                   ))}
-                </div>
-              ) : (
-                <p className="text-sm text-base-content/60">All users have been selected.</p>
-              )}
-            </div>
-
-            <div className="modal-action mt-6">
-              <button className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreateCampaign} disabled={!newCampaignName || !newCampaignSubject || !selectedTemplate}>
-                <Mail size={18} className="mr-1"/> Save Campaign
-              </button>
-            </div>
+                </select>
+              </div>
+              
+              {/* Modal actions */}
+              <div className="modal-action">
+                <button 
+                  type="button" 
+                  className="btn btn-ghost" 
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <span className="loading loading-spinner loading-sm mr-2"></span>
+                  ) : (
+                    <Check size={18} className="mr-2" />
+                  )}
+                  Create Campaign
+                </button>
+              </div>
+            </form>
           </div>
-           {/* Click outside to close */} 
-          <form method="dialog" className="modal-backdrop">
-            <button onClick={() => setIsModalOpen(false)}>close</button>
-          </form>
         </div>
       )}
     </div>
   );
 };
+
 export default CampaignsView;
