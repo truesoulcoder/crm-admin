@@ -92,7 +92,7 @@ const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
             src={src}
             fill
             alt="Avatar"
-            sizes={typeof size === "string" ? `${sizeMapping[size]}px` : `${size * 16}px`}
+            sizes={typeof size === "string" ? `${sizeMapping[size as keyof typeof sizeMapping]}px` : `${size * 16}px`}
             className={styles.image}
           />
         );
@@ -133,7 +133,7 @@ const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
         {statusIndicator && (
           <StatusIndicator
             position="absolute"
-            size={typeof size === "string" ? statusIndicatorSizeMapping[size] : "l"}
+            size={typeof size === "string" ? statusIndicatorSizeMapping[size as keyof typeof statusIndicatorSizeMapping] : "l"}
             color={statusIndicator.color}
             className={`${styles.className || ""} ${styles.indicator} ${size === "xl" || (typeof size === "number" && size >= 10) ? styles.position : ""}`}
             aria-label={`Status: ${statusIndicator.color}`}

@@ -22,13 +22,18 @@ export interface Template {
 export interface Campaign {
   id: string;
   name: string;
-  template_id: string;
-  pdf_template_id?: string;
+  subject?: string;
+  email_template_id?: string;
+  document_template_id?: string;
+  template_id?: string; // legacy field
+  pdf_template_id?: string; // legacy field
+  assigned_user_ids?: string[];
   status: string;
   market_region?: string;
-  quota: number;
+  quota?: number;
+  is_active?: boolean;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 export interface CampaignUserAllocation {

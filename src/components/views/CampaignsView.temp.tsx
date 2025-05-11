@@ -294,9 +294,9 @@ const CampaignsView: React.FC = () => {
                       avatars={campaign.assigned_user_ids?.map((userId: string) => {
                         const user = availableUsers.find(u => u.id === userId);
                         return user ? {
-                          src: user.avatarUrl || undefined,
-                          value: user.name ? user.name.split(' ').map(n => n[0]).join('') : '',
-                          title: user.name || 'Unknown User'
+                          src: user.avatarUrl,
+                          value: user.name.split(' ').map(n => n[0]).join(''),
+                          title: user.name
                         } as AvatarProps : null;
                       }).filter(Boolean) || []}
                       size="s"
@@ -513,55 +513,55 @@ const CampaignsView: React.FC = () => {
                   <span className="label-text-alt bg-primary/10 px-2 py-0.5 rounded-full text-primary-content">{selectedUsers.length} selected</span>
                 </label>
                 
-                {/* Show selected users as individual Avatars */}
+                {/* Show selected users as an avatar group */}
                 {selectedUsers.length > 0 && (
                   <div className="mb-4 bg-base-100 p-3 rounded-lg border border-base-300">
-                    <div className="text-sm mb-2 text-base-content/70">Selected senders: ({selectedUsers.length})</div>
-                    <div className="flex flex-wrap gap-3">
-                      {selectedUsers.map(user => (
-                        <div key={user.id} className="relative group cursor-default">
-                          <Avatar
-                            src={user.avatarUrl || undefined}
-                            value={user.name ? user.name.split(' ').map(n => n[0]).join('') : ''}
-                            title={user.name || 'Unknown User'}
-                            size="m"
-                          />
-                          <button
-                            onClick={() => toggleUserSelection(user)}
-                            className="absolute -top-1.5 -right-1.5 bg-error text-error-content rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-error-focus focus:outline-none focus:ring-2 focus:ring-error-focus"
-                            aria-label={`Remove ${user.name}`}
-                            title={`Remove ${user.name}`}
-                          >
-                            <X size={14} strokeWidth={2.5}/>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                    <div className="text-sm mb-2 text-base-content/70">Selected senders:</div>
+                    <AvatarGroup
+                      avatars={selectedUsers.map(user => ({
+                        src: user.avatarUrl,
+                        value: user.name.split(' ').map(n => n[0]).join(''),
+                        title: user.name
+                      } as AvatarProps))}
+                      size="m"
+                      limit={5}
+                    />
+                    {selectedUsers.length > 5 && (
+                      <div className="text-xs mt-1 text-base-content/70">
+                        and {selectedUsers.length - 5} more...
+                      </div>
+                    )}
                   </div>
                 )}
                 
                 {/* Available users selection */}
-                <div className="text-sm mb-2 font-medium">Available Senders ({availableUsers.filter(au => !selectedUsers.some(su => su.id === au.id)).length})</div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6 overflow-y-auto max-h-60 pr-2">
-                  {availableUsers
-                    .filter(au => !selectedUsers.some(su => su.id === au.id)) // Filter out already selected users
-                    .map(user => {
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 p-3 bg-base-200/50 rounded-lg overflow-auto max-h-64 border border-base-300">
+                  {availableUsers.map(user => {
+                    const isSelected = selectedUsers.some(u => u.id === user.id);
                     return (
-                      <div
+                      <div 
                         key={user.id}
-                        className={`card card-compact bg-base-200/30 hover:bg-base-300/70 transition-all duration-150 ease-in-out cursor-pointer p-3 flex flex-col items-center`}
                         onClick={() => toggleUserSelection(user)}
+                        className={`cursor-pointer p-2 rounded-lg transition-all hover:bg-base-300/50 ${isSelected ? 'bg-primary/10 border border-primary/30' : 'border border-transparent'}`}
+                        title={isSelected ? `Remove ${user.name}` : `Add ${user.name}`}
                       >
-                        <Avatar
-                          size="m"
-                          src={user.avatarUrl ? user.avatarUrl : undefined}
-                          value={user.name ? user.name.split(' ').map(n => n[0]).join('') : ''}
-                        />
-                        <div className="text-xs text-center mt-2 max-w-full truncate font-medium">{user.name || 'Unnamed User'}</div>
-                        <div className="text-[10px] text-center text-base-content/60 truncate">{user.email ? user.email.split('@')[0] : ''}</div>
+                        <div className="flex flex-col items-center">
+                          <Avatar
+                            size="m"
+                            src={user.avatarUrl}
+                            value={user.name.split(' ').map(n => n[0]).join('')}
+                            statusIndicator={isSelected ? { color: 'green' } : undefined}
+                          />
+                          <div className="text-xs text-center mt-2 max-w-full truncate font-medium">{user.name}</div>
+                          <div className="text-[10px] text-center text-base-content/60 truncate">{user.email.split('@')[0]}</div>
+                        </div>
                       </div>
                     );
                   })}
+                </div>
+                <div className="text-xs mt-2 text-base-content/70 flex items-center">
+                  <span className="inline-block w-3 h-3 rounded-full bg-success mr-1"></span>
+                  Indicates selected senders
                 </div>
               </div>
               

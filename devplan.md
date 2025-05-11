@@ -28,6 +28,12 @@
   - [x] Mock modal for creating new campaigns (name, subject, template selection).
   - [x] Fix Avatar error by only passing either 'src' or 'value', not both, in CampaignsView when clicking new campaign.
   - [x] Supabase integration for campaign creation (modal submission saves to DB, error handling, feedback, refreshes list).
+  - [x] Fix TypeError in CampaignsView: Added null checks for user.name in AvatarGroup and Avatar components.
+  - [x] Enhanced Sender Selection UI: 
+    - Selected senders are filtered from the available list (appear to "move" to selected group).
+    - Selected senders display horizontally with actual profile pictures (if available).
+    - Implemented deselection by clicking a small 'x' icon that appears on hover over selected avatars.
+    - [x] Synced Gmail profile pictures for senders and display them in the selection UI.
 - **Templates View:** Card display for message templates (email/SMS) with filtering and mock data.
   - [x] Functional "Create New Template" button opening a modal.
   - [x] Mock modal for creating new templates (name, type, subject, category, body).
