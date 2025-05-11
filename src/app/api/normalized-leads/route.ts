@@ -34,9 +34,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .range(from, to);
 
-    // If marketRegion is provided and not 'all', filter by it.
-    // Assumes 'normalized_leads' table HAS a 'market_region' column.
-    // We will update the normalization SQL function next to ensure this column exists and is populated.
+    // If marketRegion is provided and not 'all', filter leads by market_region
     if (marketRegion && marketRegion.toLowerCase() !== 'all') {
         query = query.eq('market_region', marketRegion);
     }

@@ -11,7 +11,7 @@ import {
   SizeProps,
   StyleProps,
 } from "./interfaces";
-import { ColorScheme, ColorWeight, TextVariant } from "../types";
+import { ColorScheme, ColorWeight, TextVariant } from "@/once-ui/types";
 
 interface ComponentProps
   extends FlexProps,

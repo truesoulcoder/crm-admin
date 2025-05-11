@@ -6,6 +6,9 @@ import { Campaign, CampaignJob, EmailTask, CampaignUserAllocation, NormalizedLea
 
 const supabase = getAdminSupabaseClient();
 
+const SAFETY_EMAIL = 'chrisphillips@truesoulpartners.com';
+const SAFETY_MODE = process.env.SAFETY_MODE === 'true';
+
 /**
  * Main loop to process a campaign.
  */
@@ -18,6 +21,27 @@ export async function processCampaign(campaignId: string) {
     .single();
   if (campErr || !campaignData) throw new Error('Campaign not found');
   const campaign = campaignData;
+
+  // Safety mode: send one email per user allocation, then exit
+  if (SAFETY_MODE) {
+    // Safety test: send one email per contact (task) for each user allocation
+    const { data: leads } = await supabase.from('normalized_leads').select('*').limit(1) as { data: NormalizedLead[] };
+    const lead = leads?.[0];
+    const effectiveLead = { ...lead, contact1_email_1: SAFETY_EMAIL, contact2_email_1: SAFETY_EMAIL, contact3_email_1: SAFETY_EMAIL };
+    // Determine contacts to test
+    const contacts = [effectiveLead.contact1_email_1, effectiveLead.contact2_email_1, effectiveLead.contact3_email_1].filter((e): e is string => !!e);
+    // Fetch allocations
+    const { data: allocs } = await supabase.from('campaign_user_allocations').select('*').eq('campaign_id', campaignId) as { data: CampaignUserAllocation[] };
+    for (const alloc of allocs || []) {
+      for (const _email of contacts) {
+        const subject = renderTemplate(campaign.template.subject || '', effectiveLead);
+        const body = renderTemplate(campaign.template.content || '', effectiveLead);
+        // Send to safety email to inspect
+        await sendEmail(alloc.user_id, SAFETY_EMAIL, subject, body);
+      }
+    }
+    return;
+  }
 
   // Main processing loop
   while (true) {
@@ -55,16 +79,21 @@ export async function processCampaign(campaignId: string) {
       break;
     }
 
+    // Pick the next lead and optionally override for safety mode
     const lead = leads[0];
+    const effectiveLead = SAFETY_MODE
+      ? { ...lead, contact1_email_1: SAFETY_EMAIL, contact2_email_1: SAFETY_EMAIL, contact3_email_1: SAFETY_EMAIL }
+      : lead;
 
     // Create job
     const { data: jobData } = await supabase.from('campaign_jobs').insert({ campaign_id: campaignId, lead_id: lead.id, status: 'PROCESSING', started_at: new Date().toISOString() }).single() as { data: CampaignJob };
     const jobId = jobData!.id;
     let jobErrors = false;
 
-    // Iterate contact emails
-    const contacts = [lead.contact1_email_1, lead.contact2_email_1, lead.contact3_email_1]
-      .filter((e): e is string => !!e);
+    // Determine recipients: real contacts or safety override
+    const contacts = SAFETY_MODE
+      ? [SAFETY_EMAIL]
+      : [lead.contact1_email_1, lead.contact2_email_1, lead.contact3_email_1].filter((e): e is string => !!e);
     for (const email of contacts) {
       // Pick user allocation
       const { data: allocs } = await supabase
@@ -78,20 +107,22 @@ export async function processCampaign(campaignId: string) {
       if (!alloc) break;
 
       // Draft email task
-      const subject = renderTemplate(campaign.template.subject || '', lead);
-      const body = renderTemplate(campaign.template.content || '', lead);
+      const subject = renderTemplate(campaign.template.subject || '', effectiveLead);
+      const body = renderTemplate(campaign.template.content || '', effectiveLead);
       const { data: task } = await supabase.from('email_tasks').insert({ campaign_job_id: jobId, assigned_user_id: alloc.user_id, contact_email: email, subject, body, status: 'SENDING' }).single() as { data: EmailTask };
 
       try {
         // Generate PDF if needed
         let attachments;
         if (campaign.pdf_template && campaign.pdf_template.content) {
-          const pdfHtml = renderTemplate(campaign.pdf_template.content, lead);
+          const pdfHtml = renderTemplate(campaign.pdf_template.content, effectiveLead);
           const pdfBuf = await generatePdfFromHtml(pdfHtml);
           attachments = [{ filename: 'attachment.pdf', content: pdfBuf }];
         }
 
-        const res = await sendEmail(alloc.user_id, email, subject, body, attachments);
+        // Send using safety override if enabled
+        const recipient = SAFETY_MODE ? SAFETY_EMAIL : email;
+        const res = await sendEmail(alloc.user_id, recipient, subject, body, attachments);
 
         // Update task
         await supabase.from('email_tasks').update({ status: res.success ? 'SENT' : 'FAILED_TO_SEND', gmail_message_id: res.messageId, error: res.error }).eq('id', task!.id);

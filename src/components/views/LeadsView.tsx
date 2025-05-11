@@ -4,14 +4,13 @@ import React, { useState, useMemo, ChangeEvent, FormEvent, useEffect, useRef } f
 import { Users, PlusCircle, Edit3, Trash2, Eye, Search, Filter, ChevronUp, ChevronDown, Briefcase, AtSign, Phone, CalendarDays, Tag, UserCheck, Save, XCircle, AlertTriangle, UploadCloud } from 'lucide-react';
 import { Background } from '../../once-ui/components/Background';
 
-import { NormalizedLead } from '../../types'; 
+import type { NormalizedLead } from '../../types/index'; 
 import { createClient } from '../../lib/supabase/client'; 
 
 const LeadsView: React.FC = () => {
   const supabase = createClient(); 
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterMlsStatus, setFilterMlsStatus] = useState<'All' | string>('All'); 
   const [filterMarketRegion, setFilterMarketRegion] = useState<'All' | string>('All');
   const [uploadMarketRegion, setUploadMarketRegion] = useState<string>(""); // New state for upload
 
@@ -51,21 +50,25 @@ const LeadsView: React.FC = () => {
 
   // Server-side filter options
   const [allMarketRegions, setAllMarketRegions] = useState<string[]>(['All']);
-  const [allMlsStatuses, setAllMlsStatuses] = useState<string[]>(['All']);
 
   // Fetch distinct filter options on mount
   useEffect(() => {
     const fetchFilterOptions = async () => {
       try {
-        const { data: regionsData, error: regionsError } = await supabase.rpc('get_distinct_market_regions');
+        // Get distinct market_region from normalized_leads
+        const { data: regionsData, error: regionsError } = await supabase
+          .from('normalized_leads')
+          .select('market_region');
         if (regionsError) throw regionsError;
         if (regionsData) {
-          setAllMarketRegions(['All', ...regionsData.map((r: any) => r.market_region)]);
-        }
-        const { data: statusesData, error: statusesError } = await supabase.rpc('get_distinct_mls_statuses');
-        if (statusesError) throw statusesError;
-        if (statusesData) {
-          setAllMlsStatuses(['All', ...statusesData.map((s: any) => s.mls_curr_status)]);
+          const regions = Array.from(
+            new Set(
+              regionsData
+                .map((r: any) => r.market_region)
+                .filter((v) => v && v.trim())
+            )
+          );
+          setAllMarketRegions(['All', ...regions]);
         }
       } catch (err) {
         console.error('Error fetching filter options:', err);
@@ -86,10 +89,7 @@ const LeadsView: React.FC = () => {
         if (filterMarketRegion !== 'All') {
           query = query.eq('market_region', filterMarketRegion);
         }
-        if (filterMlsStatus !== 'All') {
-          query = query.eq('mls_curr_status', filterMlsStatus);
-        }
-        query = query.order(sortField || 'created_at', { ascending: sortDirection === 'asc' });
+        query = query.order((sortField as string) || 'created_at', { ascending: sortDirection === 'asc' });
         const { data, error: supabaseError } = await query;
         if (supabaseError) {
           throw supabaseError;
@@ -102,7 +102,7 @@ const LeadsView: React.FC = () => {
       setIsLoading(false);
     };
     fetchNormalizedLeads();
-  }, [sortField, sortDirection, supabase, filterMarketRegion, filterMlsStatus]);
+  }, [sortField, sortDirection, supabase, filterMarketRegion]);
 
   // Only filter by search term on client; all other filters are server-side
   const sortedAndFilteredLeads = useMemo(() => {
@@ -188,7 +188,7 @@ const LeadsView: React.FC = () => {
       }
 
       if (insertedLead) {
-        setLeads(prevLeads => [insertedLead, ...prevLeads]); // Add to local state
+        setLeads((prevLeads: NormalizedLead[]) => [insertedLead, ...prevLeads]); // Add to local state
       }
       handleCloseModal();
     } catch (err) {
@@ -209,85 +209,38 @@ const LeadsView: React.FC = () => {
   };
 
   // --- CSV Upload Handlers ---
-  const handleUploadButtonClick = () => {
-    fileInputRef.current?.click(); // Trigger hidden file input
-  };
-
-  const fetchLeadsAndResetUpload = async () => {
-    // Re-fetch leads (assuming fetchNormalizedLeads is defined in the useEffect or can be extracted)
-    // For simplicity, we'll trigger the useEffect by changing a dummy state or calling a refetch function if available
-    // A more direct way if fetchNormalizedLeads is callable:
-    setIsLoading(true);
-    setError(null);
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setSelectedFile(file);
+    if (!file) return;
+    if (!uploadMarketRegion.trim()) {
+      alert('Market Region is required before upload.');
+      return;
+    }
+    setIsUploading(true);
+    setUploadStatus(null);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('market_region', uploadMarketRegion);
     try {
-      const { data, error: supabaseError } = await supabase
-        .from('normalized_leads')
-        .select('*')
-        .order(sortField || 'created_at', { ascending: sortDirection === 'asc' });
-      if (supabaseError) throw supabaseError;
-      setLeads(data || []);
-    } catch (err) {
-      console.error('Error refetching leads:', err);
-      setError(err instanceof Error ? err.message : 'Error refetching leads.');
+      const res = await fetch('/api/leads/upload', { method: 'POST', body: formData });
+      const result = await res.json();
+      if (result.ok) {
+        setUploadStatus('File processed and leads normalized successfully.');
+        // Optionally reload data or filters
+      } else {
+        setUploadStatus('Upload failed: ' + (result.error || 'Unknown error'));
+      }
+    } catch (err: any) {
+      setUploadStatus('Upload failed: ' + err.message);
     }
-    setIsLoading(false);
+    setIsUploading(false);
   };
 
-  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (!uploadMarketRegion || uploadMarketRegion.trim() === "") {
-        const errorMsg = 'Please enter a Market Region for the upload before selecting a file.';
-        console.error('Upload error: LeadsView -', errorMsg);
-        setUploadStatus(`Upload failed: ${errorMsg}`);
-        // Clear file input and selected file state
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-        setSelectedFile(null);
-        setIsUploading(false); // Ensure uploading state is reset
-        return; // Stop the upload process
-      }
-
-      setSelectedFile(file);
-      // Immediately attempt to upload
-      setIsUploading(true);
-      setUploadStatus('Uploading... Please wait.');
-      setError(null); // Clear previous main errors
-
-      const formData = new FormData();
-      formData.append('file', file); 
-      formData.append('market_region', uploadMarketRegion); // Use the new state here
-
-      try {
-        const response = await fetch('/api/leads/upload', {
-          method: 'POST',
-          body: formData,
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.message || `Upload failed with status: ${response.status}`);
-        }
-        
-        setUploadStatus(`Upload successful: ${result.message || 'Leads processed.'}. Refreshing table...`);
-        await fetchLeadsAndResetUpload(); // Refresh data
-        setTimeout(() => setUploadStatus(null), 5000); // Clear status after 5s
-      } catch (err) {
-        console.error('Upload error:', err);
-        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred during upload.';
-        setUploadStatus(`Upload failed: ${errorMessage}`);
-        // setError(`Upload failed: ${errorMessage}`); // Optionally set main error too
-      } finally {
-        setIsUploading(false);
-        setSelectedFile(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ''; // Reset file input
-        }
-      }
-    }
+  const handleUploadButtonClick = () => {
+    fileInputRef.current?.click();
   };
+
   // --- End CSV Upload Handlers ---
 
   if (isLoading && !isUploading) { // Don't show main loading if only uploading
@@ -337,15 +290,6 @@ const LeadsView: React.FC = () => {
         <div className="form-control min-w-[150px]">
           <select 
             className="select select-bordered"
-            value={filterMlsStatus}
-            onChange={(e) => setFilterMlsStatus(e.target.value)}
-          >
-            {allMlsStatuses.map(status => <option key={status} value={status}>{status}</option>) }
-          </select>
-        </div>
-        <div className="form-control min-w-[150px]">
-          <select 
-            className="select select-bordered"
             value={filterMarketRegion}
             onChange={(e) => setFilterMarketRegion(e.target.value)}
           >
@@ -355,12 +299,12 @@ const LeadsView: React.FC = () => {
         <button onClick={handleOpenModal} className="btn btn-primary">
           <PlusCircle size={20} className="mr-2" /> Add New Lead
         </button>
-        <input 
-          type="file" 
-          ref={fileInputRef} 
+        <input
+          type="file"
+          ref={fileInputRef}
           onChange={handleFileChange}
           accept=".csv"
-          style={{ display: 'none' }} 
+          style={{ display: 'none' }}
         />
         <button onClick={handleUploadButtonClick} className="btn btn-secondary" disabled={isUploading}>
           {isUploading ? (
