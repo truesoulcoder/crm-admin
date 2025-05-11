@@ -10,7 +10,6 @@ import { createClient } from '../../lib/supabase/client';
 const LeadsView: React.FC = () => {
   const supabase = createClient(); 
 
-  const [searchTerm, setSearchTerm] = useState('');
   const [filterMarketRegion, setFilterMarketRegion] = useState<'All' | string>('All');
   const [uploadMarketRegion, setUploadMarketRegion] = useState<string>(""); // New state for upload
 
@@ -104,17 +103,8 @@ const LeadsView: React.FC = () => {
     fetchNormalizedLeads();
   }, [sortField, sortDirection, supabase, filterMarketRegion]);
 
-  // Only filter by search term on client; all other filters are server-side
-  const sortedAndFilteredLeads = useMemo(() => {
-    if (!searchTerm) return leads;
-    const search = searchTerm.toLowerCase();
-    return leads.filter(lead =>
-      (lead.contact_name?.toLowerCase().includes(search) || false) ||
-      (lead.contact_email?.toLowerCase().includes(search) || false) ||
-      (lead.property_address?.toLowerCase().includes(search) || false) ||
-      (lead.market_region?.toLowerCase().includes(search) || false)
-    );
-  }, [searchTerm, leads]);
+  // No client-side search: use leads array directly
+  const displayedLeads = leads;
 
   const handleSort = (field: keyof NormalizedLead | '') => {
     if (sortField === field) {
@@ -277,16 +267,6 @@ const LeadsView: React.FC = () => {
       </header>
 
       <div className="mb-6 p-4 bg-base-200 rounded-lg shadow flex flex-wrap gap-4 items-center">
-        <div className="relative flex-grow min-w-[200px]">
-          <input 
-            type="text" 
-            placeholder="Search leads (name, email, address, market)..." 
-            className="input input-bordered w-full pl-10"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-base-content opacity-50" />
-        </div>
         <div className="form-control min-w-[150px]">
           <select 
             className="select select-bordered"
@@ -359,8 +339,8 @@ const LeadsView: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {sortedAndFilteredLeads.length > 0 ? (
-              sortedAndFilteredLeads.map((lead) => (
+            {displayedLeads.length > 0 ? (
+              displayedLeads.map((lead) => (
                 <tr key={lead.id} className="hover:bg-base-200 transition-colors duration-150">
                   <td>{lead.contact_name || 'N/A'}</td>
                   <td>{lead.contact_email || 'N/A'}</td>
