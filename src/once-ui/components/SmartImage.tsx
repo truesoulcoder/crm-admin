@@ -9,6 +9,8 @@ export interface SmartImageProps extends React.ComponentProps<typeof Flex> {
   aspectRatio?: string;
   height?: number;
   alt?: string;
+  radius?: string;
+  fill?: boolean;
   isLoading?: boolean;
   objectFit?: CSSProperties["objectFit"];
   enlarge?: boolean;
@@ -16,6 +18,7 @@ export interface SmartImageProps extends React.ComponentProps<typeof Flex> {
   unoptimized?: boolean;
   sizes?: string;
   priority?: boolean;
+  className?: string;
 }
 
 const SmartImage: React.FC<SmartImageProps> = ({
@@ -29,6 +32,9 @@ const SmartImage: React.FC<SmartImageProps> = ({
   unoptimized = false,
   priority,
   sizes = "100vw",
+  className,
+  radius,
+  fill,
   ...rest
 }) => {
   const [isEnlarged, setIsEnlarged] = useState(false);
@@ -116,16 +122,17 @@ const SmartImage: React.FC<SmartImageProps> = ({
     <>
       <Flex
         ref={imageRef}
+        radius={radius}
         fillWidth
         overflow="hidden"
         zIndex={0}
         cursor={enlarge ? "interactive" : ""}
+        className={className}
         style={{
           outline: "none",
           isolation: "isolate",
           height: aspectRatio ? "" : height ? `${height}rem` : "100%",
           aspectRatio,
-          borderRadius: isEnlarged ? "0" : undefined,
           ...calculateTransform(),
         }}
         onClick={handleClick}
@@ -166,7 +173,7 @@ const SmartImage: React.FC<SmartImageProps> = ({
             priority={priority}
             sizes={sizes}
             unoptimized={unoptimized}
-            fill
+            fill={fill}
             style={{
               objectFit: objectFit,
             }}

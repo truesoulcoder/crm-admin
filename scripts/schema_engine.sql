@@ -92,3 +92,15 @@ CREATE TABLE IF NOT EXISTS system_event_logs (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_campaign_jobs_campaign_status ON campaign_jobs(campaign_id, status);
 CREATE INDEX IF NOT EXISTS idx_email_tasks_user_status ON email_tasks(assigned_user_id, status);
+
+-- Daily quota reset
+CREATE EXTENSION IF NOT EXISTS pg_cron;  
+CREATE OR REPLACE FUNCTION public.reset_daily_quota()  
+RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  UPDATE campaign_user_allocations SET sent_today = 0;
+END;
+$$;  
+
+-- Schedule to run at midnight UTC daily
+SELECT cron.schedule('reset_daily_quota', '0 0 * * *', 'SELECT public.reset_daily_quota();');

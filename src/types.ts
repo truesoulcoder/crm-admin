@@ -9,3 +9,15 @@ export interface Sender {
   updated_at: string;
   photo_url?: string;
 }
+
+// Campaign data with optional stats for front-end view
+export interface Campaign {
+  id: string;
+  name: string;
+  status: string;
+  created_at: string;
+  emailsSent?: number;
+  openRate?: number;
+  clickRate?: number;
+  creationDate?: string;
+}

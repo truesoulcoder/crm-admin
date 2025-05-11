@@ -16,6 +16,7 @@ interface AvatarProps extends React.ComponentProps<typeof Flex> {
   };
   style?: React.CSSProperties;
   className?: string;
+  title?: string;
 }
 
 const sizeMapping: Record<"xs" | "s" | "m" | "l" | "xl", number> = {
@@ -36,7 +37,7 @@ const statusIndicatorSizeMapping: Record<"xs" | "s" | "m" | "l" | "xl", "s" | "m
 
 const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
   (
-    { size = "m", value, src, loading, empty, statusIndicator, className, style = {}, ...rest },
+    { size = "m", value, src, loading, empty, statusIndicator, className, style = {}, title, ...rest },
     ref,
   ) => {
     const sizeInRem = typeof size === "number" ? `${size}rem` : undefined;
@@ -117,6 +118,7 @@ const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
     return (
       <Flex
         ref={ref}
+        title={title}
         role="img"
         horizontal="center"
         vertical="center"

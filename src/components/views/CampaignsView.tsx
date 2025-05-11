@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail, BarChart2, Edit3, Trash2, PlayCircle, PauseCircle, AlertTriangle, X, UserPlus, Users as UsersIcon } from 'lucide-react';
 import { Avatar, AvatarGroup, AvatarProps, LetterFx } from '../../once-ui/components';
 
-import { Campaign } from '../../types';
+import { Campaign } from '../../types/engine';
 import { supabase } from '../../lib/supabaseClient';
 
 interface User {
@@ -118,6 +118,19 @@ const CampaignsView: React.FC = () => {
     }
   };
 
+  // Engine control handlers
+  const handleStart = async (id: string) => {
+    await fetch(`/api/engine/campaigns/${id}/start`, { method: 'POST' });
+    // refresh status
+    const { data } = await supabase.from('campaigns').select('*').order('created_at', { ascending: false });
+    if (data) setCampaigns(data);
+  };
+  const handleStop = async (id: string) => {
+    await fetch(`/api/engine/campaigns/${id}/stop`, { method: 'POST' });
+    const { data } = await supabase.from('campaigns').select('*').order('created_at', { ascending: false });
+    if (data) setCampaigns(data);
+  };
+
   return (
     <div className="p-4 md:p-6 lg:p-8">
       <div className="flex justify-between items-center mb-6">
@@ -168,6 +181,17 @@ const CampaignsView: React.FC = () => {
                       <td>{new Date(campaign.creationDate).toLocaleDateString()}</td>
                       <td className="text-center">
                         <div className="flex items-center justify-center space-x-1">
+                          {/* Start/Stop campaign */}
+                          {campaign.status !== 'ACTIVE' && (
+                            <button className="btn btn-ghost btn-xs" title="Start Campaign" onClick={() => handleStart(campaign.id)}>
+                              <PlayCircle size={16} />
+                            </button>
+                          )}
+                          {campaign.status === 'ACTIVE' && (
+                            <button className="btn btn-ghost btn-xs" title="Stop Campaign" onClick={() => handleStop(campaign.id)}>
+                              <PauseCircle size={16} />
+                            </button>
+                          )}
                           <button className="btn btn-ghost btn-xs" title="View Stats">
                             <BarChart2 size={16} />
                           </button>

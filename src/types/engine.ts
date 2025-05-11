@@ -71,6 +71,15 @@ export interface EmailTask {
   updated_at: string;
 }
 
+export interface NormalizedLead {
+  id: number;
+  contact1_email_1?: string;
+  contact2_email_1?: string;
+  contact3_email_1?: string;
+  mls_curr_list_agent_email?: string;
+  [key: string]: any;
+}
+
 export interface SystemEventLog {
   id: string;
   event_type: string;

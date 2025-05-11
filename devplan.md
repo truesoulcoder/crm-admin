@@ -71,23 +71,14 @@
   - [ ] **UI/UX Enhancements:** Improve overall look, feel, and user experience (e.g., toast notifications, better loading/error states).
 
 ## Next Steps
-- Define shared types/schema for core CRM entities (contacts, companies, deals, users, activities)
-- Implement Supabase connection and authentication
-
----
-
-## Upgrade & Maintenance Log
-
-### 2025-05-07: Next.js 15 Upgrade Complete
-- Upgraded Next.js to v15, React to 18.2.0, and all related dependencies
-- Upgraded @supabase/ssr to 0.6.1 for compatibility and security
-- Resolved all npm audit vulnerabilities (including cookie advisory)
-- Merged upgrade branch into main, resolved .gitignore conflict
-- Main branch is now running Next.js 15 and is dependency-clean
-- All security warnings cleared and codebase ready for QA/deployment
-- Connect frontend to backend API
-- CRUD endpoints for CRM entities
-- Integrate mock data with actual data from Supabase
+- [x] Engine DB schema (users, templates, campaigns, allocations, jobs, tasks, logs)
+- [x] Define TS engine types matching DB schema
+- [x] Gmail, PDF, template & Supabase admin service modules
+- [x] Campaign engine loop implementation
+- [x] API routes: start/stop campaign
+- [x] Daily quota reset via pg_cron
+- Write unit tests for engine modules
+- Integrate frontend controls to trigger engine start/stop
 
 ---
 (Features will be logged here as implemented)
