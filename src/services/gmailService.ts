@@ -3,7 +3,26 @@ export { sendEmail };
 import { google } from 'googleapis';
 
 // Initialize JWT auth with service account key
-const serviceKey = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY!);
+const googleServiceAccountKeyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+
+if (!googleServiceAccountKeyJson) {
+  throw new Error(
+    'GOOGLE_SERVICE_ACCOUNT_KEY environment variable is not defined. ' +
+    'This is required for Gmail integration. Please ensure it is set in your build environment.'
+  );
+}
+
+let serviceKey;
+try {
+  serviceKey = JSON.parse(googleServiceAccountKeyJson);
+} catch (e) {
+  console.error('Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY:', e);
+  throw new Error(
+    'GOOGLE_SERVICE_ACCOUNT_KEY is not valid JSON. ' +
+    'Please ensure it is a correctly formatted JSON string.'
+  );
+}
+
 const authClient = new google.auth.JWT({
   email: serviceKey.client_email,
   key: serviceKey.private_key,
