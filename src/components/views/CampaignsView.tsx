@@ -7,6 +7,19 @@ import { LetterFx, Avatar, AvatarGroup, AvatarProps } from '../../once-ui/compon
 
 import { Campaign } from '../../types/engine';
 
+// Helper function to generate initials
+const getInitials = (name?: string): string => {
+  if (!name || name.trim() === '') return '??';
+  const parts = name.trim().split(' ').filter(p => p !== '');
+  if (parts.length === 1 && parts[0].length > 0) return parts[0].substring(0, 2).toUpperCase(); // Up to 2 chars for single name
+  if (parts.length > 1) {
+    const firstInitial = parts[0].substring(0, 1);
+    const lastInitial = parts[parts.length - 1].substring(0, 1);
+    return `${firstInitial}${lastInitial}`.toUpperCase();
+  }
+  return '??';
+};
+
 // Environment variables are automatically loaded in Next.js
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -75,74 +88,53 @@ const CampaignsView: React.FC = () => {
     }
   }, [supabase]);
 
-  // Fetch available users
-  const fetchUsers = useCallback(async () => {
+  // Fetch supporting data (users, templates)
+  const fetchSupportingData = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch available users (email_senders)
+      const { data: usersData, error: usersError } = await supabase
         .from('email_senders')
         .select('*')
         .eq('is_active', true);
       
-      if (error) throw error;
+      if (usersError) throw usersError;
       
-      // Transform data to match User interface
-      const users = data.map(user => ({
+      const users = usersData.map(user => ({
         id: user.id,
         email: user.email,
         name: user.name,
         avatarUrl: user.avatar_url
       }));
-      
       setAvailableUsers(users);
       
-      // Set default selected email template if available
-      const { data: emailTemplateData } = await supabase
-        .from('email_templates')
-        .select('*')
-        .eq('is_active', true)
-        .eq('is_default', true)
-        .maybeSingle();
-      
-      if (emailTemplateData) {
-        setSelectedEmailTemplate(emailTemplateData.id);
+      // Fetch email templates from API route
+      const emailTemplatesRes = await fetch('/api/email-templates');
+      if (!emailTemplatesRes.ok) {
+        throw new Error(`Failed to fetch email templates: ${emailTemplatesRes.statusText}`);
+      }
+      const fetchedEmailTemplates = await emailTemplatesRes.json();
+      setEmailTemplates(fetchedEmailTemplates || []);
+      // Optionally set a default selected email template (e.g., the first one)
+      if (fetchedEmailTemplates && fetchedEmailTemplates.length > 0) {
+        setSelectedEmailTemplate(fetchedEmailTemplates[0].id);
       }
       
-      // Set default selected document template if available
-      const { data: documentTemplateData } = await supabase
-        .from('document_templates')
-        .select('*')
-        .eq('is_active', true)
-        .eq('is_default', true)
-        .maybeSingle();
-      
-      if (documentTemplateData) {
-        setSelectedDocumentTemplate(documentTemplateData.id);
+      // Fetch document templates from API route
+      const documentTemplatesRes = await fetch('/api/document-templates');
+      if (!documentTemplatesRes.ok) {
+        throw new Error(`Failed to fetch document templates: ${documentTemplatesRes.statusText}`);
       }
-      
-      // Fetch all email templates
-      const { data: emailTemplates, error: emailTemplatesError } = await supabase
-        .from('email_templates')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-        
-      if (!emailTemplatesError) {
-        setEmailTemplates(emailTemplates || []);
+      const fetchedDocumentTemplates = await documentTemplatesRes.json();
+      setDocumentTemplates(fetchedDocumentTemplates || []);
+      // Optionally set a default selected document template (e.g., the first one)
+      if (fetchedDocumentTemplates && fetchedDocumentTemplates.length > 0) {
+        setSelectedDocumentTemplate(fetchedDocumentTemplates[0].id);
       }
-      
-      // Fetch all document templates
-      const { data: documentTemplates, error: documentTemplatesError } = await supabase
-        .from('document_templates')
-        .select('id, name')
-        .eq('is_active', true)
-        .order('name');
-        
-      if (!documentTemplatesError) {
-        setDocumentTemplates(documentTemplates || []);
-      }
-      
+
     } catch (err) {
-      console.error('Error fetching users:', err);
+      console.error('Error fetching supporting data:', err);
+      // Keep specific error for campaigns, but maybe a general one for supporting data
+      setError(prevError => prevError || 'Failed to load some selection options.');
     }
   }, [supabase]);
 
@@ -159,8 +151,8 @@ const CampaignsView: React.FC = () => {
   // Load data on component mount
   useEffect(() => {
     fetchCampaigns();
-    fetchUsers();
-  }, [fetchCampaigns, fetchUsers]);
+    fetchSupportingData();
+  }, [fetchCampaigns, fetchSupportingData]);
 
   // Start campaign handler
   const handleStart = async (id: string) => {
@@ -289,19 +281,25 @@ const CampaignsView: React.FC = () => {
                   </td>
                   <td>{getStatusBadge(campaign.status)}</td>
                   <td>{new Date(campaign.created_at).toLocaleDateString()}</td>
-                  <td>
-                    <AvatarGroup 
-                      avatars={campaign.assigned_user_ids?.map((userId: string) => {
-                        const user = availableUsers.find(u => u.id === userId);
-                        return user ? {
-                          src: user.avatarUrl || undefined,
-                          value: user.name ? user.name.split(' ').map(n => n[0]).join('') : '',
-                          title: user.name || 'Unknown User'
-                        } as AvatarProps : null;
-                      }).filter(Boolean) || []}
-                      size="s"
-                      limit={3}
-                    />
+                  <td className="px-4 py-3">
+                    {campaign.assigned_user_ids && campaign.assigned_user_ids.length > 0 ? (
+                      <div className="flex items-center relative h-6"> 
+                        <AvatarGroup 
+                          avatars={campaign.assigned_user_ids?.map((userId: string) => {
+                            const user = availableUsers.find(u => u.id === userId);
+                            return user ? {
+                              src: user.avatarUrl ? user.avatarUrl : undefined,
+                              value: user.avatarUrl ? undefined : (user.name ? user.name.split(' ').map(n => n[0]).join('') : ''),
+                              title: user.name || 'Unknown User'
+                            } as AvatarProps : null;
+                          }).filter(Boolean) || []}
+                          size="s"
+                          limit={3}
+                        />
+                      </div>
+                    ) : (
+                      <div className="text-sm text-base-content/70">No senders assigned</div>
+                    )}
                   </td>
                   <td>
                     <div className="flex items-center gap-2">
@@ -519,20 +517,20 @@ const CampaignsView: React.FC = () => {
                     <div className="text-sm mb-2 text-base-content/70">Selected senders: ({selectedUsers.length})</div>
                     <div className="flex flex-wrap gap-3">
                       {selectedUsers.map(user => (
-                        <div key={user.id} className="relative group cursor-default">
+                        <div key={user.id} className="relative group"> 
                           <Avatar
                             src={user.avatarUrl || undefined}
-                            value={user.name ? user.name.split(' ').map(n => n[0]).join('') : ''}
-                            title={user.name || 'Unknown User'}
+                            alt={user.name || 'User avatar'}
+                            value={user.avatarUrl ? undefined : getInitials(user.name)}
                             size="m"
                           />
                           <button
-                            onClick={() => toggleUserSelection(user)}
-                            className="absolute -top-1.5 -right-1.5 bg-error text-error-content rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-error-focus focus:outline-none focus:ring-2 focus:ring-error-focus"
-                            aria-label={`Remove ${user.name}`}
-                            title={`Remove ${user.name}`}
+                            onClick={() => toggleUserSelection(user)} 
+                            className="absolute -top-1.5 -right-1.5 bg-error text-error-content rounded-full p-0.5 w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-error-focus focus:outline-none focus:ring-2 focus:ring-error-focus transition-opacity duration-150 ease-in-out"
+                            aria-label={`Remove ${user.name || 'sender'}`}
+                            title={`Remove ${user.name || 'sender'}`}
                           >
-                            <X size={14} strokeWidth={2.5}/>
+                            <X size={12} strokeWidth={3}/>
                           </button>
                         </div>
                       ))}
@@ -547,18 +545,21 @@ const CampaignsView: React.FC = () => {
                     .filter(au => !selectedUsers.some(su => su.id === au.id)) // Filter out already selected users
                     .map(user => {
                     return (
-                      <div
-                        key={user.id}
-                        className={`card card-compact bg-base-200/30 hover:bg-base-300/70 transition-all duration-150 ease-in-out cursor-pointer p-3 flex flex-col items-center`}
-                        onClick={() => toggleUserSelection(user)}
+                      <div 
+                        key={user.id} 
+                        className={`p-2 border rounded-lg cursor-pointer flex flex-col items-center text-center relative hover:border-primary transition-colors duration-150 ease-in-out ${selectedUsers.some(u => u.id === user.id) ? 'border-primary ring-2 ring-primary bg-primary/10' : 'border-base-300 bg-base-200/30 hover:bg-base-300/30'}`}
+                        onClick={() => toggleUserSelection(user)} // This should correctly call the function
                       >
-                        <Avatar
-                          size="m"
-                          src={user.avatarUrl ? user.avatarUrl : undefined}
-                          value={user.name ? user.name.split(' ').map(n => n[0]).join('') : ''}
-                        />
-                        <div className="text-xs text-center mt-2 max-w-full truncate font-medium">{user.name || 'Unnamed User'}</div>
-                        <div className="text-[10px] text-center text-base-content/60 truncate">{user.email ? user.email.split('@')[0] : ''}</div>
+                        <div className="relative w-10 h-10 mb-1"> 
+                          <Avatar 
+                            src={user.avatarUrl || undefined} 
+                            alt={user.name || 'User avatar'} 
+                            value={user.avatarUrl ? undefined : getInitials(user.name)} 
+                            size="md"
+                          />
+                        </div>
+                        <span className="text-xs mt-1 truncate w-full font-medium" title={user.name}>{user.name || 'Unnamed User'}</span>
+                        <span className="text-xs text-gray-500 truncate w-full" title={user.email}>{user.email || 'No email'}</span>
                       </div>
                     );
                   })}

@@ -29,8 +29,8 @@ export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing
 
   useEffect(() => {
     try {
-      successAudioRef.current = new Audio('/audio/success.mp3'); 
-      failureAudioRef.current = new Audio('/audio/fail.mp3');
+      successAudioRef.current = new Audio('https://ygkbhfdqvrluegsrjpaj.supabase.co/storage/v1/object/public/media/success.mp3'); 
+      failureAudioRef.current = new Audio('https://ygkbhfdqvrluegsrjpaj.supabase.co/storage/v1/object/public/media/fail.mp3');
       successAudioRef.current.load();
       failureAudioRef.current.load();
     } catch (err) {
@@ -111,19 +111,14 @@ export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing
       <form onSubmit={onSubmit} className="space-y-4 p-4 border border-gray-200 rounded-lg shadow-sm bg-white">
         <div>
           <label htmlFor="market-region" className="block text-sm font-medium text-gray-700 mb-1">Market Region</label>
-          <select
+          <input
             id="market-region"
             value={marketRegion}
             onChange={(e) => setMarketRegion(e.target.value)}
             className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isPending || isProcessing}
             required
-          >
-            <option value="" disabled>Select region</option>
-            {marketRegions.map((region) => (
-              <option key={region} value={region}>{region}</option>
-            ))}
-          </select>
+          />
         </div>
         <div>
           <label htmlFor="file-upload" className="block text-sm font-medium text-gray-700 mb-1">Leads CSV File</label>
