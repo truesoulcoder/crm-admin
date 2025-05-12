@@ -1,4 +1,5 @@
 import { getAdminSupabaseClient } from '../services/supabaseAdminService';
+import { logSystemEvent } from './logService';
 import { renderTemplate } from './templateService';
 import { generatePdfFromHtml } from './pdfService';
 import { sendEmail } from './gmailService';
@@ -19,7 +20,15 @@ export async function processCampaign(campaignId: string) {
     .select(`*, template:templates(id,subject,content), pdf_template:templates(id,content)`)
     .eq('id', campaignId)
     .single();
-  if (campErr || !campaignData) throw new Error('Campaign not found');
+  if (campErr || !campaignData) {
+    await logSystemEvent({
+      event_type: 'ERROR',
+      message: 'Campaign not found',
+      details: { campaignId, error: campErr },
+      campaign_id: campaignId
+    });
+    throw new Error('Campaign not found');
+  }
   const campaign = campaignData;
 
   // Safety mode: send one email per user allocation, then exit
@@ -49,6 +58,13 @@ export async function processCampaign(campaignId: string) {
     const { data: statusRow } = await supabase.from('campaigns').select('status').eq('id', campaignId).single();
     if (statusRow?.status === 'STOPPING') {
       await supabase.from('campaigns').update({ status: 'STOPPED' }).eq('id', campaignId);
+      await import('./logService').then(({ logSystemEvent }) =>
+        logSystemEvent({
+          event_type: 'CAMPAIGN_STATUS',
+          message: 'Campaign stopped',
+          campaign_id: campaignId
+        })
+      );
       break;
     }
 
@@ -61,6 +77,13 @@ export async function processCampaign(campaignId: string) {
         .eq('status', 'COMPLETED_SUCCESS');
       if (count! >= campaign.quota) {
         await supabase.from('campaigns').update({ status: 'COMPLETED' }).eq('id', campaignId);
+        await import('./logService').then(({ logSystemEvent }) =>
+          logSystemEvent({
+            event_type: 'CAMPAIGN_STATUS',
+            message: 'Campaign completed (quota reached)',
+            campaign_id: campaignId
+          })
+        );
         break;
       }
     }
@@ -76,6 +99,13 @@ export async function processCampaign(campaignId: string) {
     const { data: leads } = await query as { data: NormalizedLead[] };
     if (!leads || leads.length === 0) {
       await supabase.from('campaigns').update({ status: 'COMPLETED' }).eq('id', campaignId);
+      await import('./logService').then(({ logSystemEvent }) =>
+        logSystemEvent({
+          event_type: 'CAMPAIGN_STATUS',
+          message: 'Campaign completed (no leads left)',
+          campaign_id: campaignId
+        })
+      );
       break;
     }
 
@@ -134,6 +164,14 @@ export async function processCampaign(campaignId: string) {
       } catch (err) {
         jobErrors = true;
         console.error('Email send error:', err);
+        await import('./logService').then(({ logSystemEvent }) =>
+          logSystemEvent({
+            event_type: 'ERROR',
+            message: 'Email send error',
+            details: { jobId, error: err },
+            campaign_id: campaignId
+          })
+        );
       }
     }
 
@@ -150,9 +188,23 @@ export async function startCampaign(campaignId: string) {
     .from('campaigns')
     .update({ status: 'ACTIVE' })
     .eq('id', campaignId);
-  processCampaign(campaignId).catch(error => {
+  await import('./logService').then(({ logSystemEvent }) =>
+    logSystemEvent({
+      event_type: 'CAMPAIGN_STATUS',
+      message: 'Campaign started',
+      campaign_id: campaignId
+    })
+  );
+  processCampaign(campaignId).catch(async error => {
     console.error('Campaign processing error:', error);
-    // Optionally log to system_event_logs
+    await import('./logService').then(({ logSystemEvent }) =>
+      logSystemEvent({
+        event_type: 'ERROR',
+        message: 'Campaign processing error',
+        details: { campaignId, error },
+        campaign_id: campaignId
+      })
+    );
   });
 }
 
@@ -164,4 +216,11 @@ export async function stopCampaign(campaignId: string) {
     .from('campaigns')
     .update({ status: 'STOPPING' })
     .eq('id', campaignId);
+  await import('./logService').then(({ logSystemEvent }) =>
+    logSystemEvent({
+      event_type: 'CAMPAIGN_STATUS',
+      message: 'Campaign stopping',
+      campaign_id: campaignId
+    })
+  );
 }

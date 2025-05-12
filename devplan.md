@@ -52,6 +52,8 @@
     - Modifying SQL scripts (`setup_tables.sql`, `setup_functions.sql`, `setup_index.sql`, `cleanup.sql`) to add the `market_region` column to `normalized_leads`, update the `normalize_staged_leads` function to accept and process this new field, and remove old archiving logic.
     - Updating the frontend `LeadUploader.tsx` component to include an input field for `market_region` and send it with the lead data.
     - Modifying the backend API route `/api/leads/upload/route.ts` to receive the `market_region`, pass it to the updated Supabase normalization function, and update Supabase client initialization (removing deprecated `@supabase/auth-helpers-nextjs` and confirming correct usage of `@supabase/supabase-js` for service role client).
+    - Increase max file size for CSV uploads to 50MB and enforce it in the API.
+    - Lint the codebase after making the changes.
     - This change simplifies lead categorization and management by directly associating leads with a market region upon upload, replacing a more complex archiving system.
 
 ### API Endpoints for Document Templates

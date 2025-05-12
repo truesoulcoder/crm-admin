@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react'; 
+import Toast from '../ui/Toast';
 import { FileText, PlusCircle, Edit3, Trash2, Search, Filter, ChevronsUpDown, Palette, X, Loader2, Bold, Italic, Heading1, Heading2, Heading3, Pilcrow } from 'lucide-react'; 
 import { useEditor, EditorContent, Editor } from '@tiptap/react'; 
 import StarterKit from '@tiptap/starter-kit'; 
 import Placeholder from '@tiptap/extension-placeholder'; 
+import Link from './tiptap-link-extension';
 
 // --- Helper Functions --- 
 
@@ -76,6 +78,30 @@ const MenuBar: React.FC<{ editor: Editor | null }> = ({ editor }) => {
         <Italic size={16}/>
       </button>
       <button
+        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        className={`btn btn-sm btn-ghost ${editor.isActive('bulletList') ? 'btn-active' : ''}`}
+        title="Bullet List"
+      >
+        • List
+      </button>
+      <button
+        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        className={`btn btn-sm btn-ghost ${editor.isActive('orderedList') ? 'btn-active' : ''}`}
+        title="Ordered List"
+      >
+        1. List
+      </button>
+      <button
+        onClick={() => {
+          const url = window.prompt('Enter URL');
+          if (url) editor.chain().focus().setMark('link', { href: url }).run();
+        }}
+        className={`btn btn-sm btn-ghost ${editor.isActive('link') ? 'btn-active' : ''}`}
+        title="Insert Link (Ctrl+K)"
+      >
+        🔗
+      </button>
+      <button
         onClick={() => editor.chain().focus().setParagraph().run()}
         className={`btn btn-sm btn-ghost ${editor.isActive('paragraph') ? 'btn-active' : ''}`}
         title="Paragraph"
@@ -108,6 +134,8 @@ const MenuBar: React.FC<{ editor: Editor | null }> = ({ editor }) => {
 };
 
 const TemplatesView: React.FC = () => {
+  const [toast, setToast] = useState<{message: string, type?: 'success' | 'error' | 'info'}|null>(null);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('All'); 
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
@@ -139,6 +167,7 @@ const TemplatesView: React.FC = () => {
         },
       }),
       Placeholder.configure({ placeholder: 'Enter HTML content here... use {{placeholder_name}} for variables.' }),
+      Link,
     ],
     content: newTemplateBody,
     onUpdate: ({ editor }) => {
@@ -153,7 +182,7 @@ const TemplatesView: React.FC = () => {
 
   useEffect(() => {
     if (editor && editor.getHTML() !== newTemplateBody) {
-      editor.commands.setContent(newTemplateBody, false); 
+      editor.commands.setContent(newTemplateBody || '', false); 
     }
   }, [newTemplateBody, editor]);
 
@@ -307,9 +336,10 @@ const TemplatesView: React.FC = () => {
 
       closeModal();
       await fetchTemplates(); 
-
+      setToast({ message: `Template ${editingTemplate ? 'updated' : 'created'} successfully!`, type: 'success' });
     } catch (err: any) {
       setModalError(err.message);
+      setToast({ message: `Failed to ${editingTemplate ? 'update' : 'create'} template.`, type: 'error' });
       console.error(`Error ${editingTemplate ? 'updating' : 'creating'} template:`, err);
     }
     setIsSubmitting(false);
@@ -328,20 +358,20 @@ const TemplatesView: React.FC = () => {
         }
 
         await fetchTemplates(); 
-        alert(`Template "${templateName}" deleted successfully.`);
-
+        setToast({ message: `Template deleted successfully!`, type: 'success' });
       } catch (err: any) {
         setError(err.message); 
+        setToast({ message: `Failed to delete template.`, type: 'error' });
         console.error('Error deleting template:', err);
-        alert(`Error deleting template: ${err.message}`);
       }
     }
   };
 
   const filteredTemplates = documentTemplates.filter(template => {
+    if (!template.is_active) return false;
     const matchesSearch = template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (template.subject && template.subject.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesType = filterType === 'All' || template.type.toLowerCase() === filterType.toLowerCase();
+    const matchesType = filterType === 'All' || (template.type && template.type.toLowerCase() === filterType.toLowerCase());
     return matchesSearch && matchesType;
   });
 
@@ -525,6 +555,8 @@ const TemplatesView: React.FC = () => {
           </div>
         </dialog>
       )}
+      {/* Toast Notification */}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 };

@@ -1,11 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Mail, BarChart2, Edit3, Trash2, PlayCircle, PauseCircle, AlertTriangle, X, Check } from 'lucide-react';
+import { Mail, BarChart2, Edit3, Trash2, PlayCircle, PauseCircle, AlertTriangle, X, Check, List } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
 import { createBrowserClient } from '@supabase/ssr';
 import { LetterFx, Avatar, AvatarGroup, AvatarProps } from '../../once-ui/components';
 
 import { Campaign } from '../../types/engine';
+const CampaignMonitorView = dynamic(() => import('./CampaignMonitorView'), { ssr: false });
 
 // Helper function to generate initials
 const getInitials = (name?: string): string => {
@@ -34,6 +37,10 @@ interface User {
 
 // Main component
 const CampaignsView: React.FC = () => {
+  // ...existing state
+  const [monitorModalOpen, setMonitorModalOpen] = useState(false);
+  const [monitorCampaignId, setMonitorCampaignId] = useState<string | null>(null);
+
   // Initialize Supabase client with the modern SSR package
   const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
   
@@ -592,7 +599,21 @@ const CampaignsView: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    {/* Monitor Modal */}
+    {monitorModalOpen && monitorCampaignId && (
+      <div className="modal modal-open">
+        <div className="modal-box w-11/12 max-w-4xl">
+          <button
+            className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+            onClick={() => setMonitorModalOpen(false)}
+          >
+            <X size={20} />
+          </button>
+          <CampaignMonitorView campaignId={monitorCampaignId} />
+        </div>
+      </div>
+    )}
+  </div>
   );
 };
 

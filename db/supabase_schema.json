@@ -1,0 +1,2032 @@
+[
+  {
+    "table": "processing_status",
+    "column": "id",
+    "type": "integer",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "processing_status",
+    "column": "file",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "processing_status",
+    "column": "status",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "processing_status",
+    "column": "completed_at",
+    "type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "processing_status",
+    "column": "normalized_at",
+    "type": "timestamp without time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "processing_status",
+    "column": "user_id",
+    "type": "uuid",
+    "is_nullable": "YES",
+    "foreign_key": "users"
+  },
+  {
+    "table": "document_templates",
+    "column": "id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "document_templates",
+    "column": "user_id",
+    "type": "uuid",
+    "is_nullable": "YES",
+    "foreign_key": "users"
+  },
+  {
+    "table": "document_templates",
+    "column": "name",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "document_templates",
+    "column": "type",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "document_templates",
+    "column": "content",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "document_templates",
+    "column": "subject",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "document_templates",
+    "column": "available_placeholders",
+    "type": "jsonb",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "document_templates",
+    "column": "is_active",
+    "type": "boolean",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "document_templates",
+    "column": "created_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "document_templates",
+    "column": "updated_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "console_log_events",
+    "column": "id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "console_log_events",
+    "column": "type",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "console_log_events",
+    "column": "message",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "console_log_events",
+    "column": "timestamp",
+    "type": "bigint",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "console_log_events",
+    "column": "user_id",
+    "type": "uuid",
+    "is_nullable": "YES",
+    "foreign_key": "users"
+  },
+  {
+    "table": "console_log_events",
+    "column": "created_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "user_id",
+    "type": "uuid",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "name",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "email",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "provider",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "daily_quota",
+    "type": "integer",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "is_active",
+    "type": "boolean",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "created_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "updated_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "title",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "emails_sent",
+    "type": "integer",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "last_sent_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "oauth_token",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "senders",
+    "column": "refresh_token",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "id",
+    "type": "bigint",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "original_lead_id",
+    "type": "uuid",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "contact1_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "contact1_email_1",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "contact2_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "contact2_email_1",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "contact3_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "contact3_email_1",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "mls_curr_list_agent_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "mls_curr_list_agent_email",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "property_address",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "property_city",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "property_state",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "property_postal_code",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "property_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "market_region",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "baths",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "beds",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "year_built",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "square_footage",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "wholesale_value",
+    "type": "numeric",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "assessed_total",
+    "type": "numeric",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "mls_curr_status",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "mls_curr_days_on_market",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "created_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "normalized_leads",
+    "column": "updated_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "first_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "last_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "recipient_address",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "recipient_city",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "recipient_state",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "recipient_postal_code",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "property_address",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "property_city",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "property_state",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "property_zip",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "county",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "owner_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "owner_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "owner_email",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "last_sales_date",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "last_sales_price",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "price_per_sq_ft",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "square_footage",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "lot_size_sqft",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "property_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "baths",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "beds",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_1",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_1_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_1_dnc",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_1_litigator",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_email_1",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_2",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_2_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_2_dnc",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_2_litigator",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_email_2",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_3",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_3_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_3_dnc",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_phone_3_litigator",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact1_email_3",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_1",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_1_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_1_dnc",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_1_litigator",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_email_1",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_2",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_2_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_2_dnc",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_2_litigator",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_email_2",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_3",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_3_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_3_dnc",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_phone_3_litigator",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact2_email_3",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_1",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_1_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_1_dnc",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_1_litigator",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_email_1",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_2",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_2_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_2_dnc",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_2_litigator",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_email_2",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_3",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_3_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_3_dnc",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_phone_3_litigator",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "contact3_email_3",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "house_style",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "year_built",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "assessed_year",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "school_district",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "stories",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "heating_fuel",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "subdivision",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "zoning",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "units",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "condition",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "exterior",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "interior_walls",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "basement",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "roof",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "roof_shape",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "water",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "sewer",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "location_influence",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "heating",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "air_conditioning",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "fireplace",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "garage",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "patio",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "pool",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "porch",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "tax_amount",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "avm",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "rental_estimate_low",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "rental_estimate_high",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "wholesale_value",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "market_value",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "assessed_total",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_listing_id",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_status",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_list_date",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_sold_date",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_days_on_market",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_list_price",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_sale_price",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_description",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_source",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_list_agent_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_list_agent_phone",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_list_agent_email",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_list_agent_office",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_price_per_sqft",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_sqft",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_basement",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_lot",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_beds",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_baths",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_garage",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_stories",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_year_built",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_curr_photos",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_listing_id",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_status",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_list_date",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_sold_date",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_days_on_market",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_list_price",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_sale_price",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_description",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_source",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_list_agent_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_list_agent_phone",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_list_agent_email",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_list_agent_office",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_price_per_sqft",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_sqft",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_basement",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_lot",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_beds",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_baths",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_garage",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_stories",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_year_built",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "mls_prev_photos",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "address_hash",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "original_filename",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "market_region",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "created_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "leads",
+    "column": "updated_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "profiles",
+    "column": "id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": "users"
+  },
+  {
+    "table": "profiles",
+    "column": "updated_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "profiles",
+    "column": "username",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "profiles",
+    "column": "full_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "profiles",
+    "column": "avatar_url",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "profiles",
+    "column": "website",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "lead_sources",
+    "column": "id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "lead_sources",
+    "column": "name",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "lead_sources",
+    "column": "description",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "lead_sources",
+    "column": "file_name",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "lead_sources",
+    "column": "last_imported",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "lead_sources",
+    "column": "record_count",
+    "type": "integer",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "lead_sources",
+    "column": "is_active",
+    "type": "boolean",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "lead_sources",
+    "column": "metadata",
+    "type": "jsonb",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "lead_sources",
+    "column": "storage_path",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "lead_sources",
+    "column": "created_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "lead_sources",
+    "column": "updated_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_senders",
+    "column": "id",
+    "type": "bigint",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_senders",
+    "column": "name",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_senders",
+    "column": "email",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_senders",
+    "column": "is_active",
+    "type": "boolean",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_senders",
+    "column": "created_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_senders",
+    "column": "updated_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_senders",
+    "column": "avatar_url",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "name",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "description",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "status",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "email_template_id",
+    "type": "uuid",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "loi_template_id",
+    "type": "uuid",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "lead_source_id",
+    "type": "uuid",
+    "is_nullable": "YES",
+    "foreign_key": "lead_sources"
+  },
+  {
+    "table": "campaigns",
+    "column": "leads_per_day",
+    "type": "integer",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "start_time",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "end_time",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "min_interval_minutes",
+    "type": "integer",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "max_interval_minutes",
+    "type": "integer",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "attachment_type",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "tracking_enabled",
+    "type": "boolean",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "total_leads",
+    "type": "integer",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "leads_worked",
+    "type": "integer",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "company_logo_path",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "email_subject",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "email_body",
+    "type": "text",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "created_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "updated_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaigns",
+    "column": "user_id",
+    "type": "uuid",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "campaign_id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": "campaigns"
+  },
+  {
+    "table": "campaign_leads",
+    "column": "lead_id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "status",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "assigned_to",
+    "type": "uuid",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "assigned_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "sent_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "opened_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "clicked_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "replied_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "bounced_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "converted_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "created_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_leads",
+    "column": "updated_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_senders",
+    "column": "id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_senders",
+    "column": "campaign_id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": "campaigns"
+  },
+  {
+    "table": "campaign_senders",
+    "column": "sender_id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_senders",
+    "column": "emails_sent_today",
+    "type": "integer",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_senders",
+    "column": "total_emails_sent",
+    "type": "integer",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_senders",
+    "column": "daily_quota",
+    "type": "integer",
+    "is_nullable": "YES",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_senders",
+    "column": "created_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "campaign_senders",
+    "column": "updated_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_templates",
+    "column": "id",
+    "type": "uuid",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_templates",
+    "column": "name",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_templates",
+    "column": "subject",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_templates",
+    "column": "body",
+    "type": "text",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_templates",
+    "column": "created_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  },
+  {
+    "table": "email_templates",
+    "column": "updated_at",
+    "type": "timestamp with time zone",
+    "is_nullable": "NO",
+    "foreign_key": null
+  }
+]

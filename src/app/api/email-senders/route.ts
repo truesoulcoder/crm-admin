@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient as createSupabaseAdminClient } from '@supabase/supabase-js';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { google } from 'googleapis';
 
 // Initialize Supabase client
-// Ensure your environment variables are set up for these
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseServiceRoleKey = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl) {
   throw new Error('Missing env.NEXT_PUBLIC_SUPABASE_URL');
@@ -15,19 +16,23 @@ if (!supabaseServiceRoleKey) {
   throw new Error('Missing env.SUPABASE_SERVICE_ROLE_KEY');
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+const supabaseAdmin = createSupabaseAdminClient(supabaseUrl, supabaseServiceRoleKey);
 
 // Zod schema for validating POST request body
 const createSenderSchema = z.object({
-  employee_name: z.string().min(1, { message: 'Employee name is required' }),
-  employee_email: z.string().email({ message: 'Invalid email address' }),
+  name: z.string().min(1, { message: 'Sender name is required' }),
+  email: z.string().email({ message: 'Invalid email address' }),
   is_active: z.boolean().optional().default(true),
+  is_default: z.boolean().optional().default(false),
 });
 
 export interface EmailSender {
-  id: number;
-  employee_name: string;
-  employee_email: string;
+  id: string;
+  user_id: string;
+  name: string;
+  email: string;
+  is_default: boolean;
+  credentials_json?: any;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -51,14 +56,39 @@ export interface EmailSender {
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/EmailSender'
+ *       401:
+ *         description: Not authenticated
  *       500:
  *         description: Internal server error
  */
 export async function GET(req: NextRequest) {
+  const cookieStorePromise = cookies();
+  const cookieStore = await cookieStorePromise;
+  const supabaseUserClient = createServerClient(
+    supabaseUrl!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) { return cookieStore.get(name)?.value },
+        set(name: string, value: string, options: CookieOptions) { cookieStore.set({ name, value, ...options }) },
+        remove(name: string, options: CookieOptions) { cookieStore.set({ name, value: '', ...options }) },
+      },
+    }
+  );
+
+  const { data: { user }, error: authError } = await supabaseUserClient.auth.getUser();
+
+  if (authError || !user) {
+    console.error('Error fetching user for email senders:', authError);
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+  const userId = user.id;
+
   try {
-    const { data, error } = await supabase
-      .from('email_senders')
+    const { data, error } = await supabaseAdmin
+      .from('senders')
       .select('*')
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -94,9 +124,9 @@ export async function GET(req: NextRequest) {
 
     const auth = new google.auth.JWT({
       email: serviceKeyParsed.client_email,
-      key: serviceKeyParsed.private_key, // Directly use the parsed private key
+      key: serviceKeyParsed.private_key,
       scopes: ['https://www.googleapis.com/auth/admin.directory.user.readonly'],
-      subject: process.env.GOOGLE_DELEGATED_ADMIN_EMAIL // User to impersonate for Admin SDK
+      subject: process.env.GOOGLE_DELEGATED_ADMIN_EMAIL
     });
 
     const directory = google.admin({ version: 'directory_v1', auth });
@@ -106,7 +136,7 @@ export async function GET(req: NextRequest) {
     const sendersWithPhoto = await Promise.all(
       senders.map(async (sender) => {
         try {
-          const res = await directory.users.get({ userKey: sender.employee_email, fields: 'thumbnailPhotoUrl' });
+          const res = await directory.users.get({ userKey: sender.email, fields: 'thumbnailPhotoUrl' });
           return { ...sender, photo_url: res.data.thumbnailPhotoUrl! };
         } catch {
           return sender;
@@ -135,13 +165,13 @@ export async function GET(req: NextRequest) {
  *           schema:
  *             type: object
  *             required:
- *               - employee_name
- *               - employee_email
+ *               - name
+ *               - email
  *             properties:
- *               employee_name:
+ *               name:
  *                 type: string
  *                 example: 'John Doe'
- *               employee_email:
+ *               email:
  *                 type: string
  *                 format: email
  *                 example: 'john.doe@example.com'
@@ -149,6 +179,10 @@ export async function GET(req: NextRequest) {
  *                 type: boolean
  *                 example: true
  *                 default: true
+ *               is_default:
+ *                 type: boolean
+ *                 example: false
+ *                 default: false
  *     responses:
  *       201:
  *         description: Email sender created successfully.
@@ -158,12 +192,36 @@ export async function GET(req: NextRequest) {
  *               $ref: '#/components/schemas/EmailSender'
  *       400:
  *         description: Invalid request body
+ *       401:
+ *         description: Not authenticated
  *       409:
  *         description: Conflict - Email address already exists
  *       500:
  *         description: Internal server error
  */
 export async function POST(req: NextRequest) {
+  const cookieStorePromise = cookies();
+  const cookieStore = await cookieStorePromise;
+  const supabaseUserClient = createServerClient(
+    supabaseUrl!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) { return cookieStore.get(name)?.value },
+        set(name: string, value: string, options: CookieOptions) { cookieStore.set({ name, value, ...options }) },
+        remove(name: string, options: CookieOptions) { cookieStore.set({ name, value: '', ...options }) },
+      },
+    }
+  );
+
+  const { data: { user }, error: authError } = await supabaseUserClient.auth.getUser();
+
+  if (authError || !user) {
+    console.error('Error authenticating user for creating sender:', authError);
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+  const userId = user.id;
+
   try {
     const body = await req.json();
     const validation = createSenderSchema.safeParse(body);
@@ -172,34 +230,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request body', details: validation.error.flatten() }, { status: 400 });
     }
 
-    const { employee_name, employee_email, is_active } = validation.data;
+    const { name, email, is_active, is_default } = validation.data;
 
-    // Check if email already exists to prevent duplicates (as per UNIQUE constraint)
-    const { data: existingSender, error: existingError } = await supabase
-      .from('email_senders')
+    // Check if email already exists for this user to prevent duplicates
+    const { data: existingSender, error: existingError } = await supabaseAdmin
+      .from('senders')
       .select('id')
-      .eq('employee_email', employee_email)
+      .eq('email', email)
+      .eq('user_id', userId)
       .maybeSingle();
 
-    if (existingError && existingError.code !== 'PGRST116') { // PGRST116: Row not found, which is fine
-        console.error('Error checking for existing sender:', existingError);
-        return NextResponse.json({ error: existingError.message }, { status: 500 });
+    if (existingError && existingError.code !== 'PGRST116') {
+      console.error('Error checking for existing sender:', existingError);
+      return NextResponse.json({ error: existingError.message }, { status: 500 });
     }
 
     if (existingSender) {
       return NextResponse.json({ error: 'Conflict: Email address already exists.' }, { status: 409 });
     }
 
-    const { data: newSender, error: insertError } = await supabase
-      .from('email_senders')
-      .insert([{ employee_name, employee_email, is_active }])
+    // TODO: If is_default is true, implement transaction to set other senders for this user_id to is_default = false.
+    // For now, the DB unique index uq_default_sender_per_user will prevent multiple defaults per user.
+    // If this insert attempts to create a second default for the same user, it will fail due to that index.
+
+    const { data: newSender, error: insertError } = await supabaseAdmin
+      .from('senders')
+      .insert([{ name, email, is_active, user_id: userId, is_default }])
       .select()
-      .single(); // Assuming you want the created object back
+      .single();
 
     if (insertError) {
       console.error('Error creating email sender:', insertError);
-      // Check for unique constraint violation specifically if the above check somehow missed it
-      if (insertError.code === '23505') { // PostgreSQL unique_violation
+      if (insertError.code === '23505') {
         return NextResponse.json({ error: 'Conflict: Email address already exists.' }, { status: 409 });
       }
       return NextResponse.json({ error: insertError.message }, { status: 500 });
@@ -208,15 +270,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(newSender as EmailSender, { status: 201 });
   } catch (err: any) {
     console.error('Unexpected error in POST /api/email-senders:', err);
-    // Check if it's a JSON parsing error
     if (err instanceof SyntaxError && err.message.includes('JSON')) {
-        return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
     return NextResponse.json({ error: err.message || 'An unexpected error occurred' }, { status: 500 });
   }
 }
 
-// Basic schema definition for Swagger documentation (can be expanded)
 /**
  * @swagger
  * components:
@@ -225,15 +285,24 @@ export async function POST(req: NextRequest) {
  *       type: object
  *       properties:
  *         id:
- *           type: integer
- *           description: The auto-generated ID of the email sender.
- *         employee_name:
  *           type: string
- *           description: The name of the employee.
- *         employee_email:
+ *           description: The auto-generated ID of the email sender.
+ *         user_id:
+ *           type: string
+ *           description: The ID of the user who owns this sender.
+ *         name:
+ *           type: string
+ *           description: The name of the sender.
+ *         email:
  *           type: string
  *           format: email
- *           description: The email address of the employee used for sending.
+ *           description: The email address of the sender used for sending.
+ *         is_default:
+ *           type: boolean
+ *           description: Whether this sender is the default for the user.
+ *         credentials_json:
+ *           type: object
+ *           description: The JSON credentials for the sender (not handled in this API yet).
  *         is_active:
  *           type: boolean
  *           description: Whether the sender account is active.
@@ -250,9 +319,12 @@ export async function POST(req: NextRequest) {
  *           format: uri
  *           description: The URL of the sender's Google profile picture.
  *       example:
- *         id: 1
- *         employee_name: 'Jane Doe'
- *         employee_email: 'jane.doe@example.com'
+ *         id: '123e4567-e89b-12d3-a456-426614174000'
+ *         user_id: '123e4567-e89b-12d3-a456-426614174000'
+ *         name: 'Jane Doe'
+ *         email: 'jane.doe@example.com'
+ *         is_default: true
+ *         credentials_json: {}
  *         is_active: true
  *         created_at: '2023-10-26T10:00:00Z'
  *         updated_at: '2023-10-26T10:00:00Z'

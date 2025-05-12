@@ -1,5 +1,6 @@
 // src/app/api/leads/upload/route.ts
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import Papa from 'papaparse';
 import { randomUUID } from 'crypto';
@@ -25,6 +26,37 @@ type LeadStagingRow = Record<string, any>;
 export async function POST(request: NextRequest) {
   console.log('API: /api/leads/upload POST request received.');
 
+  const cookieStorePromise = cookies();
+  const cookieStore = await cookieStorePromise;
+  const supabaseUserClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+        // set and remove are not strictly needed here if we only fetch the user
+        // but are good practice to include for the ssr client configuration
+        set(name: string, value: string, options: CookieOptions) {
+          cookieStore.set({ name, value, ...options });
+        },
+        remove(name: string, options: CookieOptions) {
+          cookieStore.set({ name, value: '', ...options });
+        },
+      },
+    }
+  );
+
+  const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser();
+
+  if (userError || !user) {
+    console.error('API Error: User not authenticated for lead upload.', userError);
+    return NextResponse.json({ ok: false, error: 'User not authenticated.' }, { status: 401 });
+  }
+  const userId = user.id;
+  console.log('API: Authenticated user ID for lead upload:', userId);
+
   const formData = await request.formData();
   const file = formData.get('file') as File;
   const marketRegion = formData.get('market_region') as string;
@@ -36,6 +68,12 @@ export async function POST(request: NextRequest) {
     console.error('API Error: No file provided.');
     return NextResponse.json({ ok: false, error: 'No file provided.' }, { status: 400 });
   }
+  // Enforce max file size (50MB)
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+  if (file.size > MAX_FILE_SIZE) {
+    console.error(`API Error: File size exceeds 50MB limit. Provided: ${file.size}`);
+    return NextResponse.json({ ok: false, error: 'File size exceeds 50MB limit.' }, { status: 413 });
+  }
   if (!marketRegion || marketRegion.trim() === '') {
     console.error('API Error: No market region provided or market region is empty.');
     return NextResponse.json({ ok: false, error: 'No market region provided.' }, { status: 400 });
@@ -43,7 +81,7 @@ export async function POST(request: NextRequest) {
 
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY!
   );
   
   try {
@@ -151,8 +189,8 @@ export async function POST(request: NextRequest) {
 
 
     // ---------- 3. CALL THE NORMALIZATION FUNCTION ----------
-    console.log('API: Attempting to call normalize_staged_leads function...');
-    const { error: rpcError } = await supabaseAdmin.rpc('normalize_staged_leads');
+    console.log('API: Attempting to call normalize_staged_leads function for user:', userId);
+    const { error: rpcError } = await supabaseAdmin.rpc('normalize_staged_leads', { p_market_region: marketRegion });
 
     if (rpcError) {
       console.error('RPC call to normalize_staged_leads failed:', rpcError);
