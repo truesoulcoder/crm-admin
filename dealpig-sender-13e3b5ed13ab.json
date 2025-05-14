@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "dealpig-sender",
+  "private_key_id": "13e3b5ed13abd9860178c0bfc65eac04a301b1cb",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQC+QAZQoEbev/dE\nTsRMjEClHjWLWDuWx0OLwZ0bVi4emr3ZNKioFisoTzogtXGkv6+dPVRSFBJaouEp\nIm2iIChYNTj3OZO0gue3tvcL4sJhRc1jhvQ4E9Rse1vzbNa0+GpUc0bb3pTqeVhk\nP66WcOa/hSk1rEaZuOOM5ye55jKM8v8pDhGEl6uC/Cpw64UIpKIWvzEUQsGgMnl7\nHq8M+qr/8iKOTTwn+77OKFpF+dn0Loux0YM5O7JujcjM16ZT3ugsA1Mk66KJRCJu\neU/y5ZCz72Ih6wgyXUb7YvhwX5l7smKgEPndh6MB39hCigpPuI63H/nuMZLpRrcO\ndbUR0gELAgMBAAECggEANQYQHIGHLwbuqfWQBUujqsFwJ+2H8h6IR1fHazqKMRJs\nrjBcfzhqf9oQ99PKICIill7k9NlOQj+aJIZJawGubOMshM7hyVIgtdXDJedlyImV\nVFNlFooETtXUy1P+xUJlFDNqwNXYyD7YsVwEUz6VOTSqRyDELozWssssCcZMOXb3\nEXkTSfK78bxcM6Lj8Y8kL8Jp3R8+Dax0WUYPdMKFSt46biqK/CcDR6XY8ypUr+uM\nCmt66rJ3aMn5Ruu+9huLgksXVsfBCJEksx0RxHRZ7ynbzUof2LRkNwONfUA4TPOy\ncJdcaXsFuYLhqAf5TLq8ZGUkLfapPyi6LUakVU0sWQKBgQDoptDYNVecO7ft6OSz\nqsMxc1EqUiwCeC39WqFP5fMsdZ9nxUBVzKA4YUiUCeRSeEerHaRacafeTRIb2PQn\nMmgdgOusmgEQ9DZ3ybZCfJfpULBEFD3g33WhIKWJ29Fth+Mi3ylmlTVMIGkNJGGp\nHDFbUAheZc+ErDRXdd1FwSXp8wKBgQDRV9jngDS+YaHnIo9nm0RtkDonQKlKTaYl\nceSbSdgWDm7TllXwgFgtJPOrAJ6TJfvNjaGBEyEuLwtz3nrLpn3zs3G4IkZ6Vw2p\nr9vBrhVVi0OBNgHKkJANWmrYeiPmAz2byguk5vbEKoLkua+TVPRfbjf34R4K4Jrb\nzSRe+U56iQKBgQCVheDjlCTifF8RwIR8FFuvBHY9xOIUFDk6g2z5dMh84nu4rcVT\nX1f55ExJGLJtbnBhQYPHvRQug0oIK79/EZ5ol9rf63qT8uCuzC0fPgREJ1+h4YCD\nbhqjm9/IYkaPJq6MUvDAxVSjwJDDqYY6savnC+DVCon8stBRBadYlXJQkQKBgQCx\nvS9ZJp4hgk1vLAWrxsVrbMgjKaBSiOjm4/Nf8Wt5Fpn8JakjwCSdd8E20BjTAK3x\nES4to+tJBgJoR13k6KAJuLJ1zwwdtSnRh5FCuSY98jbHTu5oaSMVY05SLCmskdXO\nHtaSFNMxLJLj1c//fGLbX34/hK/4NkjlFCCsTmnWWQKBgQCei2LqyKyNB9DWdsaI\nqwTA6c1BzviuX0HJJjxO9+fHu648KGnSHRPFo7ip8UHCT3u3yxj4UC128dhD21Hf\n4wYvQCVdUNMFnm12EQecg3C3j9zSmLAIc2MGrNTUfEBRxSeeNB/xnZIxKTe3Tm05\nHIjzVk4kWwILsXHu82GSbrx4lA==\n-----END PRIVATE KEY-----\n",
+  "client_email": "dealpig-sender@dealpig-sender.iam.gserviceaccount.com",
+  "client_id": "117166212851271331021",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/dealpig-sender%40dealpig-sender.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
