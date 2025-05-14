@@ -2,7 +2,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-export default function Home() {
+export default function LoginPage() {
   const router = useRouter();
 
   useEffect(() => {
@@ -18,8 +18,7 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-base-100">
       <div className="bg-white shadow-lg rounded-lg p-8 w-full max-w-md flex flex-col items-center">
-        <img src="/dealpig.svg" alt="DealPig Logo" className="w-24 h-24 mb-4" />
-        <h1 className="text-2xl font-bold mb-6">Sign in to DealPig</h1>
+        <img src="https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media//logo.png" alt="App Logo" className="w-28 h-28 mb-8 rounded-full shadow" />
         <button
           onClick={handleGoogleLogin}
           className="flex items-center px-6 py-3 bg-primary text-white rounded-lg shadow hover:bg-primary-focus transition font-semibold text-lg"
