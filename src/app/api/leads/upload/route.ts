@@ -120,32 +120,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let leadsToInsert: LeadStagingRow[] = parsed.data.map((leadData: any) => {
-      const leadForStaging: { [key: string]: any } = {};
-      for (const key in leadData) {
-        if (Object.prototype.hasOwnProperty.call(leadData, key)) {
+    let leadsToInsert = parsed.data.map((csvRowData: any) => {
+      const rawDataPayload: { [key: string]: any } = {};
+      for (const key in csvRowData) {
+        if (Object.prototype.hasOwnProperty.call(csvRowData, key)) {
           let newKey = convertToSnakeCase(key);
           
-          if (newKey === 'id') {
-            continue; 
-          }
+          // If CSV has an 'id' column, it will be stored as 'id' within raw_data.
+          // This is generally fine as the 'leads' table PK is a separate UUID.
           
+          // Keep existing key transformations for consistency within raw_data
           if (newKey === 'lot_size_sq_ft') { 
             newKey = 'lot_size_sqft'; 
           }
           
-          // **** ADD THIS TRANSFORMATION ****
           if (newKey === 'property_postal_code') {
             newKey = 'property_zip';
           }
-          // **** END OF ADDED TRANSFORMATION ****
           
-          leadForStaging[newKey] = leadData[key];
+          rawDataPayload[newKey] = csvRowData[key];
         }
       }
-      leadForStaging.original_filename = file.name; 
-      leadForStaging.market_region = marketRegion; // Ensure market_region is added
-      return leadForStaging;
+      
+      // Construct the object that matches the 'leads' table schema
+      return {
+        uploaded_by: userId, // userId is available from auth context
+        file_name: file.name, // Use file_name as per schema
+        market_region: marketRegion,
+        raw_data: rawDataPayload // All CSV data goes here
+      };
     });
 
     console.log('API: Number of leads to insert (before check):', leadsToInsert.length); 
