@@ -9,19 +9,19 @@ import {
   DisplayProps,
   FlexProps,
   SizeProps,
-  SpacingProps,
   StyleProps,
-} from "../interfaces";
-import { ColorScheme, ColorWeight, SpacingToken, TextVariant } from "../types";
+} from "./interfaces";
+import { ColorScheme, ColorWeight, TextVariant } from "@/once-ui/types";
 
 interface ComponentProps
   extends FlexProps,
-    SpacingProps,
     SizeProps,
     StyleProps,
     CommonProps,
     DisplayProps,
-    ConditionalProps {}
+    ConditionalProps {
+  children?: React.ReactNode;
+}
 
 const Flex = forwardRef<HTMLDivElement, ComponentProps>(
   (
@@ -262,7 +262,7 @@ const Flex = forwardRef<HTMLDivElement, ComponentProps>(
     );
 
     const parseDimension = (
-      value: number | SpacingToken | undefined,
+      value: number | string | undefined,
       type: "width" | "height",
     ): string | undefined => {
       if (value === undefined) return undefined;

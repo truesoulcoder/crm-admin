@@ -16,6 +16,7 @@ interface AvatarProps extends React.ComponentProps<typeof Flex> {
   };
   style?: React.CSSProperties;
   className?: string;
+  title?: string;
 }
 
 const sizeMapping: Record<"xs" | "s" | "m" | "l" | "xl", number> = {
@@ -36,7 +37,7 @@ const statusIndicatorSizeMapping: Record<"xs" | "s" | "m" | "l" | "xl", "s" | "m
 
 const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
   (
-    { size = "m", value, src, loading, empty, statusIndicator, className, style = {}, ...rest },
+    { size = "m", value, src, loading, empty, statusIndicator, className, style = {}, title, ...rest },
     ref,
   ) => {
     const sizeInRem = typeof size === "number" ? `${size}rem` : undefined;
@@ -91,7 +92,7 @@ const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
             src={src}
             fill
             alt="Avatar"
-            sizes={typeof size === "string" ? `${sizeMapping[size]}px` : `${size * 16}px`}
+            sizes={typeof size === "string" ? `${sizeMapping[size as keyof typeof sizeMapping]}px` : `${size * 16}px`}
             className={styles.image}
           />
         );
@@ -117,6 +118,7 @@ const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
     return (
       <Flex
         ref={ref}
+        title={title}
         role="img"
         horizontal="center"
         vertical="center"
@@ -131,7 +133,7 @@ const Avatar = forwardRef<HTMLDivElement, AvatarProps>(
         {statusIndicator && (
           <StatusIndicator
             position="absolute"
-            size={typeof size === "string" ? statusIndicatorSizeMapping[size] : "l"}
+            size={typeof size === "string" ? statusIndicatorSizeMapping[size as keyof typeof statusIndicatorSizeMapping] : "l"}
             color={statusIndicator.color}
             className={`${styles.className || ""} ${styles.indicator} ${size === "xl" || (typeof size === "number" && size >= 10) ? styles.position : ""}`}
             aria-label={`Status: ${statusIndicator.color}`}

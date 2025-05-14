@@ -6,7 +6,7 @@ export type CrmView =
   | 'leads'
   | 'campaigns'
   | 'templates'
-  | 'accounts'
+  | 'senders'
   | 'settings';
 
 // Example Lead type (align with your Supabase schema)
@@ -40,6 +40,8 @@ export interface Lead {
 export interface NormalizedLead {
   id: number; // From BIGSERIAL PRIMARY KEY
   original_lead_id?: string | null; // UUID from the 'leads' staging table
+  contact_name?: string | null;  // Alias for contact1_name
+  contact_email?: string | null; // Alias for contact1_email_1
   
   // Contact fields from the multi-contact schema
   contact1_name?: string | null;
@@ -66,6 +68,7 @@ export interface NormalizedLead {
   mls_curr_status?: string | null;
   mls_curr_days_on_market?: string | null;
   market_region?: string | null; // Added for filtering
+  avm_value?: number | string | null; // Added to represent AVM value from upload form
   
   created_at: string; // TIMESTAMPTZ from DB comes as string
   updated_at: string; // TIMESTAMPTZ from DB comes as string
@@ -83,13 +86,14 @@ export interface EmailTemplate {
   updated_at: string;
 }
 
-// Example GmailAccount type
-export interface GmailAccount {
+// Sender type (unified)
+export interface Sender {
   id: string;
-  employee_name: string;
-  gmail_address: string;
-  last_authorized_at: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
   is_active: boolean;
+  last_authorized_at?: string;
   status_message?: string;
 }
 
@@ -104,16 +108,6 @@ export interface CampaignStep {
   sending_account_id: string;
 }
 
-// UserAccount type for user management
-export interface UserAccount {
-  id: string;
-  name: string;
-  email: string;
-  role: 'Admin' | 'Manager' | 'Agent' | 'Viewer';
-  status: 'Active' | 'Pending' | 'Suspended';
-  lastLogin: string;
-  avatarUrl?: string;
-}
 
 // Example Campaign type
 export interface Campaign {

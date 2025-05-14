@@ -4,14 +4,12 @@ import React, { useState, useMemo, ChangeEvent, FormEvent, useEffect, useRef } f
 import { Users, PlusCircle, Edit3, Trash2, Eye, Search, Filter, ChevronUp, ChevronDown, Briefcase, AtSign, Phone, CalendarDays, Tag, UserCheck, Save, XCircle, AlertTriangle, UploadCloud } from 'lucide-react';
 import { Background } from '../../once-ui/components/Background';
 
-import { NormalizedLead } from '../../types'; 
+import type { NormalizedLead } from '../../types/index'; 
 import { createClient } from '../../lib/supabase/client'; 
 
 const LeadsView: React.FC = () => {
   const supabase = createClient(); 
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterMlsStatus, setFilterMlsStatus] = useState<'All' | string>('All'); 
   const [filterMarketRegion, setFilterMarketRegion] = useState<'All' | string>('All');
   const [uploadMarketRegion, setUploadMarketRegion] = useState<string>(""); // New state for upload
 
@@ -29,7 +27,7 @@ const LeadsView: React.FC = () => {
     contact_name: '',
     contact_email: '',
     property_address: '',
-    property_city: '',
+    // property_city (legacy, now unused for filtering): '',
     property_state: '',
     property_postal_code: '',
     property_type: '',
@@ -49,26 +47,49 @@ const LeadsView: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
-  // Moved useMemo hooks before conditional returns to fix lint error
-  const uniqueMarketRegions = useMemo(() => 
-    ['All', ...Array.from(new Set(leads.map(lead => lead.market_region).filter(Boolean) as string[]))], 
-    [leads]
-  );
-  const uniqueMlsStatuses = useMemo(() => 
-    ['All', ...Array.from(new Set(leads.map(lead => lead.mls_curr_status).filter(Boolean) as string[]))], 
-    [leads]
-  );
+  // Server-side filter options
+  const [allMarketRegions, setAllMarketRegions] = useState<string[]>(['All']);
+
+  // Fetch distinct filter options on mount
+  useEffect(() => {
+    const fetchFilterOptions = async () => {
+      try {
+        // Get distinct market_region from normalized_leads
+        const { data: regionsData, error: regionsError } = await supabase
+          .from('normalized_leads')
+          .select('market_region');
+        if (regionsError) throw regionsError;
+        if (regionsData) {
+          const regions = Array.from(
+            new Set(
+              regionsData
+                .map((r: any) => r.market_region)
+                .filter((v) => v && v.trim())
+            )
+          );
+          setAllMarketRegions(['All', ...regions]);
+        }
+      } catch (err) {
+        console.error('Error fetching filter options:', err);
+      }
+    };
+    fetchFilterOptions();
+    // eslint-disable-next-line
+  }, []);
 
   useEffect(() => {
     const fetchNormalizedLeads = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const { data, error: supabaseError } = await supabase
+        let query = supabase
           .from('normalized_leads')
-          .select('*')
-          .order(sortField || 'created_at', { ascending: sortDirection === 'asc' }); 
-
+          .select('*');
+        if (filterMarketRegion !== 'All') {
+          query = query.eq('market_region', filterMarketRegion);
+        }
+        query = query.order((sortField as string) || 'created_at', { ascending: sortDirection === 'asc' });
+        const { data, error: supabaseError } = await query;
         if (supabaseError) {
           throw supabaseError;
         }
@@ -79,46 +100,11 @@ const LeadsView: React.FC = () => {
       }
       setIsLoading(false);
     };
-
     fetchNormalizedLeads();
-  }, [sortField, sortDirection, supabase]); 
+  }, [sortField, sortDirection, supabase, filterMarketRegion]);
 
-  const sortedAndFilteredLeads = useMemo(() => {
-    let filtered = leads.filter(lead => {
-      const search = searchTerm.toLowerCase();
-      const matchesSearch = 
-        (lead.contact_name?.toLowerCase().includes(search) || false) ||
-        (lead.contact_email?.toLowerCase().includes(search) || false) ||
-        (lead.property_address?.toLowerCase().includes(search) || false) ||
-        (lead.market_region?.toLowerCase().includes(search) || false);
-
-      const matchesMlsStatus = filterMlsStatus === 'All' || lead.mls_curr_status === filterMlsStatus;
-      const matchesMarketRegion = filterMarketRegion === 'All' || lead.market_region === filterMarketRegion;
-      
-      return matchesSearch && matchesMlsStatus && matchesMarketRegion;
-    });
-
-    if (sortField && leads.length > 0) {
-      filtered.sort((a, b) => {
-        const valA = a[sortField];
-        const valB = b[sortField];
-
-        if (valA === undefined || valA === null) return sortDirection === 'asc' ? 1 : -1;
-        if (valB === undefined || valB === null) return sortDirection === 'asc' ? -1 : 1;
-
-        if (typeof valA === 'string' && typeof valB === 'string') {
-          return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-        }
-        if (typeof valA === 'number' && typeof valB === 'number') {
-          return sortDirection === 'asc' ? valA - valB : valB - valA;
-        }
-        const strA = String(valA);
-        const strB = String(valB);
-        return sortDirection === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA);
-      });
-    }
-    return filtered;
-  }, [searchTerm, filterMlsStatus, filterMarketRegion, sortField, sortDirection, leads]);
+  // No client-side search: use leads array directly
+  const displayedLeads = leads;
 
   const handleSort = (field: keyof NormalizedLead | '') => {
     if (sortField === field) {
@@ -175,7 +161,7 @@ const LeadsView: React.FC = () => {
         // Ensure all required fields for DB that aren't auto-generated are present
         // Convert empty strings to null for optional numeric/text fields if DB expects null
         avm_value: newLeadData.avm_value ? Number(newLeadData.avm_value) : null,
-        // Ensure other fields like property_city, property_state etc. are handled
+        // Ensure other fields like // property_city (legacy, now unused for filtering), property_state etc. are handled
       };
 
       // Remove undefined properties that might have come from Partial<NormalizedLead>
@@ -192,7 +178,7 @@ const LeadsView: React.FC = () => {
       }
 
       if (insertedLead) {
-        setLeads(prevLeads => [insertedLead, ...prevLeads]); // Add to local state
+        setLeads((prevLeads: NormalizedLead[]) => [insertedLead, ...prevLeads]); // Add to local state
       }
       handleCloseModal();
     } catch (err) {
@@ -213,85 +199,38 @@ const LeadsView: React.FC = () => {
   };
 
   // --- CSV Upload Handlers ---
-  const handleUploadButtonClick = () => {
-    fileInputRef.current?.click(); // Trigger hidden file input
-  };
-
-  const fetchLeadsAndResetUpload = async () => {
-    // Re-fetch leads (assuming fetchNormalizedLeads is defined in the useEffect or can be extracted)
-    // For simplicity, we'll trigger the useEffect by changing a dummy state or calling a refetch function if available
-    // A more direct way if fetchNormalizedLeads is callable:
-    setIsLoading(true);
-    setError(null);
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setSelectedFile(file);
+    if (!file) return;
+    if (!uploadMarketRegion.trim()) {
+      alert('Market Region is required before upload.');
+      return;
+    }
+    setIsUploading(true);
+    setUploadStatus(null);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('market_region', uploadMarketRegion);
     try {
-      const { data, error: supabaseError } = await supabase
-        .from('normalized_leads')
-        .select('*')
-        .order(sortField || 'created_at', { ascending: sortDirection === 'asc' });
-      if (supabaseError) throw supabaseError;
-      setLeads(data || []);
-    } catch (err) {
-      console.error('Error refetching leads:', err);
-      setError(err instanceof Error ? err.message : 'Error refetching leads.');
+      const res = await fetch('/api/leads/upload', { method: 'POST', body: formData });
+      const result = await res.json();
+      if (result.ok) {
+        setUploadStatus('File processed and leads normalized successfully.');
+        // Optionally reload data or filters
+      } else {
+        setUploadStatus('Upload failed: ' + (result.error || 'Unknown error'));
+      }
+    } catch (err: any) {
+      setUploadStatus('Upload failed: ' + err.message);
     }
-    setIsLoading(false);
+    setIsUploading(false);
   };
 
-  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (!uploadMarketRegion || uploadMarketRegion.trim() === "") {
-        const errorMsg = 'Please enter a Market Region for the upload before selecting a file.';
-        console.error('Upload error: LeadsView -', errorMsg);
-        setUploadStatus(`Upload failed: ${errorMsg}`);
-        // Clear file input and selected file state
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-        setSelectedFile(null);
-        setIsUploading(false); // Ensure uploading state is reset
-        return; // Stop the upload process
-      }
-
-      setSelectedFile(file);
-      // Immediately attempt to upload
-      setIsUploading(true);
-      setUploadStatus('Uploading... Please wait.');
-      setError(null); // Clear previous main errors
-
-      const formData = new FormData();
-      formData.append('file', file); 
-      formData.append('market_region', uploadMarketRegion); // Use the new state here
-
-      try {
-        const response = await fetch('/api/leads/upload', {
-          method: 'POST',
-          body: formData,
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-          throw new Error(result.message || `Upload failed with status: ${response.status}`);
-        }
-        
-        setUploadStatus(`Upload successful: ${result.message || 'Leads processed.'}. Refreshing table...`);
-        await fetchLeadsAndResetUpload(); // Refresh data
-        setTimeout(() => setUploadStatus(null), 5000); // Clear status after 5s
-      } catch (err) {
-        console.error('Upload error:', err);
-        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred during upload.';
-        setUploadStatus(`Upload failed: ${errorMessage}`);
-        // setError(`Upload failed: ${errorMessage}`); // Optionally set main error too
-      } finally {
-        setIsUploading(false);
-        setSelectedFile(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ''; // Reset file input
-        }
-      }
-    }
+  const handleUploadButtonClick = () => {
+    fileInputRef.current?.click();
   };
+
   // --- End CSV Upload Handlers ---
 
   if (isLoading && !isUploading) { // Don't show main loading if only uploading
@@ -328,43 +267,24 @@ const LeadsView: React.FC = () => {
       </header>
 
       <div className="mb-6 p-4 bg-base-200 rounded-lg shadow flex flex-wrap gap-4 items-center">
-        <div className="relative flex-grow min-w-[200px]">
-          <input 
-            type="text" 
-            placeholder="Search leads (name, email, address, market)..." 
-            className="input input-bordered w-full pl-10"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-base-content opacity-50" />
-        </div>
-        <div className="form-control min-w-[150px]">
-          <select 
-            className="select select-bordered"
-            value={filterMlsStatus}
-            onChange={(e) => setFilterMlsStatus(e.target.value)}
-          >
-            {uniqueMlsStatuses.map(status => <option key={status} value={status}>{status}</option>)}
-          </select>
-        </div>
         <div className="form-control min-w-[150px]">
           <select 
             className="select select-bordered"
             value={filterMarketRegion}
             onChange={(e) => setFilterMarketRegion(e.target.value)}
           >
-            {uniqueMarketRegions.map(region => <option key={region} value={region}>{region}</option>)}
+            {allMarketRegions.map(region => <option key={region} value={region}>{region}</option>) }
           </select>
         </div>
         <button onClick={handleOpenModal} className="btn btn-primary">
           <PlusCircle size={20} className="mr-2" /> Add New Lead
         </button>
-        <input 
-          type="file" 
-          ref={fileInputRef} 
+        <input
+          type="file"
+          ref={fileInputRef}
           onChange={handleFileChange}
           accept=".csv"
-          style={{ display: 'none' }} 
+          style={{ display: 'none' }}
         />
         <button onClick={handleUploadButtonClick} className="btn btn-secondary" disabled={isUploading}>
           {isUploading ? (
@@ -419,8 +339,8 @@ const LeadsView: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {sortedAndFilteredLeads.length > 0 ? (
-              sortedAndFilteredLeads.map((lead) => (
+            {displayedLeads.length > 0 ? (
+              displayedLeads.map((lead) => (
                 <tr key={lead.id} className="hover:bg-base-200 transition-colors duration-150">
                   <td>{lead.contact_name || 'N/A'}</td>
                   <td>{lead.contact_email || 'N/A'}</td>
@@ -467,7 +387,6 @@ const LeadsView: React.FC = () => {
               {/* Row 3: Property Address Details */}
               <div><label className="label"><span className="label-text">Property Full Address</span></label><input type="text" name="property_address" value={newLeadData.property_address || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><label className="label"><span className="label-text">Property City</span></label><input type="text" name="property_city" value={newLeadData.property_city || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
                 <div><label className="label"><span className="label-text">Property State</span></label><input type="text" name="property_state" value={newLeadData.property_state || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
                 <div><label className="label"><span className="label-text">Property Postal Code</span></label><input type="text" name="property_postal_code" value={newLeadData.property_postal_code || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
               </div>

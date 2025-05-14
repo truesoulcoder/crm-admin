@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import {
   Users, Send, FileText, DollarSign, TrendingUp, TrendingDown, AlertCircle, Crown, BarChart3, LineChart as LineChartIcon, Activity, Target, Award, Star, MessageSquare, UserCheck, UserX, UserPlus
 } from 'lucide-react';
@@ -94,6 +95,17 @@ const recentActivities = [
   { icon: <UserX size={20} className="text-error" />, text: 'Email to "test@invalid-domain-yo.com" bounced (Hard Bounce).' },
 ];
 
+// --- Email Metrics Mock Data ---
+const emailMetricsData = [
+  { name: 'May 1', Sent: 1200, Bounced: 45, Delivered: 1155 },
+  { name: 'May 2', Sent: 1100, Bounced: 25, Delivered: 1075 },
+  { name: 'May 3', Sent: 1300, Bounced: 32, Delivered: 1268 },
+  { name: 'May 4', Sent: 900,  Bounced: 18, Delivered: 882 },
+  { name: 'May 5', Sent: 1500, Bounced: 60, Delivered: 1440 },
+  { name: 'May 6', Sent: 1700, Bounced: 55, Delivered: 1645 },
+  { name: 'May 7', Sent: 1600, Bounced: 40, Delivered: 1560 },
+];
+
 // --- Chart Data Preparation ---
 const campaignChartData = mockCampaignPerformances.map(c => ({
   name: c.name,
@@ -131,7 +143,6 @@ const DashboardView: React.FC = () => {
   return (
     <div className="space-y-6 p-4 md:p-6 lg:p-8">
       <h1 className="text-3xl font-bold text-base-content mb-6">CRM Dashboard</h1>
-      
       {/* General Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {generalStats.map((stat, index) => (
@@ -154,6 +165,26 @@ const DashboardView: React.FC = () => {
           </div>
         ))}
       </div>
+      {/* Email Metrics Chart */}
+      <div className="card bg-base-100 shadow-xl mb-6">
+        <div className="card-body">
+          <h2 className="card-title text-xl font-semibold text-base-content mb-4 flex items-center">
+            <LineChartIcon className="mr-2 text-info" /> Email Metrics (Sent, Bounced, Delivered)
+          </h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={emailMetricsData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} />
+              <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'hsl(var(--bc) / 0.7)' }} axisLine={{strokeOpacity: 0.2}} tickLine={{strokeOpacity: 0.2}} />
+              <YAxis tickFormatter={(value) => value.toLocaleString()} tick={{ fontSize: 12, fill: 'hsl(var(--bc) / 0.7)' }} axisLine={{strokeOpacity: 0.2}} tickLine={{strokeOpacity: 0.2}} allowDecimals={false} />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--b2))' }} />
+              <Legend wrapperStyle={{ fontSize: '13px', paddingTop: '10px' }} />
+              <Line type="monotone" dataKey="Sent" stroke="hsl(var(--in))" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              <Line type="monotone" dataKey="Bounced" stroke="hsl(var(--er))" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              <Line type="monotone" dataKey="Delivered" stroke="hsl(var(--su))" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Campaign Performance Chart */}
@@ -173,7 +204,11 @@ const DashboardView: React.FC = () => {
               </BarChart>
             </ResponsiveContainer>
           </div>
+
+      
         </div>
+
+      
 
         {/* Lead Conversion Funnel (Simplified) */}
         <div className="card bg-base-100 shadow-xl">
@@ -191,8 +226,14 @@ const DashboardView: React.FC = () => {
               </BarChart>
             </ResponsiveContainer>
           </div>
+
+      
         </div>
+
+      
       </div>
+
+      
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* User KPI Leaderboard */}
@@ -222,14 +263,22 @@ const DashboardView: React.FC = () => {
                         <div className="flex items-center space-x-3">
                           <div className="avatar">
                             <div className="mask mask-squircle w-10 h-10">
-                              <img src={user.avatarUrl} alt={`${user.name}'s avatar`} />
+                              <Image src={user.avatarUrl} alt={`${user.name}'s avatar`} width={40} height={40} className="mask mask-squircle" />
                             </div>
+
+      
                           </div>
+
+      
                           <div>
                             <div className="font-bold text-base-content">{user.name}</div>
                             <div className="text-xs text-base-content/70">{user.role}</div>
                           </div>
+
+      
                         </div>
+
+      
                       </td>
                       <td className="text-right">{user.leadsGenerated.toLocaleString()}</td>
                       <td className="text-right">{user.dealsClosed.toLocaleString()}</td>
@@ -238,14 +287,22 @@ const DashboardView: React.FC = () => {
                         <div className="tooltip" data-tip={`Score: ${user.activityScore}/100`}>
                            <progress className="progress progress-primary w-20" value={user.activityScore} max="100"></progress>
                         </div>
+
+      
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+
+      
           </div>
+
+      
         </div>
+
+      
 
         {/* Recent Activity */}
         <div className="card bg-base-100 shadow-xl">
@@ -260,8 +317,14 @@ const DashboardView: React.FC = () => {
               ))}
             </ul>
           </div>
+
+      
         </div>
+
+      
       </div>
+
+      
 
     </div>
   );

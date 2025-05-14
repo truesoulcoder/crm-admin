@@ -1,7 +1,0 @@
-{
-  "/api/normalized-leads/route": "app/api/normalized-leads/route.js",
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/leads/upload/route": "app/api/leads/upload/route.js",
-  "/leads/page": "app/leads/page.js",
-  "/page": "app/page.js"
-}

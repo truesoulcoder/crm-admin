@@ -6,20 +6,54 @@ body {
   @apply bg-base-200 min-h-screen font-sans antialiased;
 }
 
-/* Custom scrollbar for webkit browsers */
+/* General scrollbar styling for webkit browsers */
+/* Works on Chrome, Edge, Safari */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  @apply w-2; /* width: 8px */
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-base-300 rounded-md;
+  @apply bg-base-200; /* Background of the scrollbar track */
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-primary rounded-md;
+  @apply bg-base-content rounded-md; /* Color of the scrollbar thumb */
+  /* opacity: 0.5; */ /* Example of making it slightly transparent */
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-primary;
+  @apply bg-primary; /* Color of the scrollbar thumb on hover */
 }
+
+/* Custom styles for TipTap editor headings within .prose -- REMOVED FOR DEBUGGING */
+/*
+.prose h1,
+.prose .ProseMirror h1 {
+  font-size: 2.25em; 
+  font-weight: 700;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+}
+
+.prose h2,
+.prose .ProseMirror h2 {
+  font-size: 1.875em; 
+  font-weight: 700;
+  margin-top: 1em;
+  margin-bottom: 0.4em;
+}
+
+.prose h3,
+.prose .ProseMirror h3 {
+  font-size: 1.5em; 
+  font-weight: 700;
+  margin-top: 0.875em;
+  margin-bottom: 0.35em;
+}
+
+.prose p,
+.prose .ProseMirror p {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+*/

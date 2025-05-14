@@ -19,7 +19,7 @@ const menuItems: MenuItem[] = [
   { view: 'leads', icon: <Users size={20} />, label: 'Lead Management' },
   { view: 'campaigns', icon: <Send size={20} />, label: 'Campaigns' },
   { view: 'templates', icon: <FileText size={20} />, label: 'Templates' },
-  { view: 'accounts', icon: <UserCog size={20} />, label: 'User Accounts' },
+  { view: 'senders', icon: <UserCog size={20} />, label: 'Senders' },
   { view: 'settings', icon: <Settings size={20} />, label: 'Settings' },
 ];
 
@@ -32,7 +32,7 @@ const Sidebar: React.FC = () => {
     leads: '/leads',
     campaigns: '/campaigns',
     templates: '/templates',
-    accounts: '/accounts',
+    senders: '/email-senders',
     settings: '/settings',
   };
 

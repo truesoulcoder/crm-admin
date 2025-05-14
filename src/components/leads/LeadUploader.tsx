@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition, useRef, useEffect } from 'react';
+import { supabase } from '../../lib/supabaseClient';
 
 // Define the expected response structure from the upload API
 interface UploadResponse {
@@ -19,7 +20,8 @@ interface LeadUploaderProps {
 
 export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing }: LeadUploaderProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [marketRegion, setMarketRegion] = useState<string>(''); 
+  const [marketRegion, setMarketRegion] = useState<string>('');
+  const [marketRegions, setMarketRegions] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition(); 
   const successAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -27,13 +29,26 @@ export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing
 
   useEffect(() => {
     try {
-      successAudioRef.current = new Audio('/audio/success.mp3'); 
-      failureAudioRef.current = new Audio('/audio/fail.mp3');
+      successAudioRef.current = new Audio('https://ygkbhfdqvrluegsrjpaj.supabase.co/storage/v1/object/public/media/success.mp3'); 
+      failureAudioRef.current = new Audio('https://ygkbhfdqvrluegsrjpaj.supabase.co/storage/v1/object/public/media/fail.mp3');
       successAudioRef.current.load();
       failureAudioRef.current.load();
     } catch (err) {
       console.warn('Audio initialization error:', err);
     }
+  }, []);
+
+  // Fetch available market regions
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase
+        .from('normalized_leads')
+        .select('market_region');
+      if (!error && data) {
+        const regions = Array.from(new Set(data.map((row: any) => row.market_region)));
+        setMarketRegions(regions);
+      }
+    })();
   }, []);
 
   async function onSubmit(e: React.FormEvent) {
@@ -98,13 +113,11 @@ export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing
           <label htmlFor="market-region" className="block text-sm font-medium text-gray-700 mb-1">Market Region</label>
           <input
             id="market-region"
-            type="text"
             value={marketRegion}
             onChange={(e) => setMarketRegion(e.target.value)}
-            placeholder="e.g., Dallas, TX or SoCal"
             className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isPending || isProcessing}
-            required 
+            required
           />
         </div>
         <div>
