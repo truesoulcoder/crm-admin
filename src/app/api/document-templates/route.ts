@@ -33,14 +33,43 @@ export interface DocumentTemplate {
 }
 
 // Helper to get Supabase client for Route Handlers
+function getSupabaseSessionCookie(cookieStore: any, projectRef: string) {
+  // Try to reassemble chunked cookies if present
+  let session = cookieStore.get(`sb-${projectRef}-auth-token`);
+  if (!session) {
+    // Try chunked
+    let i = 0;
+    let chunk = '';
+    while (cookieStore.get(`sb-${projectRef}-auth-token.${i}`)) {
+      chunk += cookieStore.get(`sb-${projectRef}-auth-token.${i}`).value;
+      i++;
+    }
+    if (chunk) {
+      session = { value: chunk };
+    }
+  }
+  return session;
+}
+
 async function getSupabaseRouteHandlerClient() {
   const cookieStore = await cookies();
+  const projectRef = process.env.NEXT_PUBLIC_SUPABASE_URL!.split('https://')[1].split('.')[0];
+  // DEBUG: Output cookies to help diagnose auth/session issues
+  console.log('Cookies in API route:', cookieStore.getAll());
+  // Fix for chunked cookies
+  const sessionCookie = getSupabaseSessionCookie(cookieStore, projectRef);
+
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) { return cookieStore.get(name)?.value; },
+        get(name: string) {
+          if (name === `sb-${projectRef}-auth-token` && sessionCookie) {
+            return sessionCookie.value;
+          }
+          return cookieStore.get(name)?.value;
+        },
         set(name: string, value: string, options: CookieOptions) { cookieStore.set({ name, value, ...options }); },
         remove(name: string, options: CookieOptions) { cookieStore.set({ name, value: '', ...options }); },
       },
