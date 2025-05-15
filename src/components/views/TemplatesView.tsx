@@ -229,6 +229,11 @@ const TemplatesView: React.FC = () => {
         fetch('/api/document-templates'),
         fetch('/api/email-templates'),
       ]);
+      if (docRes.status === 401 || emailRes.status === 401) {
+        setToast({ message: 'You are not authorized. Please log in again.', type: 'error' });
+        window.location.href = '/';
+        return;
+      }
       if (!docRes.ok || !emailRes.ok) {
         const errResp = !docRes.ok ? await docRes.json() : await emailRes.json();
         throw new Error(errResp.error || 'Failed to fetch templates');
@@ -302,9 +307,9 @@ const TemplatesView: React.FC = () => {
 
     const templateData = {
       name: newTemplateName,
-      type: newTemplateType,
+      template_type: newTemplateType,
       subject: newTemplateType === 'email' ? newTemplateSubject : null,
-      content: newTemplateBody, 
+      body: newTemplateBody, 
       available_placeholders: finalPlaceholdersToSave,
       is_active: true, 
     };
@@ -330,6 +335,11 @@ const TemplatesView: React.FC = () => {
       }
 
       if (!response.ok) {
+        if (response.status === 401) {
+          setToast({ message: 'You are not authorized. Please log in again.', type: 'error' });
+          window.location.href = '/';
+          return;
+        }
         const errorData = await response.json();
         throw new Error(errorData.error || `Failed to ${editingTemplate ? 'update' : 'create'} template`);
       }

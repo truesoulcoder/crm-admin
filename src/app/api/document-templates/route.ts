@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr'; // Updated import
 import { cookies } from 'next/headers'; // For createServerClient
 import { z } from 'zod';
-import { Database } from '@/types_db'; // Assuming this is your Supabase generated types path
+import type { Database } from '../../types'; // TODO: Define Database type in src/types.ts or replace with correct path
+// If Database is not defined, temporarily use 'any' and update later.
 
 // Refined Zod schema for document templates, aligning with assumed DB columns
 const documentTemplateSchema = z.object({
@@ -32,8 +33,8 @@ export interface DocumentTemplate {
 }
 
 // Helper to get Supabase client for Route Handlers
-function getSupabaseRouteHandlerClient() {
-  const cookieStore = cookies();
+async function getSupabaseRouteHandlerClient() {
+  const cookieStore = await cookies();
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -49,7 +50,7 @@ function getSupabaseRouteHandlerClient() {
 
 // GET handler to fetch document templates for the authenticated user
 export async function GET(req: NextRequest) {
-  const supabase = getSupabaseRouteHandlerClient();
+  const supabase = await getSupabaseRouteHandlerClient();
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -107,7 +108,7 @@ export async function GET(req: NextRequest) {
 
 // POST handler to create a new document template
 export async function POST(request: NextRequest) {
-  const supabase = getSupabaseRouteHandlerClient();
+  const supabase = await getSupabaseRouteHandlerClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -86,9 +86,18 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
             </div>
           </button>
           <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
-            <li><a>Profile <span className="badge badge-info">New</span></a></li>
-            <li><a>Settings</a></li>
-            <li><a>Logout</a></li>
+            <li>
+              <a
+                onClick={() => {
+                  import('@/lib/auth').then(({ logout }) => {
+                    logout();
+                    window.location.href = '/';
+                  });
+                }}
+              >
+                Logout
+              </a>
+            </li>
           </ul>
         </div>
       </div>

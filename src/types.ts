@@ -1,5 +1,9 @@
 // Shared types for CRM
 
+// TODO: Replace this with your generated Supabase Database type
+export type Database = any;
+
+
 export interface Sender {
   id: number;
   employee_name: string;
