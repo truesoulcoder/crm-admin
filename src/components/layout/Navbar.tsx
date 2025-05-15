@@ -52,14 +52,12 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
           </div>
         </div>
       </div>
-
       <div className="navbar-end">
         <button onClick={toggleTheme} className="btn btn-ghost btn-circle">
-          {/* Corrected: Show Sun for light theme (to switch to dark), Moon for dark theme (to switch to light) */}
           {currentTheme === 'light' ? <Sun size={20} /> : <Moon size={20} />}
         </button>
-
-        <div className="dropdown dropdown-end">
+        {/* Notification bell */}
+        <div className="dropdown dropdown-end ml-2">
           <button tabIndex={0} className="btn btn-ghost btn-circle">
             <div className="indicator">
               <Bell size={20} />
@@ -76,26 +74,21 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
             </div>
           </div>
         </div>
-
+        {/* Avatar dropdown */}
         <div className="dropdown dropdown-end ml-2">
           <button tabIndex={0} className="btn btn-ghost btn-circle avatar">
             <div className="w-8 rounded-full ring ring-primary ring-offset-base-100 ring-offset-1">
               {avatarUrl ? (
-                <Image src={avatarUrl} alt={fullName || 'User avatar'} width={32} height={32} />
+                <Image src={avatarUrl} alt="User avatar" width={32} height={32} />
               ) : (
-                <div className="bg-gray-200 w-8 h-8 rounded-full" />
+                <UserCircle size={32} className="text-primary" />
               )}
             </div>
           </button>
           <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
-            <li>
-              <a className="justify-between">
-                Profile
-                <span className="badge badge-info">New</span>
-              </a>
-            </li>
-            <li><a>Settings (Link to view)</a></li>
-            <li><a>Logout (Implement Supabase logout)</a></li>
+            <li><a>Profile <span className="badge badge-info">New</span></a></li>
+            <li><a>Settings</a></li>
+            <li><a>Logout</a></li>
           </ul>
         </div>
       </div>
