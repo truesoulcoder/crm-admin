@@ -8,21 +8,26 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // Parse OAuth hash and handle login
-    if (typeof window !== "undefined") {
-      if (window.location.hash && window.location.hash.includes("access_token")) {
-        const parsed = parseOAuthHash(window.location.hash);
-        if (parsed?.access_token) {
-          setLoginState(parsed.access_token);
-          window.location.hash = "";
+    const processAuth = async () => {
+      if (typeof window !== "undefined") {
+        if (window.location.hash && window.location.hash.includes("access_token")) {
+          const parsed = parseOAuthHash(window.location.hash);
+          if (parsed?.access_token) {
+            await setLoginState(parsed.access_token, parsed.refresh_token);
+            window.location.hash = "";
+            router.replace("/dashboard");
+            return; // Exit after handling auth
+          }
+        }
+        // If not handled by hash, check if already logged in
+        const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
+        if (isLoggedIn) {
           router.replace("/dashboard");
-          return;
         }
       }
-      // If already authenticated, redirect to dashboard
-      const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-      if (isLoggedIn) router.replace("/dashboard");
-    }
+    };
+
+    processAuth();
   }, [router]);
 
   const handleGoogleLogin = () => {

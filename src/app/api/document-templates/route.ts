@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient, type CookieOptions } from '@supabase/ssr'; // Updated import
-import { cookies } from 'next/headers'; // For createServerClient
+import { cookies, type ReadonlyRequestCookies } from 'next/headers'; // For createServerClient
 import { z } from 'zod';
-import type { Database } from '../../types'; // TODO: Define Database type in src/types.ts or replace with correct path
+import type { Database } from '../../types/supabase'; // TODO: Define Database type in src/types.ts or replace with correct path
 // If Database is not defined, temporarily use 'any' and update later.
 
 // Refined Zod schema for document templates, aligning with assumed DB columns
@@ -13,7 +13,7 @@ const documentTemplateSchema = z.object({
   subject: z.string().optional().nullable(),
   available_placeholders: z.array(z.string()).optional().nullable(),
   is_active: z.boolean().optional().default(true),
-  // user_id will be added from session for create, id/created_at/updated_at are DB managed
+  // created_by will be added from session for create, id/created_at/updated_at are DB managed
 });
 
 // Schema for creation (can omit fields like is_active if always defaulted)
@@ -21,7 +21,7 @@ const createDocumentTemplateSchema = documentTemplateSchema.omit({ is_active: tr
 
 export interface DocumentTemplate {
   id: string; // UUID
-  user_id: string; // UUID - Added for clarity, though often not returned for every item in a list
+  created_by: string | null; // UUID - Changed from user_id
   name: string;
   template_type: string;
   body: string;
@@ -33,7 +33,7 @@ export interface DocumentTemplate {
 }
 
 // Helper to get Supabase client for Route Handlers
-function getSupabaseSessionCookie(cookieStore: any, projectRef: string) {
+function getSupabaseSessionCookie(cookieStore: ReadonlyRequestCookies, projectRef: string) {
   // Try to reassemble chunked cookies if present
   let session = cookieStore.get(`sb-${projectRef}-auth-token`);
   if (!session) {
@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from('document_templates')
       .select('*', { count: 'exact' })
-      .eq('user_id', user.id);
+      .eq('created_by', user.id);
 
     if (filterIsActive === 'true' || filterIsActive === 'false') {
       query = query.eq('is_active', filterIsActive === 'true');
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
 
     const templateData = {
       ...validation.data,
-      user_id: user.id,
+      created_by: user.id, // Changed from user_id
       is_active: true, // Explicitly set, though create schema defaults it if not omitted
     };
 

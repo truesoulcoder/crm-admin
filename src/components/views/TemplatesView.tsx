@@ -37,8 +37,8 @@ const DEFAULT_PLACEHOLDERS = [
 interface DocumentTemplate {
   id: string;
   name: string;
-  type: string; 
-  content: string; 
+  template_type: string; 
+  body: string; 
   subject?: string | null;
   available_placeholders?: string[] | null;
   is_active: boolean;
@@ -46,12 +46,12 @@ interface DocumentTemplate {
   updated_at: string;
 }
 
-const getTypeBadge = (type: DocumentTemplate['type']) => {
+const getTypeBadge = (template_type: DocumentTemplate['template_type']) => {
   let badgeClass = 'badge-outline';
-  if (type.toLowerCase() === 'email') badgeClass = 'badge-primary badge-outline';
-  else if (type.toLowerCase() === 'loi_document') badgeClass = 'badge-secondary badge-outline';
+  if (template_type.toLowerCase() === 'email') badgeClass = 'badge-primary badge-outline';
+  else if (template_type.toLowerCase() === 'loi_document') badgeClass = 'badge-secondary badge-outline';
   else badgeClass = 'badge-neutral badge-outline'; 
-  return <span className={`badge ${badgeClass}`}>{type}</span>;
+  return <span className={`badge ${badgeClass}`}>{template_type}</span>;
 };
 
 const MenuBar: React.FC<{ editor: Editor | null }> = ({ editor }) => {
@@ -173,6 +173,7 @@ const TemplatesView: React.FC = () => {
     onUpdate: ({ editor }) => {
       setNewTemplateBody(editor.getHTML());
     },
+    immediatelyRender: false,
     editorProps: {
       attributes: {
         class: 'prose dark:prose-invert prose-sm sm:prose-base lg:prose-lg xl:prose-2xl p-3 min-h-[10rem] border border-base-300 rounded-md focus:outline-none focus:border-primary w-full',
@@ -238,16 +239,20 @@ const TemplatesView: React.FC = () => {
         const errResp = !docRes.ok ? await docRes.json() : await emailRes.json();
         throw new Error(errResp.error || 'Failed to fetch templates');
       }
-      const docData = (await docRes.json()) as DocumentTemplate[];
-      const emailData = (await emailRes.json()) as DocumentTemplate[];
-      setDocumentTemplates([...docData, ...emailData]);
+      const docJson = await docRes.json();
+      const emailJson = await emailRes.json();
+
+      const docArray = (docJson.data || []) as DocumentTemplate[]; 
+      const emailArray = (emailJson.data || []) as DocumentTemplate[];
+
+      setDocumentTemplates([...docArray, ...emailArray]);
     } catch (err: any) {
       setError(err.message);
       console.error('Error fetching templates:', err);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [setToast, setError, setIsLoading, setDocumentTemplates]); // Added dependencies
 
   useEffect(() => {
     fetchTemplates();
@@ -270,9 +275,9 @@ const TemplatesView: React.FC = () => {
   const openEditModal = (template: DocumentTemplate) => {
     setEditingTemplate(template);
     setNewTemplateName(template.name);
-    setNewTemplateType(template.type);
+    setNewTemplateType(template.template_type);
     setNewTemplateSubject(template.subject || '');
-    setNewTemplateBody(template.content); 
+    setNewTemplateBody(template.body); 
     const currentPlaceholders = template.available_placeholders || [];
     setRawPlaceholdersInput(currentPlaceholders.join(', '));
     // For editing, clickablePlaceholders are derived from rawPlaceholdersInput via useEffect
@@ -381,11 +386,11 @@ const TemplatesView: React.FC = () => {
     if (!template.is_active) return false;
     const matchesSearch = template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (template.subject && template.subject.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesType = filterType === 'All' || (template.type && template.type.toLowerCase() === filterType.toLowerCase());
+    const matchesType = filterType === 'All' || (template.template_type && template.template_type.toLowerCase() === filterType.toLowerCase());
     return matchesSearch && matchesType;
   });
 
-  const uniqueTemplateTypes = Array.from(new Set(documentTemplates.map(t => t.type)));
+  const uniqueTemplateTypes = Array.from(new Set(documentTemplates.map(t => t.template_type)));
 
   if (isLoading) {
     return (
@@ -439,8 +444,8 @@ const TemplatesView: React.FC = () => {
               onChange={(e) => setFilterType(e.target.value)}
             >
               <option value="All">All Types</option>
-              {uniqueTemplateTypes.map(type => (
-                <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
+              {uniqueTemplateTypes.map(template_type => (
+                <option key={template_type} value={template_type}>{template_type.charAt(0).toUpperCase() + template_type.slice(1)}</option>
               ))}
             </select>
           </div>
@@ -461,7 +466,7 @@ const TemplatesView: React.FC = () => {
                 <h2 className="card-title text-lg truncate" title={template.name}>{template.name}</h2>
                 {template.subject && <p className="text-xs text-base-content/70 truncate" title={template.subject}>{template.subject}</p>}
                 <div className="flex items-center justify-between mt-2">
-                  {getTypeBadge(template.type)}
+                  {getTypeBadge(template.template_type)}
                 </div>
                 <p className="text-xs text-base-content/50 mt-1">Last Updated: {new Date(template.updated_at).toLocaleDateString()}</p>
                 <div className="card-actions justify-end mt-4">
