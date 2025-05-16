@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
 import { Settings, UserCircle, Palette, Bell, Lock, Briefcase, CreditCard, HelpCircle, Moon, Sun, Info } from 'lucide-react';
+import React, { useState } from 'react';
 
 type Theme = 'light' | 'dark' | 'system';
 type NotificationChannel = 'email' | 'sms' | 'inApp';

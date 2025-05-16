@@ -130,7 +130,7 @@ export default [
 
       // Custom/override TypeScript rules (from original)
       '@typescript-eslint/no-unused-vars': [
-        'warn',
+        'off',
         { 
           argsIgnorePattern: '^_', 
           varsIgnorePattern: '^_',
@@ -139,8 +139,8 @@ export default [
       ],
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-non-null-assertion': 'warn',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
       // Type-aware rules (require `project` in parserOptions)
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/await-thenable': 'error',

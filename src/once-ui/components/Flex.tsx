@@ -3,6 +3,8 @@
 import classNames from "classnames";
 import { CSSProperties, forwardRef } from "react";
 
+import { ColorScheme, ColorWeight, TextVariant } from "@/once-ui/types";
+
 import {
   CommonProps,
   ConditionalProps,
@@ -11,7 +13,6 @@ import {
   SizeProps,
   StyleProps,
 } from "./interfaces";
-import { ColorScheme, ColorWeight, TextVariant } from "@/once-ui/types";
 
 interface ComponentProps
   extends FlexProps,
@@ -304,7 +305,7 @@ const Flex = forwardRef<HTMLDivElement, ComponentProps>(
       maxHeight: parseDimension(maxHeight, "height"),
       width: parseDimension(width, "width"),
       height: parseDimension(height, "height"),
-      aspectRatio: aspectRatio,
+      aspectRatio,
       textAlign: align,
       ...style,
     };

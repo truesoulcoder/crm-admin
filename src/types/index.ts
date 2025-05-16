@@ -97,4 +97,7 @@ export interface Campaign {
   emails_sent: number;
   reply_rate?: number;
   steps: CampaignStep[];
+  assigned_user_ids: string[];
+  subject: string;
+  status: string;
 }

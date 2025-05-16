@@ -1,11 +1,13 @@
 "use client";
 
-import React, { CSSProperties, forwardRef, useEffect, useRef, useState } from "react";
-import { SpacingToken } from "../types";
-import { Flex } from "./Flex";
-import { DisplayProps } from "../interfaces";
-import styles from "./Background.module.scss";
 import classNames from "classnames";
+import React, { CSSProperties, forwardRef, useEffect, useRef, useState, ComponentProps, ReactNode } from "react";
+
+import { DisplayProps } from "@/once-ui/interfaces";
+import { SpacingToken } from "@/once-ui/types";
+
+import styles from "./Background.module.scss";
+import { Flex } from "./Flex";
 
 function setRef<T>(ref: React.Ref<T> | undefined, value: T | null) {
   if (typeof ref === "function") {
@@ -58,15 +60,15 @@ interface LinesProps {
   color?: string;
 }
 
-interface BackgroundProps extends React.ComponentProps<typeof Flex> {
+interface BackgroundProps extends ComponentProps<typeof Flex> {
   gradient?: GradientProps;
   dots?: DotsProps;
   grid?: GridProps;
   lines?: LinesProps;
   mask?: MaskProps;
   className?: string;
-  style?: React.CSSProperties;
-  children?: React.ReactNode;
+  style?: CSSProperties;
+  children?: ReactNode;
 }
 
 const Background = forwardRef<HTMLDivElement, BackgroundProps>(
@@ -85,7 +87,7 @@ const Background = forwardRef<HTMLDivElement, BackgroundProps>(
     forwardedRef,
   ) => {
     const dotsColor = dots.color ?? "brand-on-background-weak";
-    const dotsSize = "var(--static-space-" + (dots.size ?? "24") + ")";
+    const dotsSize = `var(--static-space-${dots.size ?? "24"})`;
 
     const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
     const [smoothPosition, setSmoothPosition] = useState({ x: 0, y: 0 });

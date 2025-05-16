@@ -1,15 +1,19 @@
 "use client";
 
-import React, { forwardRef, useState, useEffect, ReactNode } from "react";
-import classNames from "classnames";
-import { IconType, } from "react-icons";
-import { iconLibrary, IconName } from "../icons"; 
-import { ColorScheme, ColorWeight } from "../types";
-import { Flex, Tooltip } from ".";
+import classNames from 'classnames';
+import React, { forwardRef, useState, useEffect, ComponentProps } from 'react';
+
+import { IconName } from '@/once-ui/icons';
+import type {} from '@/once-ui/types';
+
+
 import styles from "./Icon.module.scss";
 import iconStyles from "./IconButton.module.scss";
 
-interface IconProps extends React.ComponentProps<typeof Flex> {
+// eslint-disable-next-line import/no-cycle
+import { Flex, Tooltip } from ".";
+
+interface IconProps extends ComponentProps<'div'> {
   name: IconName;
   onBackground?: `${ColorScheme}-${ColorWeight}`;
   onSolid?: `${ColorScheme}-${ColorWeight}`;

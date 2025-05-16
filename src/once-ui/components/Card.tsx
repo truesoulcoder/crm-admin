@@ -1,12 +1,14 @@
 "use client";
 
-import React, { forwardRef } from "react";
-import { Flex } from ".";
-import styles from "./Card.module.scss";
-import { ElementType } from "./ElementType";
-import classNames from "classnames";
+import classNames from 'classnames';
+import React, { forwardRef, ComponentProps } from 'react';
 
-interface CardProps extends React.ComponentProps<typeof Flex> {
+import './Card.module.scss';
+
+import { Flex } from ".";
+import { ElementType } from "./ElementType";
+
+interface CardProps extends ComponentProps<typeof Flex> {
   children?: React.ReactNode;
   href?: string;
   onClick?: () => void;

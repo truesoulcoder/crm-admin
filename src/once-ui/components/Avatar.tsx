@@ -1,11 +1,13 @@
 "use client";
 
-import React, { forwardRef } from "react";
+import classNames from 'classnames';
+import React, { forwardRef, ComponentProps } from 'react';
+
+import './Avatar.module.scss';
 
 import { Skeleton, Icon, Text, StatusIndicator, Flex, SmartImage } from ".";
-import styles from "./Avatar.module.scss";
 
-interface AvatarProps extends React.ComponentProps<typeof Flex> {
+interface AvatarProps extends ComponentProps<typeof Flex> {
   size?: "xs" | "s" | "m" | "l" | "xl" | number;
   value?: string;
   src?: string;

@@ -1,19 +1,23 @@
 // Extend Window interface for custom CRM token
+import { createClient } from '@supabase/supabase-js';
+
 declare global {
   interface Window {
     __CRM_TOKEN__?: string;
   }
 }
 
-import { createBrowserClient } from '@supabase/ssr';
-
 // Environment variables for Supabase client initialization
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be defined');
+}
 
 // Create a Supabase client instance for use in this auth module
 // Note: This client is primarily for auth.setSession. Components should manage their own instances if needed for data fetching.
-const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Utility to parse OAuth hash and handle login state
 export function parseOAuthHash(hash: string) {
@@ -40,7 +44,7 @@ export async function setLoginState(access_token: string, refresh_token: string 
 
   if (!access_token || !refresh_token) {
     console.error('[auth.ts] setLoginState called without access_token or refresh_token');
-    logout(); // Clear any partial login state
+    void logout(); // Clear any partial login state
     return;
   }
 
@@ -69,7 +73,7 @@ export async function setLoginState(access_token: string, refresh_token: string 
   // Update local state
   window.__CRM_TOKEN__ = access_token;
   localStorage.setItem('isLoggedIn', 'true');
-  console.log('[auth.ts] isLoggedIn flag updated in localStorage.');
+  
 }
 
 export async function logout() { // Make async to call supabase.auth.signOut()

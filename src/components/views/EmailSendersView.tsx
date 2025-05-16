@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { UserCog, PlusCircle, Edit3, Trash2, ShieldCheck, ShieldAlert, Search, Filter, Users, KeyRound, Mail, Power, PowerOff } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 
-import { Sender } from '../../types';
-
+import { Sender } from '@/types';
 
 const SendersView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'senders'>('users');

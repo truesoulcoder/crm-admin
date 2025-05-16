@@ -1,9 +1,14 @@
-import { getAdminSupabaseClient } from '../services/supabaseAdminService';
-import { logSystemEvent } from './logService';
-import { renderTemplate } from './templateService';
-import { generatePdfFromHtml } from './pdfService';
+import { getAdminSupabaseClient } from '@/services/supabaseAdminService';
+import { Tables } from '@/types/supabase';
 import { sendEmail } from './gmailService';
-import { Campaign, CampaignJob, EmailTask, CampaignUserAllocation, NormalizedLead } from '../types/engine';
+import { logSystemEvent } from './logService';
+import { generatePdfFromHtml } from './pdfService';
+import { renderTemplate } from './templateService';
+
+type CampaignJob = Tables<'campaign_jobs'>['Row'];
+type NormalizedLead = Tables<'normalized_leads'>['Row'];
+type CampaignUserAllocation = Tables<'campaign_user_allocations'>['Row'];
+type EmailTask = Tables<'email_tasks'>['Insert'];
 
 const supabase = getAdminSupabaseClient();
 

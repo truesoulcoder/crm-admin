@@ -3,12 +3,10 @@
 import { Users, PlusCircle, Trash2, Eye, Search, Filter, ChevronUp, ChevronDown, Briefcase, AtSign, Phone, CalendarDays, Tag, UserCheck, Save, XCircle, AlertTriangle, UploadCloud } from 'lucide-react';
 import React, { useState, useMemo, ChangeEvent, FormEvent, useEffect, useRef, useCallback } from 'react';
 
-// Supabase/lib and UI components - Assuming common grouping or specific order by linter
 import { createClient } from '@/lib/supabase/client';
-import { Background } from '@/once-ui/components/Background'; // Corrected path
+import { Background } from '@/once-ui/components/Background';
 
-// Type imports - internal then external as per lint rule 5e6866a0
-import type { Tables } from '@/types/supabase'; // Assuming alias, adjust if needed
+import type { Tables } from '@/types/supabase';
 import type { PostgrestError } from '@supabase/supabase-js'; 
 
 interface MarketRegionsApiResponse {
@@ -25,17 +23,19 @@ interface FileUploadResponse {
 }
 
 // Type guard for FileUploadResponse
-function isFileUploadResponse(obj: any): obj is FileUploadResponse {
+function isFileUploadResponse(obj: unknown): obj is FileUploadResponse {
   if (typeof obj !== 'object' || obj === null) {
     return false;
   }
-  if (typeof obj.ok !== 'boolean') {
+  const record = obj as Record<string, unknown>; // Cast to allow property access
+
+  if (typeof record.ok !== 'boolean') {
     return false;
   }
-  if (obj.error !== undefined && typeof obj.error !== 'string') {
+  if (record.error !== undefined && typeof record.error !== 'string') {
     return false;
   }
-  if (obj.count !== undefined && typeof obj.count !== 'number') {
+  if (record.count !== undefined && typeof record.count !== 'number') {
     return false;
   }
   return true;
@@ -105,59 +105,29 @@ const LeadsView: React.FC = () => {
   const [allMarketRegions, setAllMarketRegions] = useState<string[]>(['All']);
   const [filterOptionsLoading, setFilterOptionsLoading] = useState(true);
 
-  // Fetch distinct filter options on mount from API
+  // useEffect to dynamically populate market regions from leads data
   useEffect(() => {
-    const fetchFilterOptions = async () => {
-      setFilterOptionsLoading(true);
-      try {
-        const response = await fetch('/api/market-regions');
-        if (!response.ok) {
-          // Attempt to parse as JSON, but prepare for non-JSON responses too
-          let errorMsg = 'Failed to fetch market regions from API';
-          try {
-            const errorData: MarketRegionsApiResponse = await response.json();
-            if (typeof errorData.error === 'string') {
-              errorMsg = errorData.error;
-            }
-          } catch (_jsonParseError) {
-            // If parsing fails, the response might not be JSON (e.g., server error HTML)
-            errorMsg = response.statusText || errorMsg; // Use statusText if available
-          }
-          throw new Error(errorMsg);
-        }
-        const data: MarketRegionsApiResponse = await response.json();
-        if (data.ok && Array.isArray(data.marketRegions)) {
-          const uniqueRegions = Array.from(new Set(data.marketRegions.filter((v: string | null): v is string => v !== null && String(v).trim() !== ''))).sort();
-          setAllMarketRegions(['All', ...uniqueRegions]); 
-        } else {
-          throw new Error(typeof data.error === 'string' ? data.error : 'API returned non-ok status or no marketRegions');
-        }
-      } catch (_err) {
-        setAllMarketRegions(['All']); // Fallback to 'All' if API fails
-      } finally {
-        setFilterOptionsLoading(false);
-      }
-    };
-    (async () => {
-      try {
-        await fetchFilterOptions();
-      } catch (_error) {
-        // This catch handles errors from fetchFilterOptions
-        // console.error('Error in fetchFilterOptions call:', _error); // Removed for no-console
-        // Optionally set an error state here
-      }
-    })().catch(_error => {
-      // This catch handles errors from the IIFE itself if the above try/catch fails
-      // or if an error occurs in the IIFE's structure outside the try block.
-      // It's a safety net.
-      // console.error('Unhandled error in fetchFilterOptions IIFE:', error); // Removed for no-console
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps 
-  }, [supabase]);
-
-
-  // Fetch distinct filter options on mount from API
-  // useEffect for fetchFilterOptions remains here ...
+    if (leads && leads.length > 0) {
+      const dynamicRegions = Array.from(
+        new Set(
+          leads
+            .map(lead => lead.market_region)
+            .filter((region): region is string => region != null && String(region).trim() !== '')
+        )
+      ).sort();
+      setAllMarketRegions(['All', ...dynamicRegions]);
+      setAllMarketRegions(['All', ...dynamicRegions]);
+      // Reset filter to 'All' when leads change to ensure consistency
+      // This prevents the filter from being stuck on a region that might no longer be relevant
+      setFilterMarketRegion('All'); // Now active
+    } else {
+      setAllMarketRegions(['All']); // Default if no leads or leads are empty
+    }
+    // Assuming setFilterOptionsLoading was primarily for the old API call, manage its state appropriately if it's still needed.
+    // If fetchFilterOptions was the ONLY reason for filterOptionsLoading, this state and its setter might become unused.
+    // For now, we set it to false as the dynamic derivation is quick.
+    setFilterOptionsLoading(false);
+  }, [leads, setAllMarketRegions, setFilterMarketRegion]); // Updated dependency array
 
   // Define fetchNormalizedLeads at the component top-level, wrapped in useCallback
   const fetchNormalizedLeads = useCallback(async () => {
@@ -176,8 +146,14 @@ const LeadsView: React.FC = () => {
         throw supabaseError;
       }
       setLeads(data || []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred while fetching leads.');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as any).message === 'string') {
+        setError((err as { message: string }).message);
+      } else {
+        setError('An unknown error occurred while fetching leads.');
+      }
     }
     setIsLoading(false);
   }, [supabase, filterMarketRegion, sortField, sortDirection, setIsLoading, setError, setLeads]); // Added state setters to deps for exhaustive-deps
@@ -224,9 +200,10 @@ const LeadsView: React.FC = () => {
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
+    const target = e.target as HTMLInputElement; // More specific type for checkbox
     setNewLeadData(prev => ({
       ...prev,
-      [name]: type === 'number' ? (parseFloat(value) || null) : value,
+      [name]: type === 'checkbox' ? target.checked : value,
     }));
   };
 
@@ -301,8 +278,14 @@ const LeadsView: React.FC = () => {
         setLeads((prevLeads: Tables<'normalized_leads'>[]) => [insertedLead, ...prevLeads]); // Add to local state
       }
       handleCloseModal();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred while saving the lead.');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as any).message === 'string') {
+        setError((err as { message: string }).message);
+      } else {
+        setError('An unknown error occurred while saving the lead.');
+      }
       // Keep modal open for user to see error or retry, or close and show a toast
     } finally {
       setIsLoading(false); // Reset general loading state, or modal-specific loading state
@@ -406,9 +389,13 @@ const LeadsView: React.FC = () => {
           setUploadStatus(`Lead '${updatedLeadData.contact1_name}' updated successfully.`);
         }
         handleCloseEditModal();
-      } catch (err) {
-        
-        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      } catch (err: unknown) {
+        let errorMessage = 'An unknown error occurred while updating lead.';
+        if (err instanceof Error) {
+          errorMessage = err.message;
+        } else if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as any).message === 'string') {
+          errorMessage = (err as { message: string }).message;
+        }
         setError(errorMessage);
         setUploadStatus(`Failed to update lead: ${errorMessage}`);
         // Optionally, keep the modal open so the user can see the error or retry.
@@ -437,8 +424,20 @@ const LeadsView: React.FC = () => {
     formData.append('market_region', uploadMarketRegion);
     try {
       const res = await fetch('/api/leads/upload', { method: 'POST', body: formData });
-      // Ensure the response is actually JSON before parsing
-      if (!res.ok && res.headers.get('content-type')?.includes('application/json') !== true) {
+
+      if (!res.ok) {
+        // Try to parse as JSON first for a structured error message
+        if (res.headers.get('content-type')?.includes('application/json')) {
+          const errorData: FileUploadResponse = await res.json();
+          throw new Error(errorData.error || `Upload failed with status: ${res.statusText}`);
+        }
+        // Handle non-JSON error responses, e.g., server error HTML page
+        const textError = await res.text();
+        throw new Error(textError || `Upload failed with status: ${res.statusText}`);
+      }
+
+      // Ensure the response is actually JSON before parsing, even for ok responses
+      if (res.headers.get('content-type')?.includes('application/json') !== true) {
         // Handle non-JSON error responses, e.g., server error HTML page
         const textError = await res.text();
         setUploadStatus(`Upload failed: ${res.statusText || textError || 'Server error'}`);
@@ -455,7 +454,6 @@ const LeadsView: React.FC = () => {
           setUploadStatus(`Upload failed: ${rawResponseData.error || 'Unknown error from API'}`);
         }
       } else {
-        console.error('Invalid API response structure:', rawResponseData);
         setUploadStatus('Upload failed: Received an invalid response from the server.');
       }
     } catch (err) {
@@ -500,6 +498,8 @@ const LeadsView: React.FC = () => {
   };
 
   return (
+    <>
+      <h1 style={{ backgroundColor: 'red', color: 'white', padding: '20px', textAlign: 'center', fontSize: '32px', position: 'fixed', top: '0', left: '0', width: '100%', zIndex: 9999 }}>CASCADE TEST: LEADSVIEW FILE UPDATED</h1>
     <Background className="p-4 md:p-6 lg:p-8">
       <header className="mb-6">
         <h1 className="text-3xl font-bold text-neutral-content flex items-center">
@@ -626,7 +626,7 @@ const LeadsView: React.FC = () => {
           <div className="modal-box w-11/12 max-w-3xl">
             <button type="button" onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
             <h3 className="font-bold text-lg mb-6">Add New Normalized Lead</h3>
-            <form onSubmit={(event) => { handleSaveLead(event).catch(err => { let msg = 'Failed to save new lead.'; if (err instanceof Error) msg = err.message; else if (typeof err === 'string') msg = err; setError(msg); }); }} className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); void handleSaveLead(e); }} className="space-y-4">
               {/* Form fields would need to map to NormalizedLead or a creation DTO */}
               {/* Row 1 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -762,9 +762,10 @@ const LeadsView: React.FC = () => {
           </div>
         </dialog>
       )}
-
     </Background>
+  </> 
   );
-};
+} // End of LeadsView function body
 
 export default LeadsView;
+

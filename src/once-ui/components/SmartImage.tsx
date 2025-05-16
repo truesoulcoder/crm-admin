@@ -1,11 +1,11 @@
 "use client";
 
-import React, { CSSProperties, useState, useRef, useEffect } from "react";
-import Image from "next/image";
+import Image from 'next/image';
+import React, { CSSProperties, useState, useRef, useEffect, ComponentProps } from 'react';
 
 import { Flex, Skeleton } from ".";
 
-export interface SmartImageProps extends React.ComponentProps<typeof Flex> {
+export interface SmartImageProps extends ComponentProps<typeof Flex> {
   aspectRatio?: string;
   height?: number;
   alt?: string;

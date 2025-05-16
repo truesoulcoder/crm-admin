@@ -1,6 +1,6 @@
-export { sendEmail };
-
 import { google } from 'googleapis';
+
+export { sendEmail };
 
 // Initialize JWT auth with service account key
 const googleServiceAccountKeyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
@@ -41,8 +41,8 @@ async function sendEmail(
   try {
     authClient.subject = impersonatedUserEmail;
 
-    const boundary = 'boundary_' + Date.now();
-    let message = [] as string[];
+    const boundary = `boundary_${Date.now()}`;
+    const message = [] as string[];
     message.push(`From: ${impersonatedUserEmail}`);
     message.push(`To: ${recipientEmail}`);
     message.push(`Subject: ${subject}`);

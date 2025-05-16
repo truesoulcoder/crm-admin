@@ -1,18 +1,19 @@
-import puppeteer from 'puppeteer';
+import { launch } from 'puppeteer';
 
 /**
  * Generates a PDF buffer from provided HTML content using Puppeteer.
  */
 export async function generatePdfFromHtml(htmlContent: string): Promise<Buffer> {
   // Launch headless browser
-  const browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  const browser = await launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
   const page = await browser.newPage();
 
   // Set HTML
   await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
 
   // Create PDF
-  const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
+  const pdfUint8Array = await page.pdf({ format: 'A4', printBackground: true });
+  const pdfBuffer = Buffer.from(pdfUint8Array);
 
   await browser.close();
   return pdfBuffer;

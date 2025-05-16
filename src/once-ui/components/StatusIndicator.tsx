@@ -1,11 +1,11 @@
 "use client";
+import classNames from 'classnames';
+import React, { forwardRef, ComponentProps } from 'react';
 
-import React, { forwardRef } from "react";
-import classNames from "classnames";
-import styles from "./StatusIndicator.module.scss";
 import { Flex } from "./Flex";
+import styles from "./StatusIndicator.module.scss";
 
-interface StatusIndicatorProps extends React.ComponentProps<typeof Flex> {
+interface StatusIndicatorProps extends ComponentProps<typeof Flex> {
   size?: "s" | "m" | "l";
   color:
     | "blue"

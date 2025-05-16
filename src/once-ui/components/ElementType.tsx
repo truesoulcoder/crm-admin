@@ -1,7 +1,7 @@
 // src/once-ui/components/ElementType.tsx
-import React, { forwardRef } from 'react';
+import React, { forwardRef, HTMLAttributes } from 'react';
 
-export interface ElementTypeProps extends React.HTMLAttributes<HTMLElement> {
+export interface ElementTypeProps extends HTMLAttributes<HTMLElement> {
   as?: React.ElementType;
   children?: React.ReactNode;
   href?: string;

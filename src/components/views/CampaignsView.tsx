@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
 import { Mail, BarChart2, Edit3, Trash2, PlayCircle, PauseCircle, AlertTriangle, X, Check, List } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import React, { useState, useEffect, useCallback } from 'react';
 
-import { createBrowserClient } from '@supabase/ssr';
-import { LetterFx, Avatar, AvatarGroup, AvatarProps } from '../../once-ui/components';
+import { LetterFx, Avatar, AvatarGroup, AvatarProps } from '@/once-ui/components';
+// eslint-disable-next-line import/no-unresolved
+import { Campaign } from '@/types/index';
 
-import { Campaign } from '../../types/engine';
 const CampaignMonitorView = dynamic(() => import('./CampaignMonitorView'), { ssr: false });
 
 // Helper function to generate initials
@@ -157,8 +158,8 @@ const CampaignsView: React.FC = () => {
 
   // Load data on component mount
   useEffect(() => {
-    fetchCampaigns();
-    fetchSupportingData();
+    void void fetchCampaigns();
+    void fetchSupportingData();
   }, [fetchCampaigns, fetchSupportingData]);
 
   // Start campaign handler
@@ -171,7 +172,7 @@ const CampaignsView: React.FC = () => {
       
       if (error) throw error;
       
-      fetchCampaigns();
+      void fetchCampaigns();
     } catch (err) {
       console.error('Error starting campaign:', err);
       setError('Failed to start campaign. Please try again.');
@@ -188,7 +189,7 @@ const CampaignsView: React.FC = () => {
       
       if (error) throw error;
       
-      fetchCampaigns();
+      void fetchCampaigns();
     } catch (err) {
       console.error('Error stopping campaign:', err);
       setError('Failed to stop campaign. Please try again.');
@@ -238,7 +239,7 @@ const CampaignsView: React.FC = () => {
       setTimeout(() => setSuccess(null), 5000);
       
       // Refresh campaigns list
-      fetchCampaigns();
+      void fetchCampaigns();
     } catch (err) {
       console.error('Error creating campaign:', err);
       setError('Failed to create campaign. Please try again later.');
@@ -313,7 +314,7 @@ const CampaignsView: React.FC = () => {
                       {campaign.status === 'Draft' || campaign.status === 'Paused' ? (
                         <button 
                           className="btn btn-xs btn-success"
-                          onClick={() => handleStart(campaign.id)}
+                          onClick={() => { void handleStart(campaign.id); }}
                           title="Start Campaign"
                         >
                           <PlayCircle size={14} />
@@ -321,7 +322,7 @@ const CampaignsView: React.FC = () => {
                       ) : (
                         <button 
                           className="btn btn-xs btn-warning"
-                          onClick={() => handleStop(campaign.id)}
+                          onClick={() => { void handleStop(campaign.id); }}
                           title="Pause Campaign"
                         >
                           <PauseCircle size={14} />
@@ -404,7 +405,7 @@ const CampaignsView: React.FC = () => {
             </button>
             <h3 className="font-bold text-xl mb-4">Create New Email Campaign</h3>
             
-            <form onSubmit={handleCreateCampaign}>
+            <form onSubmit={(e) => { void handleCreateCampaign(e); }}>
               <div className="form-control mb-4">
                 <label className="label">
                   <span className="label-text font-medium">Campaign Name</span>

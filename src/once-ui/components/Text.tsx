@@ -1,10 +1,10 @@
 "use client";
 
-import React, { ElementType, ComponentPropsWithoutRef } from "react";
-import classNames from "classnames";
+import classNames from 'classnames';
+import React, { ElementType, ComponentPropsWithoutRef } from 'react';
 
-import { TextProps, CommonProps, SpacingProps } from "../interfaces";
-import { ColorScheme, ColorWeight, TextVariant, SpacingToken } from "../types";
+import type { TextProps, CommonProps, SpacingProps } from '@/once-ui/interfaces';
+import type { ColorScheme, ColorWeight, TextVariant, SpacingToken } from '@/once-ui/types';
 
 type TypeProps<T extends ElementType> = TextProps<T> &
   CommonProps &

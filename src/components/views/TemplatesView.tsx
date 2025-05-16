@@ -1,28 +1,45 @@
 'use client';
+import { Link } from '@tiptap/extension-link';
+import { Placeholder } from '@tiptap/extension-placeholder';
+import { Editor, EditorContent, useEditor } from '@tiptap/react';
+import { StarterKit } from '@tiptap/starter-kit';
+import {
+  Bold,
+  Edit3,
+  FileText,
+  Heading1,
+  Heading2,
+  Heading3,
+  Italic,
+  Loader2,
+  Pilcrow,
+  PlusCircle,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react'; 
-import Toast from '../ui/Toast';
-import { FileText, PlusCircle, Edit3, Trash2, Search, Filter, ChevronsUpDown, Palette, X, Loader2, Bold, Italic, Heading1, Heading2, Heading3, Pilcrow } from 'lucide-react'; 
-import { useEditor, EditorContent, Editor } from '@tiptap/react'; 
-import StarterKit from '@tiptap/starter-kit'; 
-import Placeholder from '@tiptap/extension-placeholder'; 
-import Link from './tiptap-link-extension';
+import Toast from '@/components/ui/Toast';
 
-// --- Helper Functions --- 
+// --- Helper Functions ---
 
 // Simple debounce utility function (moved outside the component)
-function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
+function debounce<P extends unknown[], R>(
+  func: (...args: P) => R,
+  waitFor: number
+): (...args: P) => void {
   let timeout: ReturnType<typeof setTimeout> | null = null;
 
-  const debounced = (...args: Parameters<F>) => {
+  const debounced = (...args: P): void => {
     if (timeout !== null) {
       clearTimeout(timeout);
-      timeout = null;
+      // timeout = null; // Not strictly necessary here
     }
     timeout = setTimeout(() => func(...args), waitFor);
   };
 
-  return debounced as (...args: Parameters<F>) => ReturnType<F>; // Cast to maintain type safety
+  return debounced;
 }
 
 const DEFAULT_PLACEHOLDERS = [
@@ -44,6 +61,10 @@ interface DocumentTemplate {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+interface ApiErrorResponse {
+  error?: string;
 }
 
 const getTypeBadge = (template_type: DocumentTemplate['template_type']) => {
@@ -189,7 +210,6 @@ const TemplatesView: React.FC = () => {
 
   // Step 1: Create a stable callback for the core logic
   const parseAndSetPlaceholders = useCallback((placeholdersString: string, isEditing: boolean) => {
-    console.log('[Debug] Debounced processing. Input:', placeholdersString, 'Is Editing:', isEditing);
     let finalPlaceholders: string[] = [];
 
     const customPlaceholders = placeholdersString
@@ -205,7 +225,6 @@ const TemplatesView: React.FC = () => {
       finalPlaceholders = Array.from(new Set([...DEFAULT_PLACEHOLDERS, ...customPlaceholders]));
     }
 
-    console.log('[Debug] Parsed & Combined placeholders:', finalPlaceholders);
     setClickablePlaceholders(finalPlaceholders);
 
   }, [setClickablePlaceholders]); // setClickablePlaceholders is stable
@@ -226,36 +245,28 @@ const TemplatesView: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [docRes, emailRes] = await Promise.all([
-        fetch('/api/document-templates'),
-        fetch('/api/email-templates'),
-      ]);
-      if (docRes.status === 401 || emailRes.status === 401) {
-        setToast({ message: 'You are not authorized. Please log in again.', type: 'error' });
-        window.location.href = '/';
-        return;
+      const response = await fetch('/api/document-templates');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch templates: ${response.statusText}`);
       }
-      if (!docRes.ok || !emailRes.ok) {
-        const errResp = !docRes.ok ? await docRes.json() : await emailRes.json();
-        throw new Error(errResp.error || 'Failed to fetch templates');
+      const data: DocumentTemplate[] = await response.json();
+      setDocumentTemplates(data);
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setError(e.message);
+        setToast({ message: e.message, type: 'error' });
+      } else {
+        const unknownErrorMessage = 'An unknown error occurred while fetching templates.';
+        setError(unknownErrorMessage);
+        setToast({ message: unknownErrorMessage, type: 'error' });
       }
-      const docJson = await docRes.json();
-      const emailJson = await emailRes.json();
-
-      const docArray = (docJson.data || []) as DocumentTemplate[]; 
-      const emailArray = (emailJson.data || []) as DocumentTemplate[];
-
-      setDocumentTemplates([...docArray, ...emailArray]);
-    } catch (err: any) {
-      setError(err.message);
-      console.error('Error fetching templates:', err);
     } finally {
       setIsLoading(false);
     }
   }, [setToast, setError, setIsLoading, setDocumentTemplates]); // Added dependencies
 
   useEffect(() => {
-    fetchTemplates();
+    void fetchTemplates();
   }, [fetchTemplates]);
 
   const openCreateModal = () => {
@@ -286,7 +297,7 @@ const TemplatesView: React.FC = () => {
     setIsTemplateModalOpen(true);
   };
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setIsTemplateModalOpen(false);
     setEditingTemplate(null);
     setModalError(null);
@@ -296,96 +307,109 @@ const TemplatesView: React.FC = () => {
     setNewTemplateBody(''); 
     setRawPlaceholdersInput(''); 
     setClickablePlaceholders([]); // Clear clickable on close
-  };
+  }, []);
 
-  const handleSubmitTemplate = async () => {
-    setIsSubmitting(true);
+  const handleSubmitTemplate = useCallback(async () => {
+    if (!editor) return;
     setModalError(null);
 
-    const finalPlaceholdersToSave = Array.from(new Set([
-      ...(editingTemplate ? [] : DEFAULT_PLACEHOLDERS), // Include defaults only if creating new
-      ...rawPlaceholdersInput
-        .split(',')
-        .map(p => p.trim())
-        .filter(p => p.length > 0 && p.startsWith('{{') && p.endsWith('}}'))
-    ]));
+    if (!newTemplateName.trim()) {
+      setModalError('Template name is required.');
+      return;
+    }
+    if (!newTemplateBody.trim()) {
+      setModalError('Template body cannot be empty.');
+      return;
+    }
 
-    const templateData = {
-      name: newTemplateName,
-      template_type: newTemplateType,
-      subject: newTemplateType === 'email' ? newTemplateSubject : null,
-      body: newTemplateBody, 
-      available_placeholders: finalPlaceholdersToSave,
-      is_active: true, 
-    };
+    const placeholdersToSave = rawPlaceholdersInput.split(',').map(p => p.trim()).filter(p => p.startsWith('{{') && p.endsWith('}}'));
+    if (rawPlaceholdersInput.trim() && placeholdersToSave.length === 0 && !DEFAULT_PLACEHOLDERS.some(dp => rawPlaceholdersInput.includes(dp))) {
+        if (!rawPlaceholdersInput.split(',').every(p => p.trim().startsWith('{{') && p.trim().endsWith('}}'))) {
+            setModalError('Custom placeholders must be in {{placeholder_name}} format.');
+            return;
+        }
+    }
+
+    setIsSubmitting(true);
+    const method = editingTemplate ? 'PUT' : 'POST';
+    const url = editingTemplate ? `/api/document-templates?id=${editingTemplate.id}` : '/api/document-templates';
 
     try {
-      let response;
-      if (editingTemplate) {
-        response = await fetch(`/api/document-templates/${editingTemplate.id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(templateData),
-        });
-      } else {
-        response = await fetch('/api/document-templates', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(templateData), 
-        });
-      }
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newTemplateName,
+          template_type: newTemplateType,
+          subject: newTemplateType === 'email' ? newTemplateSubject : null,
+          body: newTemplateBody,
+          available_placeholders: placeholdersToSave.length > 0 ? placeholdersToSave : DEFAULT_PLACEHOLDERS,
+          is_active: true, 
+        }),
+      });
 
       if (!response.ok) {
-        if (response.status === 401) {
-          setToast({ message: 'You are not authorized. Please log in again.', type: 'error' });
-          window.location.href = '/';
-          return;
+        let errorMsg = 'Failed to save template';
+        try {
+          const errorData: ApiErrorResponse = await response.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch {
+          errorMsg = `Failed to save template: ${response.statusText}`;
         }
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to ${editingTemplate ? 'update' : 'create'} template`);
+        throw new Error(errorMsg);
       }
 
+      setToast({ message: `Template ${editingTemplate ? 'updated' : 'created'} successfully!`, type: 'success' });
       closeModal();
       await fetchTemplates(); 
-      setToast({ message: `Template ${editingTemplate ? 'updated' : 'created'} successfully!`, type: 'success' });
-    } catch (err: any) {
-      setModalError(err.message);
-      setToast({ message: `Failed to ${editingTemplate ? 'update' : 'create'} template.`, type: 'error' });
-      console.error(`Error ${editingTemplate ? 'updating' : 'creating'} template:`, err);
-    }
-    setIsSubmitting(false);
-  };
-
-  const handleDeleteTemplate = async (templateId: string, templateName: string) => {
-    if (window.confirm(`Are you sure you want to delete the template "${templateName}"? This will mark it as inactive.`)) {
-      try {
-        const response = await fetch(`/api/document-templates/${templateId}`, {
-          method: 'DELETE',
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to delete template');
-        }
-
-        await fetchTemplates(); 
-        setToast({ message: `Template deleted successfully!`, type: 'success' });
-      } catch (err: any) {
-        setError(err.message); 
-        setToast({ message: `Failed to delete template.`, type: 'error' });
-        console.error('Error deleting template:', err);
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setModalError(e.message);
+      } else {
+        setModalError('An unknown error occurred while saving the template.');
       }
+    } finally {
+      setIsSubmitting(false);
     }
-  };
+  }, [editor, newTemplateName, newTemplateType, newTemplateSubject, newTemplateBody, rawPlaceholdersInput, editingTemplate, closeModal, fetchTemplates]);
+
+  const handleDeleteTemplate = useCallback(async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this template?')) {
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`/api/document-templates?id=${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        let errorMsg = 'Failed to delete template';
+        try {
+          const errorData: ApiErrorResponse = await response.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch {
+          // response was not JSON, use default message or statusText
+          errorMsg = `Failed to delete template: ${response.statusText}`;
+        }
+        throw new Error(errorMsg);
+      }
+      setToast({ message: 'Template deleted successfully!', type: 'success' });
+      await fetchTemplates(); // Re-fetch templates after deletion
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setToast({ message: e.message, type: 'error' });
+      } else {
+        setToast({ message: 'An unknown error occurred while deleting the template.', type: 'error' });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [fetchTemplates]);
 
   const filteredTemplates = documentTemplates.filter(template => {
-    if (!template.is_active) return false;
+    if (!template.is_active) return false; // Ensure only active templates are considered
     const matchesSearch = template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (template.subject && template.subject.toLowerCase().includes(searchTerm.toLowerCase()));
+                           (template.subject && template.subject.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesType = filterType === 'All' || (template.template_type && template.template_type.toLowerCase() === filterType.toLowerCase());
     return matchesSearch && matchesType;
   });
@@ -407,7 +431,7 @@ const TemplatesView: React.FC = () => {
         <X size={48} className="text-error mb-4" />
         <h2 className="text-2xl font-semibold text-error mb-2">Error Loading Templates</h2>
         <p className="text-base-content/70 mb-4">{error}</p>
-        <button className="btn btn-primary" onClick={fetchTemplates}>Try Again</button>
+        <button className="btn btn-primary" onClick={() => void fetchTemplates()}>Try Again</button>
       </div>
     );
   }
@@ -476,7 +500,7 @@ const TemplatesView: React.FC = () => {
                   <button 
                     className="btn btn-ghost btn-sm btn-circle text-error" 
                     title="Delete" 
-                    onClick={() => handleDeleteTemplate(template.id, template.name)}
+                    onClick={() => void handleDeleteTemplate(template.id)}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -562,7 +586,7 @@ const TemplatesView: React.FC = () => {
             </div>
             <div className="modal-action mt-6">
               <button className="btn btn-ghost" onClick={closeModal} disabled={isSubmitting}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSubmitTemplate} disabled={isSubmitting || !newTemplateName || !newTemplateBody}>
+              <button className="btn btn-primary" onClick={() => void handleSubmitTemplate()} disabled={isSubmitting || !newTemplateName || !newTemplateBody}>
                 {isSubmitting && <Loader2 className="animate-spin mr-2" size={18} />} 
                 {isSubmitting ? (editingTemplate ? 'Saving...' : 'Creating...') : (editingTemplate ? 'Save Changes' : 'Create Template')}
               </button>
