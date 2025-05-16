@@ -1,14 +1,17 @@
 import globals from 'globals';
-import nextPlugin from '@next/eslint-plugin-next';
+import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
+import importPlugin from 'eslint-plugin-import';
+import reactHooksPlugin from 'eslint-plugin-react-hooks';
+import nextPlugin from '@next/eslint-plugin-next';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-import importPlugin from 'eslint-plugin-import';
 
 export default [
+  // 0. Global ignores
   {
     ignores: [
       // Build output
@@ -28,52 +31,87 @@ export default [
       'public/**',
     ],
   },
+
+  // 1. ESLint's recommended rules
+  js.configs.recommended,
+
+  // 2. TypeScript-ESLint's recommended rules
+  // This includes the parser and plugin for .ts/.tsx files
+  ...tseslint.configs.recommended,
+  // If you were using type-aware linting extensively and want the full suite:
+  // ...tseslint.configs.recommendedTypeChecked, 
+  // ...tseslint.configs.stylisticTypeChecked, 
+
+  // 3. Import plugin configuration
   {
     files: ['**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx'],
-    extends: [
-      'eslint:recommended',
-      'plugin:@typescript-eslint/recommended',
-      'plugin:import/typescript',
-      'plugin:import/recommended',
-      'plugin:react-hooks/recommended',
-    ],
     plugins: {
-      '@typescript-eslint': tseslint,
+      import: importPlugin,
+    },
+    settings: {
+      'import/resolver': {
+        typescript: {},
+        node: {
+          extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
+        },
+      },
+      'import/parsers': {
+        '@typescript-eslint/parser': ['.ts', '.tsx'], // For `eslint-plugin-import` to parse TypeScript
+      },
+    },
+    rules: {
+      ...importPlugin.configs.recommended.rules,
+      ...importPlugin.configs.typescript.rules,
+      // Specific custom import rules will be in the main custom block to ensure they override
+    },
+  },
+
+  // 4. React Hooks plugin configuration
+  {
+    files: ['**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx'],
+    plugins: {
+      'react-hooks': reactHooksPlugin,
+    },
+    rules: {
+      ...reactHooksPlugin.configs.recommended.rules,
+    },
+  },
+
+
+  // 5. Custom overrides, language options, settings, and specific rules (formerly section 6)
+  // Next.js plugin is configured here using the fine-grained approach
+  // This is the main block for your project-specific settings and rule overrides.
+  // It will apply to all matched files after the preceding configs.
+  {
+    files: ['**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx'],
+    plugins: {
       '@next/next': nextPlugin,
-      'import': importPlugin,
-      'react-hooks': 'react-hooks',
     },
     languageOptions: {
       globals: {
         ...globals.browser,
         ...globals.node,
       },
-    },
-    parser: '@typescript-eslint/parser',
-    parserOptions: {
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-      project: './tsconfig.json',
-      tsconfigRootDir: __dirname,
+      // The TypeScript parser is set up globally by tseslint.configs.recommended.
+      // We provide specific parserOptions here for type-aware linting.
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+        project: './tsconfig.json', // Path to your tsconfig.json for type-aware rules
+        tsconfigRootDir: __dirname,
+      },
     },
     settings: {
-      'import/resolver': {
-        typescript: {},
-        node: {
-          extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
-        },
-      },
-      'import/parsers': {
-        '@typescript-eslint/parser': ['.ts', '.tsx'],
-      },
       react: {
         version: 'detect',
       },
+      // Note: import/resolver and import/parsers were in the import plugin block
     },
     rules: {
-      // Basic rules
+      ...nextPlugin.configs.recommended.rules,
+      ...nextPlugin.configs['core-web-vitals'].rules,
+      // Basic rules (from original)
       'no-console': 'warn',
-      'no-unused-vars': 'off', // Handled by @typescript-eslint
       'no-var': 'error',
       'prefer-const': 'error',
       'prefer-template': 'error',
@@ -90,7 +128,7 @@ export default [
         },
       ],
 
-      // TypeScript rules
+      // Custom/override TypeScript rules (from original)
       '@typescript-eslint/no-unused-vars': [
         'warn',
         { 
@@ -103,6 +141,7 @@ export default [
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-non-null-assertion': 'warn',
+      // Type-aware rules (require `project` in parserOptions)
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/await-thenable': 'error',
       '@typescript-eslint/no-misused-promises': 'error',
@@ -112,11 +151,20 @@ export default [
       '@typescript-eslint/no-unsafe-return': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
 
-      // React Hooks rules
+      // Custom/override React Hooks rules (original was same as recommended)
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
 
-      // Import rules
+      // Custom/override Next.js rules (from original, now in the main override block)
+      '@next/next/no-html-link-for-pages': 'off',
+      '@next/next/no-img-element': 'warn',
+      '@next/next/no-sync-scripts': 'error',
+      '@next/next/no-typos': 'error',
+      '@next/next/no-unwanted-polyfillio': 'error',
+      '@next/next/no-page-custom-font': 'off',
+      '@next/next/no-css-tags': 'off',
+
+      // Custom/override Import rules (from original)
       'import/order': [
         'error',
         {
@@ -149,21 +197,6 @@ export default [
       'import/newline-after-import': 'warn',
     },
   },
-  // Next.js specific rules
-  {
-    files: ['**/*.tsx', '**/*.ts'],
-    plugins: {
-      '@next/next': nextPlugin,
-    },
-    rules: {
-      ...nextPlugin.configs.recommended.rules,
-      '@next/next/no-html-link-for-pages': 'off', // We use Next.js App Router
-      '@next/next/no-img-element': 'warn',
-      '@next/next/no-sync-scripts': 'error',
-      '@next/next/no-typos': 'error',
-      '@next/next/no-unwanted-polyfillio': 'error',
-      '@next/next/no-page-custom-font': 'off',
-      '@next/next/no-css-tags': 'off',
-    },
-  },
 ];
+
+

@@ -83,13 +83,17 @@ export async function POST(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+
+  const bucket = 'lead-uploads';
+  let objectPath: string | null = null; // To store the path for potential cleanup
   
   try {
     console.log('API: Attempting to upload to storage...');
     const fileBytes = await file.arrayBuffer();
     const bucket = 'lead-uploads'; 
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const objectPath = `${randomUUID()}-${Date.now()}-${sanitizedFileName}`;
+    // Assign to the outer scoped objectPath for cleanup purposes
+    objectPath = `${randomUUID()}-${Date.now()}-${sanitizedFileName}`;
 
     const { error: uploadErr } = await supabaseAdmin.storage 
       .from(bucket)
@@ -101,6 +105,7 @@ export async function POST(request: NextRequest) {
 
     if (uploadErr) {
       console.error('Storage upload failed:', uploadErr);
+      // No need to cleanup objectPath here as it was never successfully uploaded
       return NextResponse.json(
         { ok: false, error: 'Storage upload failed.', details: uploadErr.message },
         { status: 500 }
@@ -114,6 +119,16 @@ export async function POST(request: NextRequest) {
 
     if (parsed.errors.length > 0) {
       console.error('API Error: CSV parsing errors:', parsed.errors);
+      // Attempt to cleanup the storage file if CSV parsing fails
+      if (objectPath) {
+        console.log(`Attempting to cleanup storage file due to CSV parsing failure: ${objectPath}`);
+        const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+        if (cleanupError) {
+          console.error(`Failed to cleanup storage file ${objectPath} after CSV parsing failure:`, cleanupError);
+        } else {
+          console.log(`Successfully cleaned up storage file after CSV parsing failure: ${objectPath}`);
+        }
+      }
       return NextResponse.json(
         { ok: false, error: 'Failed to parse CSV.', details: parsed.errors.slice(0, 5) }, 
         { status: 400 }
@@ -145,7 +160,7 @@ export async function POST(request: NextRequest) {
       // Construct the object that matches the 'leads' table schema
       return {
         uploaded_by: userId, // userId is available from auth context
-        file_name: file.name, // Use file_name as per schema
+        original_filename: file.name, // Use original_filename as per schema
         market_region: marketRegion,
         raw_data: rawDataPayload // All CSV data goes here
       };
@@ -163,53 +178,107 @@ export async function POST(request: NextRequest) {
       console.log(`Row ${i + 1}:`, JSON.stringify(leadsToInsert[i], null, 2));
     }
 
-    console.log('API: Attempting to insert into staging table...'); 
-    const { error: insertErr, data: insertedData } = await supabaseAdmin
-      .from('leads')
-      .insert(leadsToInsert)
-      .select();
+    // ------ BATCH INSERTION LOGIC ------
+    const BATCH_SIZE = 250; // Define a suitable batch size
+    let allInsertedData: any[] = [];
+    let overallInsertError: any = null;
 
-    if (insertErr) {
-      console.error('Staging insert failed:', insertErr);
-      let errorMessage = `Failed to insert leads into staging table.`;
-      if (insertErr.message.includes("violates row-level security policy")) {
-        errorMessage += " Possible RLS policy violation.";
-      } else if (insertErr.message.includes("column") && insertErr.message.includes("does not exist")) {
-        errorMessage += ` A specified column might not exist in the 'leads' table. Details: ${insertErr.message}`;
-      } else if (insertErr.code === '22P02') {
-        errorMessage += ` Invalid input syntax for a column type. Check data for columns like UUIDs, numbers, dates. Details: ${insertErr.message}`;
-      } else if (insertErr.code) {
-        errorMessage += ` Code: ${insertErr.code}. Details: ${insertErr.details || insertErr.message}`;
-      } else {
-        errorMessage += ` Details: ${insertErr.message}`;
+    console.log(`API: Attempting to insert ${leadsToInsert.length} leads in batches of ${BATCH_SIZE}...`);
+
+    for (let i = 0; i < leadsToInsert.length; i += BATCH_SIZE) {
+      const batch = leadsToInsert.slice(i, i + BATCH_SIZE);
+      console.log(`API: Inserting batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(leadsToInsert.length / BATCH_SIZE)}, size: ${batch.length}`);
+      
+      const { data: batchInsertedData, error: batchInsertErr } = await supabaseAdmin
+        .from('leads')
+        .insert(batch)
+        .select();
+
+      if (batchInsertErr) {
+        console.error(`Staging insert failed for batch starting at index ${i}:`, batchInsertErr);
+        overallInsertError = batchInsertErr; // Store the first error encountered
+        break; // Stop processing further batches on error
       }
-      console.error('Full staging insert error object:', JSON.stringify(insertErr, null, 2));
-      return NextResponse.json({ ok: false, error: errorMessage, details: insertErr }, { status: 500 });
+
+      if (batchInsertedData) {
+        allInsertedData = allInsertedData.concat(batchInsertedData);
+      }
+      console.log(`API: Batch ${Math.floor(i / BATCH_SIZE) + 1} insert successful. Rows in batch: ${batch.length}, Rows returned from DB: ${batchInsertedData ? batchInsertedData.length : 0}`);
+    }
+
+    if (overallInsertError) {
+      console.error('Staging insert failed:', overallInsertError);
+      let errorMessage = `Failed to insert leads into staging table.`;
+      if (overallInsertError.message.includes("violates row-level security policy")) {
+        errorMessage += " Possible RLS policy violation.";
+      } else if (overallInsertError.message.includes("column") && overallInsertError.message.includes("does not exist")) {
+        errorMessage += ` A specified column might not exist in the 'leads' table. Details: ${overallInsertError.message}`;
+      } else if (overallInsertError.code === '22P02') {
+        errorMessage += ` Invalid input syntax for a column type. Check data for columns like UUIDs, numbers, dates. Details: ${overallInsertError.message}`;
+      } else if (overallInsertError.code === '57014') { // Statement timeout
+        errorMessage += ` Statement timeout during batch insert. Consider reducing batch size or optimizing table/indexes. Details: ${overallInsertError.message}`;
+      } else if (overallInsertError.code) {
+        errorMessage += ` Code: ${overallInsertError.code}. Details: ${overallInsertError.details || overallInsertError.message}`;
+      } else {
+        errorMessage += ` Details: ${overallInsertError.message}`;
+      }
+      console.error('Full staging insert error object:', JSON.stringify(overallInsertError, null, 2));
+      // Attempt to cleanup the storage file if insert fails
+      if (objectPath) {
+        console.log(`Attempting to cleanup storage file due to DB insert failure: ${objectPath}`);
+        const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+        if (cleanupError) {
+          console.error(`Failed to cleanup storage file ${objectPath} after DB insert failure:`, cleanupError);
+        } else {
+          console.log(`Successfully cleaned up storage file after DB insert failure: ${objectPath}`);
+        }
+      }
+      return NextResponse.json({ ok: false, error: errorMessage, details: overallInsertError }, { status: 500 });
     }
     
-    console.log('API: Staging insert successful. Number of rows affected/returned:', insertedData ? insertedData.length : 0);
-    // console.log('API: Sample of insertedData from staging (first row):', insertedData && insertedData.length > 0 ? JSON.stringify(insertedData[0], null, 2) : 'No data returned');
+    console.log('API: All batches inserted successfully. Total rows affected/returned:', allInsertedData.length);
+    // console.log('API: Sample of insertedData from staging (first row):', allInsertedData.length > 0 ? JSON.stringify(allInsertedData[0], null, 2) : 'No data returned');
 
 
     // ---------- 3. CALL THE NORMALIZATION FUNCTION ----------
-    console.log('API: Attempting to call normalize_staged_leads function for user:', userId);
+    console.log('API: Attempting to call normalize_staged_leads function for market_region:', marketRegion);
     const { error: rpcError } = await supabaseAdmin.rpc('normalize_staged_leads', { p_market_region: marketRegion });
 
     if (rpcError) {
       console.error('RPC call to normalize_staged_leads failed:', rpcError);
+      // Attempt to cleanup the storage file if RPC call fails
+      if (objectPath) {
+        console.log(`Attempting to cleanup storage file due to RPC failure: ${objectPath}`);
+        const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+        if (cleanupError) {
+          console.error(`Failed to cleanup storage file ${objectPath} after RPC failure:`, cleanupError);
+        } else {
+          console.log(`Successfully cleaned up storage file after RPC failure: ${objectPath}`);
+        }
+      }
       return NextResponse.json(
         { ok: false, error: 'Failed to normalize staged leads.', details: rpcError.message },
         { status: 500 }
       );
     }
 
-    console.log('API: normalize_staged_leads function called successfully.');
+    console.log('API: Lead import and normalization process completed successfully.');
     return NextResponse.json({ ok: true, message: 'File processed and leads normalized successfully.' });
 
   } catch (error: any) {
     console.error('API: Unhandled error in POST /api/leads/upload:', error);
+    // If an error occurs after file upload, try to remove the orphaned file from storage
+    if (objectPath) {
+      console.log(`Attempting to cleanup orphaned storage file: ${objectPath}`);
+      const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+      if (cleanupError) {
+        console.error(`Failed to cleanup orphaned storage file ${objectPath}:`, cleanupError);
+      } else {
+        console.log(`Successfully cleaned up orphaned storage file: ${objectPath}`);
+      }
+    }
     return NextResponse.json(
-      { ok: false, error: 'An unexpected error occurred.', details: error.message },
+      { ok: false, error: 'An unexpected error occurred during processing.', details: error.message },
       { status: 500 }
     );
   }
