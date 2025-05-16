@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import PageSizeSelector from '@/components/ui/PageSizeSelector'; 
 import LeadUploader from '@/components/leads/LeadUploader'; 
-import { NormalizedLead } from '@/types'; 
+import { type Tables } from '@/types/supabase'; 
 
 const formatDate = (dateString: string | null | undefined) => {
   if (!dateString) return 'N/A';
@@ -22,7 +22,7 @@ const formatDate = (dateString: string | null | undefined) => {
 };
 
 const LeadsPage = () => {
-  const [leads, setLeads] = useState<NormalizedLead[]>([]);
+  const [leads, setLeads] = useState<Tables<'normalized_leads'>[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);

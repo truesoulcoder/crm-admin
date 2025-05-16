@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
   const cookieStore = await cookieStorePromise;
   const supabaseUserClient = createServerClient(
     supabaseUrl!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       cookies: {
         get(name: string) { return cookieStore.get(name)?.value },
@@ -204,7 +204,7 @@ export async function POST(req: NextRequest) {
   const cookieStore = await cookieStorePromise;
   const supabaseUserClient = createServerClient(
     supabaseUrl!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       cookies: {
         get(name: string) { return cookieStore.get(name)?.value },

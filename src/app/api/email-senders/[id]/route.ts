@@ -101,7 +101,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   const cookieStore = await cookies();
   const supabaseUserClient = createServerClient(
     supabaseUrl!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       cookies: {
         get(name: string) { return cookieStore.get(name)?.value },
@@ -258,7 +258,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
   const cookieStore = await cookies();
   const supabaseUserClient = createServerClient(
     supabaseUrl!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       cookies: {
         get(name: string) { return cookieStore.get(name)?.value },
@@ -348,7 +348,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const cookieStore = await cookies();
   const supabaseUserClient = createServerClient(
     supabaseUrl!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       cookies: {
         get(name: string) { return cookieStore.get(name)?.value },

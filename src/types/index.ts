@@ -12,7 +12,7 @@ export type CrmView =
 // Example Lead type (align with your Supabase schema)
 // This type seems to be a mix of mock data structure and previous schema ideas.
 // It will be used by LeadsView.tsx temporarily for modals, but the main display will use NormalizedLead.
-export interface Lead {
+export interface LeadViewModel_Deprecated {
   id: string; // Can be original_lead_id (UUID) or normalized_leads.id (number) depending on context
   firstName?: string; // From mock data in LeadsView
   lastName?: string;  // From mock data in LeadsView
@@ -36,43 +36,9 @@ export interface Lead {
   price_per_sq_ft?: string; // Added
 }
 
-// New type representing the structure of the normalized_leads table from Supabase
-export interface NormalizedLead {
-  id: number; // From BIGSERIAL PRIMARY KEY
-  original_lead_id?: string | null; // UUID from the 'leads' staging table
-  contact_name?: string | null;  // Alias for contact1_name
-  contact_email?: string | null; // Alias for contact1_email_1
-  
-  // Contact fields from the multi-contact schema
-  contact1_name?: string | null;
-  contact1_email_1?: string | null;
-  contact2_name?: string | null;
-  contact2_email_1?: string | null;
-  contact3_name?: string | null;
-  contact3_email_1?: string | null;
-  mls_curr_list_agent_name?: string | null;
-  mls_curr_list_agent_email?: string | null;
-
-  // Property details
-  property_address?: string | null;
-  property_city?: string | null;
-  property_state?: string | null;
-  property_postal_code?: string | null; // formerly property_zip in staging
-  property_type?: string | null;
-  baths?: string | null; // Note: these are TEXT in DB as per original SQL
-  beds?: string | null;  // If they should be numbers, schema & parsing needs change
-  year_built?: string | null;
-  square_footage?: string | null;          
-  wholesale_value?: number | string | null; // NUMERIC in DB
-  assessed_total?: number | string | null;  // NUMERIC in DB
-  mls_curr_status?: string | null;
-  mls_curr_days_on_market?: string | null;
-  market_region?: string | null; // Added for filtering
-  avm_value?: number | string | null; // Added to represent AVM value from upload form
-  
-  created_at: string; // TIMESTAMPTZ from DB comes as string
-  updated_at: string; // TIMESTAMPTZ from DB comes as string
-}
+// The 'NormalizedLead' interface has been removed. 
+// Please use `Tables<'normalized_leads'>` from '@/types/supabase' for direct DB types,
+// or create a specific ViewModel if transformations are needed.
 
 // Example EmailTemplate type
 export interface EmailTemplate {
@@ -108,6 +74,15 @@ export interface CampaignStep {
   sending_account_id: string;
 }
 
+
+// User type (moved from engine.ts)
+export interface User {
+  id: string; // UUID
+  email: string;
+  full_name?: string;
+  created_at: string; // ISO timestamp
+  updated_at: string;
+}
 
 // Example Campaign type
 export interface Campaign {

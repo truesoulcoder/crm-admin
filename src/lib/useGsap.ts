@@ -1,6 +1,6 @@
 // src/lib/useGsap.ts
 import { useEffect, RefObject } from 'react';
-import gsap, { GSAPTweenVars } from 'gsap';
+import gsap from 'gsap';
 
 /**
  * useGsap - React hook for animating elements with GSAP

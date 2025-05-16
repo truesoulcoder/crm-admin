@@ -3,7 +3,6 @@
 node_modules
 package-lock.json
 yarn.lock
-.dealpig
 .next
 .dealpig-sender-13e3b5ed13ab.json
 .windsurf

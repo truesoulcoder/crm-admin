@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition, useRef, useEffect } from 'react';
-import { supabase } from '../../lib/supabaseClient';
+import { createClient } from '@/lib/supabase/client';
 
 // Define the expected response structure from the upload API
 interface UploadResponse {
@@ -19,6 +19,7 @@ interface LeadUploaderProps {
 }
 
 export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing }: LeadUploaderProps) {
+  const supabase = createClient(); // Instantiate the client for use in this component
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [marketRegion, setMarketRegion] = useState<string>('');
   const [marketRegions, setMarketRegions] = useState<string[]>([]);
