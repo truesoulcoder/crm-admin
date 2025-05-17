@@ -36,14 +36,12 @@ const ThemeGroup = ({
           <div 
             className="w-3 h-3 rounded-full mr-2"
             style={{
-              background: themeName === 'light' || themeName === 'dark' 
-                ? `linear-gradient(135deg, hsl(var(--b1) / 0.8) 0%, hsl(var(--b2) / 0.8) 100%)`
-                : `linear-gradient(135deg, 
-                    hsl(var(--${themeName}-primary) / 0.8) 0%, 
-                    hsl(var(--${themeName}-secondary) / 0.8) 100%)`
+              background: `linear-gradient(135deg, 
+                hsl(var(--${themeName === 'light' || themeName === 'dark' ? 'base' : themeName}-primary) / 0.8) 0%, 
+                hsl(var(--${themeName === 'light' || themeName === 'dark' ? 'base' : themeName}-secondary) / 0.8) 100%)`
             }}
           />
-          {themeName}
+          {themeName.replace(/-/g, ' ')}
           {currentTheme === themeName && (
             <span className="ml-auto badge badge-primary badge-xs">✓</span>
           )}
@@ -65,38 +63,46 @@ export default function ThemeSelector() {
   // Get the appropriate icon based on the current theme
   const getThemeIcon = () => {
     if (theme === 'system') return <Monitor size={16} />;
-    if (resolvedTheme === 'light') return <Sun size={16} />;
+    if (resolvedTheme === 'light' || resolvedTheme === 'custom_crm_theme') return <Sun size={16} />;
     return <Moon size={16} />;
+  };
+  
+  // Handle theme selection
+  const handleThemeSelect = (selectedTheme: ThemeName | 'system') => {
+    setTheme(selectedTheme);
   };
 
   return (
     <div className="dropdown dropdown-end">
-      <label tabIndex={0} className="btn btn-ghost btn-circle">
+      <label tabIndex={0} className="btn btn-ghost btn-circle" title="Change theme">
         {getThemeIcon()}
       </label>
       <div 
         tabIndex={0}
-        className="dropdown-content z-[1] p-4 shadow-2xl bg-base-100 rounded-box w-80"
+        className="dropdown-content z-[1] p-4 shadow-2xl bg-base-100 rounded-box w-80 max-h-[80vh] overflow-y-auto"
       >
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-lg">Theme</h3>
             <div className="flex items-center space-x-2">
               <button
-                onClick={() => setTheme('light')}
+                onClick={() => handleThemeSelect('light')}
                 className={`btn btn-sm btn-ghost ${theme === 'light' ? 'btn-active' : ''}`}
+                title="Light"
               >
                 <Sun size={16} />
               </button>
               <button
-                onClick={() => setTheme('dark')}
+                onClick={() => handleThemeSelect('dark')}
                 className={`btn btn-sm btn-ghost ${theme === 'dark' ? 'btn-active' : ''}`}
+                title="Dark"
               >
                 <Moon size={16} />
               </button>
               <button
-                onClick={() => setTheme('system')}
+                onClick={() => handleThemeSelect('system')}
                 className={`btn btn-sm btn-ghost ${theme === 'system' ? 'btn-active' : ''}`}
+                title="System"
               >
                 <Monitor size={16} />
               </button>
@@ -109,15 +115,24 @@ export default function ThemeSelector() {
             title="Light Themes"
             themes={themeGroups.light}
             currentTheme={resolvedTheme}
-            onSelect={setTheme}
+            onSelect={handleThemeSelect}
           />
           
           <ThemeGroup
             title="Dark Themes"
             themes={themeGroups.dark}
             currentTheme={resolvedTheme}
-            onSelect={setTheme}
+            onSelect={handleThemeSelect}
           />
+          
+          {themeGroups.custom.length > 0 && (
+            <ThemeGroup
+              title="Custom Themes"
+              themes={themeGroups.custom}
+              currentTheme={resolvedTheme}
+              onSelect={handleThemeSelect}
+            />
+          )}
         </div>
       </div>
     </div>

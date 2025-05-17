@@ -3,13 +3,12 @@
 import clsx from 'clsx';
 import { LayoutDashboard, Users, FileText, Send, UserCog, Settings, Briefcase, Contact } from 'lucide-react';
 import Link from 'next/link';
+import React, { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import React from 'react';
 
 import { LetterFx } from '@/once-ui/components';
 
 import type { CrmView } from '@/types/index';
-import type { FC, ReactElement } from 'react';
 
 type ViewPath = {
   [K in CrmView]: string;
@@ -17,7 +16,7 @@ type ViewPath = {
 
 interface MenuItem {
   view: CrmView;
-  icon: ReactElement;
+  icon: React.ReactElement;
   label: string;
 }
 
@@ -31,7 +30,23 @@ const menuItems: MenuItem[] = [
   { view: 'settings', icon: <Settings size={20} />, label: 'Settings' },
 ];
 
-const Sidebar: FC = () => {
+const Sidebar: React.FC = () => {
+  // TODO: Replace this with actual logic to fetch/get companyLogoUrl from settings
+  const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null);
+  // TODO: Replace this with actual logic to fetch/get companyName from settings
+  const [companyName, setCompanyName] = useState<string | null>(null);
+
+  // Example: Fetch settings on component mount (you'll need to adapt this)
+  // useEffect(() => {
+  //   const fetchSettings = async () => {
+  //     // Replace with your actual settings fetching logic
+  //     // const settings = await getAppSettings(); 
+  //     // if (settings && settings.logoUrl) {
+  //     //   setCompanyLogoUrl(settings.logoUrl);
+  //     // }
+  //   };
+  //   fetchSettings();
+  // }, []);
   const pathname = usePathname();
 
   // Map CrmView to route paths
@@ -47,9 +62,14 @@ const Sidebar: FC = () => {
 
   return (
     <aside className="bg-base-200 text-base-content w-64 min-h-screen p-4 flex flex-col">
-      <div className="flex items-center mb-8">
-        <Briefcase size={32} className="text-primary mr-2" />
-        <h1 className="text-2xl font-bold text-primary">CRM SPA</h1>
+      <div className="flex items-center justify-center mb-8">
+        <img 
+          src={companyLogoUrl || 'https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media//logo.png'} 
+          alt="Company Logo" 
+          width="180" 
+          height="45" 
+          className="object-contain" 
+        />
       </div>
       <ul className="menu space-y-2 flex-1">
         {menuItems.map((item) => (
@@ -71,7 +91,7 @@ const Sidebar: FC = () => {
       </ul>
       <div className="mt-auto">
         <p className="text-xs text-center text-base-content/70">
-          &copy; {new Date().getFullYear()} Your Company
+          &copy; {new Date().getFullYear()} {companyName || 'True Soul Partners'}
         </p>
       </div>
     </aside>

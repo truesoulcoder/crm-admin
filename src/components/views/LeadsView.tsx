@@ -122,11 +122,13 @@ const LeadsView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const columnConfigurations: ColumnConfig[] = [
-    { key: 'contact1_name', label: 'Contact', sortable: true },
+    { key: 'contact1_name', label: 'Contact Info', sortable: true },
     { key: 'property_address', label: 'Property Address', sortable: true }, 
-    { key: 'market_region', label: 'Market', sortable: true },
-    { key: 'status', label: 'Status', sortable: true },
-    { key: 'avm_value', label: 'AVM', sortable: true } // AVM Value column
+    { key: 'market_region', label: 'Market Region', sortable: true },
+    { key: 'status', label: 'Lead Status', sortable: true },
+    { key: 'assessed_total', label: 'Assessed Value', sortable: true },
+    { key: 'mls_curr_status', label: 'MLS Status', sortable: true },
+    { key: 'mls_curr_days_on_market', label: 'Days on Market', sortable: true },
   ];
 
   // Fetch Market Regions
@@ -771,7 +773,7 @@ const LeadsView: React.FC = () => {
                           <div>
                             <div className="flex items-center">
                               <span className="font-medium">{contact.name || 'No Name'}</span>
-                              <span className="badge badge-xs badge-outline ml-2" title={`Contact Type: ${contact.type}`}>
+                              <span className={`badge badge-xs ml-2 ${contact.contactType.startsWith('owner') ? 'badge-info' : contact.contactType === 'agent' ? 'badge-secondary' : 'badge-outline'}`} title={`Contact Type: ${contact.type}`}>
                                 {contact.type}
                               </span>
                             </div>
@@ -786,7 +788,7 @@ const LeadsView: React.FC = () => {
                       </td>
                       <td>
                         <div className="flex items-start">
-                          <MapPin size={16} className="mr-1.5 mt-0.5 flex-shrink-0 text-base-content/70" />
+                          <MapPin size={16} className="mr-1.5 mt-0.5 flex-shrink-0 text-red-500" />
                           <div>
                             {displayValue(lead.property_address)}<br />
                             {lead.property_city || lead.property_state || lead.property_postal_code 
@@ -801,10 +803,9 @@ const LeadsView: React.FC = () => {
                           {lead.status || 'UNCONTACTED'}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap">{lead.avm_value ? `$${Number(lead.avm_value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}</td>
-                      <td>{lead.last_contacted_date 
-                        ? new Date(lead.last_contacted_date).toLocaleDateString() 
-                        : new Date(lead.updated_at).toLocaleDateString()}
+                      <td className="whitespace-nowrap">{lead.assessed_total ? `$${Number(lead.assessed_total).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}</td>
+                      <td>{displayValue(lead.mls_curr_status)}</td>
+                      <td>{displayValue(lead.mls_curr_days_on_market)}
                       </td>
                     </tr>
                   );

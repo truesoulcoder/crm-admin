@@ -49,6 +49,12 @@ const DEFAULT_PLACEHOLDERS = [
   '{{property_zip_code}}',
   '{{current_date}}',
   '{{contact_name}}',
+  '{{company_name}}',
+  '{{title_company}}',
+  '{{senders_name}}',
+  '{{closing_date}}',
+  '{{offer_price}}',
+  '{{emd_amount}}'
 ];
 
 interface DocumentTemplate {
@@ -203,8 +209,9 @@ const TemplatesView: React.FC = () => {
         }),
         Link,
       ],
-      content: newTemplateBody,
+      content: isClient ? newTemplateBody : '',
       onUpdate: ({ editor }) => {
+        if (!isClient) return;
         const html = editor.getHTML();
         console.log('Editor content updated:', html);
         setNewTemplateBody(html);
@@ -217,8 +224,11 @@ const TemplatesView: React.FC = () => {
       autofocus: false,
       editable: isClient,
       injectCSS: isClient,
+      // Only include valid editor options
+      enablePasteRules: isClient,
+      enableInputRules: isClient,
     },
-    [isClient]
+    [isClient, newTemplateBody]
   );
 
   // Update editor content when newTemplateBody changes
@@ -498,7 +508,7 @@ const TemplatesView: React.FC = () => {
   return (
     <div className="p-4 md:p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-        <h1 className="text-3xl font-bold text-base-content">Document Templates</h1> 
+        <h1 className="text-3xl font-bold text-base-content">Template Management</h1> 
         <button className="btn btn-primary w-full sm:w-auto" onClick={openCreateModal}>
           <PlusCircle size={18} className="mr-2" /> Create New Template
         </button>

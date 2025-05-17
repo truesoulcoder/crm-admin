@@ -7,12 +7,12 @@ export type ThemeName =
   | 'halloween' | 'garden' | 'forest' | 'aqua' | 'lofi' 
   | 'pastel' | 'fantasy' | 'wireframe' | 'black' | 'luxury' 
   | 'dracula' | 'cmyk' | 'autumn' | 'business' | 'acid' 
-  | 'lemonade' | 'night' | 'coffee' | 'winter' | 'dim' | 'nord' | 'sunset';
+  | 'lemonade' | 'night' | 'coffee' | 'winter' | 'dim' | 'nord' | 'sunset'
+  | 'custom_crm_theme';
 
 export type Theme = ThemeName | 'system';
 
 // Group themes by type for better organization
-// Theme groups for organization
 export const themeGroups = {
   light: [
     'light', 'cupcake', 'bumblebee', 'emerald', 'corporate',
@@ -24,6 +24,9 @@ export const themeGroups = {
     'luxury', 'dracula', 'business', 'night', 'coffee',
     'dim', 'nord', 'sunset'
   ] as const,
+  custom: [
+    'custom_crm_theme'
+  ] as const,
   system: ['light', 'dark'] as const
 } as const;
 
@@ -31,7 +34,8 @@ export const themeGroups = {
 // All available themes
 export const allThemes: readonly ThemeName[] = [
   ...themeGroups.light,
-  ...themeGroups.dark
+  ...themeGroups.dark,
+  ...themeGroups.custom
 ] as const;
 
 type ThemeGroup = keyof typeof themeGroups;
@@ -57,27 +61,36 @@ export const useTheme = (): UseThemeReturn => {
   // Apply theme class to document element
   useEffect(() => {
     const root = window.document.documentElement;
-    root.setAttribute('data-theme', resolvedTheme);
+    // Remove all theme classes first to avoid conflicts
+    root.removeAttribute('data-theme');
+    root.removeAttribute('class');
+    
+    // Apply the selected theme
+    if (resolvedTheme) {
+      root.setAttribute('data-theme', resolvedTheme);
+      root.classList.add(resolvedTheme);
+    }
   }, [resolvedTheme]);
 
-  // Initialize theme from localStorage or system preference
+  // Initialize theme from localStorage or use 'night' as default
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as ThemeName | 'system' | null;
     const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     
     setIsSystemDark(systemDark);
 
-    if (savedTheme && (savedTheme === 'system' || allThemes.includes(savedTheme))) {
+    if (savedTheme === 'system' || (savedTheme && allThemes.includes(savedTheme as ThemeName))) {
       setThemeState(savedTheme);
       if (savedTheme !== 'system') {
-        setResolvedTheme(savedTheme);
+        setResolvedTheme(savedTheme as ThemeName);
       } else {
-        setResolvedTheme(systemDark ? 'dark' : 'light');
+        setResolvedTheme(systemDark ? 'night' : 'night');
       }
     } else {
-      // Default to system preference if no saved theme
-      setThemeState('system');
-      setResolvedTheme(systemDark ? 'dark' : 'light');
+      // Default to 'night' theme if no saved theme
+      setThemeState('night');
+      setResolvedTheme('night');
+      localStorage.setItem('theme', 'night');
     }
   }, []);
 
@@ -88,7 +101,7 @@ export const useTheme = (): UseThemeReturn => {
       const isDark = e.matches;
       setIsSystemDark(isDark);
       if (theme === 'system') {
-        setResolvedTheme(isDark ? 'dark' : 'light');
+        setResolvedTheme('night'); // Always use night theme when system theme changes
       }
     };
 

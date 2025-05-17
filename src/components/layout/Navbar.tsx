@@ -14,7 +14,9 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -28,9 +30,37 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
         if (error) throw error;
         if (!user) throw new Error('No user logged in');
         
-        // Set user data from the auth session with proper type safety
-        setAvatarUrl(user.user_metadata?.avatar_url || null);
-        setFullName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User');
+        console.log('User data:', user); // Debug log
+        
+        // Extract user data from the auth session
+        // Debug log the entire user object to see what data we're getting
+        console.log('User object:', user);
+        
+        // Try multiple possible locations for the avatar URL
+        const avatarUrl = user.user_metadata?.avatar_url || 
+                         user.user_metadata?.picture ||
+                         user.identities?.[0]?.identity_data?.avatar_url ||
+                         user.identities?.[0]?.identity_data?.picture ||
+                         null;
+        
+        // Debug log the avatar URL
+        console.log('Avatar URL:', avatarUrl);
+        
+        const fullName = user.user_metadata?.full_name ||
+                        user.user_metadata?.name ||
+                        user.identities?.[0]?.identity_data?.full_name ||
+                        user.identities?.[0]?.identity_data?.name ||
+                        user.email?.split('@')[0] ||
+                        'User';
+        
+        // Force HTTPS if the URL is from Google and using HTTP
+        const processedAvatarUrl = avatarUrl?.startsWith('http://') && avatarUrl.includes('googleusercontent.com')
+          ? avatarUrl.replace('http://', 'https://')
+          : avatarUrl;
+          
+        setAvatarUrl(processedAvatarUrl || null);
+        setFullName(fullName);
+        setEmail(user.email || null);
       } catch (error: unknown) {
         console.error('Error loading user profile:', error instanceof Error ? error.message : 'Unknown error');
       } finally {
@@ -45,11 +75,22 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         const user = session.user;
-        setAvatarUrl(user.user_metadata?.avatar_url || null);
-        setFullName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User');
+        const avatarUrl = user.user_metadata?.avatar_url || 
+                         user.identities?.[0]?.identity_data?.avatar_url ||
+                         null;
+        const fullName = user.user_metadata?.full_name ||
+                        user.identities?.[0]?.identity_data?.full_name ||
+                        user.user_metadata?.name ||
+                        user.email?.split('@')[0] ||
+                        'User';
+        
+        setAvatarUrl(avatarUrl);
+        setFullName(fullName);
+        setEmail(user.email || null);
       } else if (event === 'SIGNED_OUT') {
         setAvatarUrl(null);
         setFullName(null);
+        setEmail(null);
       }
     });
     
@@ -77,49 +118,71 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
         <ThemeSelector />
         {/* Avatar dropdown */}
         <div className="dropdown dropdown-end ml-2">
-          <button tabIndex={0} className="btn btn-ghost btn-circle avatar">
-            <div className="w-8 rounded-full ring ring-primary ring-offset-base-100 ring-offset-1">
-              {isLoading ? (
-                <div className="w-8 h-8 rounded-full bg-base-300 animate-pulse" />
-              ) : avatarUrl ? (
-                <Image 
-                  src={avatarUrl} 
-                  alt={fullName || 'User avatar'} 
-                  width={32} 
-                  height={32}
-                  className="rounded-full"
-                  onError={(e) => {
-                    // Fallback to UserCircle if image fails to load
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                  }}
-                />
-              ) : (
-                <UserCircle size={32} className="text-primary" />
-              )}
+          <div className="flex items-center gap-2">
+            <div className="text-right hidden sm:block">
+              <div className="font-medium text-sm">{fullName}</div>
             </div>
-          </button>
-          <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
+            <button 
+              tabIndex={0} 
+              className="btn btn-ghost btn-circle avatar"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+            >
+              <div className="w-10 h-10 rounded-full ring ring-primary ring-offset-base-100 ring-offset-1 flex items-center justify-center bg-base-200 overflow-hidden">
+                {isLoading ? (
+                  <div className="w-10 h-10 rounded-full bg-base-300 animate-pulse" />
+                ) : avatarUrl ? (
+                  <img 
+                    src={avatarUrl} 
+                    alt={fullName || 'User avatar'} 
+                    width={40} 
+                    height={40}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // Fallback to UserCircle if image fails to load
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      // Show the fallback icon
+                      const parent = target.parentNode as HTMLElement;
+                      const fallback = document.createElement('div');
+                      fallback.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user text-primary"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
+                      parent.appendChild(fallback);
+                    }}
+                  />
+                ) : (
+                  <UserCircle size={32} className="text-primary" />
+                )}
+              </div>
+            </button>
+          </div>
+          <ul 
+            tabIndex={0} 
+            className={`menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-60 ${isMenuOpen ? 'block' : 'hidden'}`}
+          >
+            <li className="menu-title">
+              <div className="flex flex-col p-2">
+                <span className="font-bold">{fullName}</span>
+                {email && <span className="text-xs opacity-70">{email}</span>}
+              </div>
+            </li>
+            <li><a>Profile Settings</a></li>
+            <li><a>Account</a></li>
+            <div className="divider my-0"></div>
             <li>
               <a
-                onClick={() => {
-                  const handleLogout = async () => {
-                    try {
-                      const { logout } = await import('@/lib/auth');
-                      await logout();
-                      window.location.href = '/';
-                    } catch (error) {
-                      // In a production app, log to an error reporting service
-                      // eslint-disable-next-line no-console
-                      console.error('Logout failed:', error);
-                      // Optionally show an error message to the user
-                      alert('Logout failed. Please try again.');
-                    }
-                  };
-                  void handleLogout();
+                onClick={async (e) => {
+                  e.preventDefault();
+                  try {
+                    const { logout } = await import('@/lib/auth');
+                    await logout();
+                    window.location.href = '/';
+                  } catch (error) {
+                    console.error('Logout failed:', error);
+                    alert('Logout failed. Please try again.');
+                  }
                 }}
+                className="text-error hover:bg-error hover:text-error-content"
               >
-                Logout
+                Sign out
               </a>
             </li>
           </ul>
