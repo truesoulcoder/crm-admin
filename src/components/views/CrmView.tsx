@@ -1,4 +1,3 @@
-import { format } from 'date-fns';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Lead, LeadFormData, statusOptions } from '@/types/crm';
@@ -23,8 +22,92 @@ const CrmView: React.FC = () => {
   const [sortField, setSortField] = useState<keyof Lead | ''>('');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(10);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  
+  // Data state
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
+  const [currentLead, setCurrentLead] = useState<Lead | null>(null);
+  const [formData, setFormData] = useState<Partial<Lead>>({});
 
-  // Sorting handler (must be inside component for state access)
+  // Initialize Supabase client
+  const supabase = createClient();
+
+  // Fetch leads on component mount
+  useEffect(() => {
+    const fetchLeads = async () => {
+      try {
+        setIsLoading(true);
+        const { data, error } = await supabase
+          .from('leads')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        setLeads(data || []);
+        setFilteredLeads(data || []);
+      } catch (error) {
+        console.error('Error fetching leads:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchLeads();
+  }, []);
+
+  // Filter and sort leads
+  useEffect(() => {
+    let result = [...leads];
+    
+    // Apply search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(lead => 
+        (lead.first_name?.toLowerCase().includes(term)) ||
+        (lead.last_name?.toLowerCase().includes(term)) ||
+        (lead.email?.toLowerCase().includes(term)) ||
+        (lead.company?.toLowerCase().includes(term)) ||
+        (lead.address?.toLowerCase().includes(term))
+      );
+    }
+    
+    // Apply status filter
+    if (statusFilter !== 'ALL') {
+      result = result.filter(lead => lead.status === statusFilter);
+    }
+    
+    // Apply sorting
+    if (sortField) {
+      result.sort((a, b) => {
+        const aValue = a[sortField as keyof Lead];
+        const bValue = b[sortField as keyof Lead];
+        
+        if (aValue === null) return sortDirection === 'asc' ? -1 : 1;
+        if (bValue === null) return sortDirection === 'asc' ? 1 : -1;
+        
+        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    
+    setFilteredLeads(result);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [leads, searchTerm, statusFilter, sortField, sortDirection]);
+
+  // Get paginated leads
+  const paginatedLeads = useMemo(() => {
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    return filteredLeads.slice(startIndex, startIndex + rowsPerPage);
+  }, [filteredLeads, currentPage, rowsPerPage]);
+
+  // Handle sorting
   const handleSort = (field: keyof Lead | '') => {
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -32,128 +115,17 @@ const CrmView: React.FC = () => {
       setSortField(field);
       setSortDirection('asc');
     }
-    setCurrentPage(1);
   };
 
-  const supabase = createClient();
-
-  // State for leads and filtering
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [assignedToMe, setAssignedToMe] = useState<boolean>(true);
-  const [users, setUsers] = useState<Array<{id: string, email: string, full_name: string | null}>>([]);
-  const [campaigns, setCampaigns] = useState<Array<{id: string, name: string}>>([]);
-  const [rowsPerPage, setRowsPerPage] = useState<number>(25);
-  
-  // Get paginated leads
-  const paginatedLeads = useMemo(() => {
-    const start = (currentPage - 1) * rowsPerPage;
-    return leads.slice(start, start + rowsPerPage);
-  }, [leads, currentPage, rowsPerPage]);
-  
-  // Get status badge class
-  const getStatusBadge = (status: string) => {
-    const statusInfo = getStatusInfo(status);
-    return `badge ${statusInfo.color} badge-sm`;
+  // Handle lead edit
+  const handleEdit = (lead: Lead) => {
+    setCurrentLead(lead);
+    setFormData(lead);
+    setIsFormOpen(true);
   };
-  
-  // Form state
-  const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [currentLead, setCurrentLead] = useState<Lead | null>(null);
-  const [formData, setFormData] = useState<LeadFormData>({
-    first_name: '',
-    last_name: '',
-    email: '',
-    phone: '',
-    company: '',
-    address: '',
-    city: '',
-    state: '',
-    zip_code: '',
-    country: '',
-    notes: '',
-    status: 'NEW',
-  });
-
-  // Fetch initial data
-  const fetchInitialData = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      
-      // Fetch campaigns
-      const { data: campaignsData, error: campaignsError } = await supabase
-        .from('campaigns')
-        .select('id, name')
-        .order('name', { ascending: true });
-      
-      if (campaignsError) throw campaignsError;
-      setCampaigns(campaignsData || []);
-      
-      // Fetch leads
-      await fetchLeads(user.id);
-    } catch (error) {
-      console.error('Error fetching initial data:', error);
-      // Handle error (show toast/notification)
-    } finally {
-      setIsLoading(false);
-    }
-  }, [supabase]);
-
-  // Fetch leads from the database
-  const fetchLeads = useCallback(async (currentUserId: string) => {
-    try {
-      setIsLoading(true);
-      
-      let query = supabase
-        .from('crm_leads')
-        .select(`
-          *,
-          assigned_user:profiles!crm_leads_assigned_to_fkey(id, email, full_name, avatar_url),
-          campaign:campaigns!crm_leads_campaign_id_fkey(id, name)
-        `);
-      
-      // Apply filters
-      if (assignedToMe) {
-        query = query.or(`owner_id.eq.${currentUserId},assigned_to.eq.${currentUserId}`);
-      }
-      
-      if (searchTerm) {
-        query = query.or(
-          `first_name.ilike.%${searchTerm}%,
-          last_name.ilike.%${searchTerm}%,
-          email.ilike.%${searchTerm}%,
-          phone.ilike.%${searchTerm}%,
-          company.ilike.%${searchTerm}%`
-        );
-      }
-      
-      // Apply status filter
-      if (statusFilter !== 'ALL') {
-        query = query.eq('status', statusFilter);
-      }
-      
-      const { data, error } = await query.order('updated_at', { ascending: false });
-      
-      if (error) throw error;
-      
-      setLeads(data || []);
-    } catch (error) {
-      console.error('Error fetching leads:', error);
-      // Handle error (show toast/notification)
-    } finally {
-      setIsLoading(false);
-    }
-  }, [searchTerm, statusFilter, assignedToMe, supabase]);
 
   // Handle form input changes
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -161,177 +133,60 @@ const CrmView: React.FC = () => {
     }));
   };
 
-  // Handle adding a new lead
-  const handleAddNew = () => {
-    setCurrentLead(null);
-    setFormData({
-      first_name: '',
-      last_name: '',
-      email: '',
-      phone: '',
-      company: '',
-      address: '',
-      city: '',
-      state: '',
-      zip_code: '',
-      country: '',
-      notes: '',
-      status: 'NEW',
-    });
-    setIsFormOpen(true);
-  };
-
-  // Handle editing a lead
-  const handleEdit = (lead: Lead) => {
-    setCurrentLead(lead);
-    setFormData({
-      first_name: lead.first_name || '',
-      last_name: lead.last_name || '',
-      email: lead.email || '',
-      phone: lead.phone || '',
-      company: lead.company || '',
-      address: lead.address || '',
-      city: lead.city || '',
-      state: lead.state || '',
-      zip_code: lead.zip_code || '',
-      country: lead.country || '',
-      notes: lead.notes || '',
-      status: lead.status || 'NEW',
-      assigned_to: lead.assigned_to || null,
-      campaign_id: lead.campaign_id || null,
-    });
-    setIsFormOpen(true);
-  };
-
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    if (!formData) return;
+
     try {
-      setIsSubmitting(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const leadData: Partial<Lead> = {
-        ...formData,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (currentLead?.id) {
+      setIsLoading(true);
+      
+      if (currentLead) {
         // Update existing lead
         const { error } = await supabase
-          .from('crm_leads')
-          .update(leadData)
+          .from('leads')
+          .update(formData)
           .eq('id', currentLead.id);
-        
+          
         if (error) throw error;
       } else {
         // Create new lead
         const { error } = await supabase
-          .from('crm_leads')
-          .insert([{
-            ...leadData,
-            owner_id: user.id,
-            created_at: new Date().toISOString(),
-          }]);
-        
+          .from('leads')
+          .insert([formData]);
+          
         if (error) throw error;
       }
-
-      // Refresh leads and close form
-      await fetchLeads(user.id);
-      setIsFormOpen(false);
-    } catch (error) {
-      console.error('Error saving lead:', error);
-      // Handle error (show toast/notification)
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // Handle deleting a lead
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this lead?')) return;
-    
-    try {
-      const { error } = await supabase
-        .from('crm_leads')
-        .delete()
-        .eq('id', id);
+      
+      // Refresh leads
+      const { data, error } = await supabase
+        .from('leads')
+        .select('*')
+        .order('created_at', { ascending: false });
         
       if (error) throw error;
       
-      // Refresh leads
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await fetchLeads(user.id);
-      }
+      setLeads(data || []);
+      setIsFormOpen(false);
+      setCurrentLead(null);
+      setFormData({});
+      
     } catch (error) {
-      console.error('Error deleting lead:', error);
-      // Handle error (show toast/notification)
+      console.error('Error saving lead:', error);
+    } finally {
+      setIsLoading(false);
     }
-  };
-
-  // Load initial data on component mount
-  useEffect(() => {
-    fetchInitialData();
-  }, [fetchInitialData]);
-  
-  // Refresh leads when filters change
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-          (async () => {
-            try {
-              await fetchLeads(session.user.id);
-            } catch (error) {
-              console.error('Error during fetchLeads on auth state change:', error);
-            }
-          })();
-        }
-    });
-    
-    return () => {
-      subscription?.unsubscribe();
-    };
-  }, [fetchLeads, supabase]);
-
-  // Filter leads based on search and status
-  const filteredLeads = useMemo(() => {
-    return leads.filter(lead => {
-      const searchLower = searchTerm.toLowerCase();
-      const matchesSearch = !searchTerm || 
-        (lead.first_name?.toLowerCase().includes(searchLower)) ||
-        (lead.last_name?.toLowerCase().includes(searchLower)) ||
-        (lead.email?.toLowerCase().includes(searchLower)) ||
-        (lead.phone?.toLowerCase().includes(searchLower)) ||
-        (lead.company?.toLowerCase().includes(searchLower)) ||
-        (lead.address?.toLowerCase().includes(searchLower)) ||
-        (lead.city?.toLowerCase().includes(searchLower)) ||
-        (lead.state?.toLowerCase().includes(searchLower)) ||
-        (lead.zip_code?.toLowerCase().includes(searchLower)) ||
-        (lead.country?.toLowerCase().includes(searchLower)) ||
-        (lead.notes?.toLowerCase().includes(searchLower));
-      
-      const matchesStatus = statusFilter === 'ALL' || lead.status === statusFilter;
-      
-      return matchesSearch && matchesStatus;
-    });
-  }, [leads, searchTerm, statusFilter]);
-
-  // Get status display info
-  const getStatusInfo = (status: string): StatusDisplayInfo => {
-    return statusOptions.find(s => s.value === status) || 
-      { value: status, label: status, color: 'bg-gray-100 text-gray-800' };
   };
 
   // Get status badge class
   const getStatusBadge = (status: string) => {
-    const statusInfo = getStatusInfo(status);
+    const statusInfo = statusOptions.find(s => s.value === status) || 
+      { value: status, label: status, color: 'bg-gray-100 text-gray-800' };
     return `badge ${statusInfo.color} badge-sm`;
   };
 
-  if (isLoading) {
+  // Show loading state
+  if (isLoading && leads.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -347,137 +202,158 @@ const CrmView: React.FC = () => {
       <div className="mb-6 p-4 bg-base-100 rounded-lg shadow">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1">
-            </label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by name, email, address, etc..."
-                className="input input-bordered w-full pl-10 pr-10"
+                placeholder="Search leads..."
+                className="input input-bordered w-full pl-10"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <XCircle className="h-4 w-4" />
-                </button>
-              )}
             </div>
           </div>
-          {/* Status Filter */}
-          <div className="form-control w-full sm:w-48">
-            <label className="label">
-              <span className="label-text">Status</span>
-            </label>
-            <select
-              className="select select-bordered w-full"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="ALL">All Statuses</option>
-              {statusOptions.map(option => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </div>
-          {/* Rows per Page */}
-          <div className="form-control w-full sm:w-32">
-            <label className="label">
-              <span className="label-text">Rows</span>
-            </label>
-            <select
-              className="select select-bordered w-full"
-              value={rowsPerPage}
-              onChange={(e) => {
-                setRowsPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-            >
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-          </div>
+          <select 
+            className="select select-bordered"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="ALL">All Statuses</option>
+            {statusOptions.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button 
+            className="btn btn-primary"
+            onClick={() => {
+              setCurrentLead(null);
+              setFormData({});
+              setIsFormOpen(true);
+            }}
+          >
+            <PlusCircle className="w-4 h-4 mr-2" />
+            Add Lead
+          </button>
         </div>
       </div>
 
-      {/* CRM Leads Table */}
-      <div className="overflow-x-auto bg-base-100 rounded-lg shadow">
-        <table className="table table-zebra table-sm w-full">
-          <thead>
-            <tr className="text-base-content">
-              <th onClick={() => handleSort('first_name')} className="cursor-pointer hover:bg-base-300">
-                Contact <SortIndicator field={'first_name'} />
-              </th>
-              <th onClick={() => handleSort('company')} className="cursor-pointer hover:bg-base-300">
-                Company <SortIndicator field={'company'} />
-              </th>
-              <th onClick={() => handleSort('address')} className="cursor-pointer hover:bg-base-300">
-                Address <SortIndicator field={'address'} />
-              </th>
-              <th onClick={() => handleSort('status')} className="cursor-pointer hover:bg-base-300">
-                Status <SortIndicator field={'status'} />
-              </th>
-              <th onClick={() => handleSort('created_at')} className="cursor-pointer hover:bg-base-300">
-                Created <SortIndicator field={'created_at'} />
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr>
-                <td colSpan={5} className="text-center py-10">Loading leads...</td>
+      {/* Leads Table */}
+      <div className="bg-base-100 rounded-lg shadow overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="table table-zebra w-full">
+            <thead>
+              <tr className="bg-base-200">
+                <th className="cursor-pointer hover:bg-base-300" onClick={() => handleSort('first_name')}>
+                  <div className="flex items-center">
+                    Contact
+                    <SortIndicator field="first_name" />
+                  </div>
+                </th>
+                <th className="cursor-pointer hover:bg-base-300" onClick={() => handleSort('company')}>
+                  <div className="flex items-center">
+                    Company
+                    <SortIndicator field="company" />
+                  </div>
+                </th>
+                <th className="cursor-pointer hover:bg-base-300" onClick={() => handleSort('status')}>
+                  <div className="flex items-center">
+                    Status
+                    <SortIndicator field="status" />
+                  </div>
+                </th>
+                <th className="cursor-pointer hover:bg-base-300" onClick={() => handleSort('created_at')}>
+                  <div className="flex items-center">
+                    Created
+                    <SortIndicator field="created_at" />
+                  </div>
+                </th>
               </tr>
-            ) : paginatedLeads.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="text-center py-10">No leads found.</td>
-              </tr>
-            ) : (
-              paginatedLeads.map((lead: Lead) => (
-                <tr
-                  key={lead.id}
-                  className="hover:bg-base-200 cursor-pointer transition-colors"
-                  onClick={() => handleEdit(lead)}
-                >
-                  <td>
-                    <div className="flex items-center space-x-3">
-                      <div>
-                        <div className="flex items-center">
-                          <span className="font-medium">{lead.first_name} {lead.last_name || ''}</span>
-                        </div>
-                        <div className="text-sm opacity-70 flex items-center mt-1">
-                          <Mail className="w-3 h-3 mr-1 flex-shrink-0" />
-                          <span className="truncate max-w-xs" title={lead.email || ''}>{lead.email}</span>
-                        </div>
-                      </div>
-                    </div>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-10">
+                    <span className="loading loading-spinner loading-lg"></span>
+                    <p className="mt-2">Loading leads...</p>
                   </td>
-                  <td>{lead.company || '-'}</td>
-                  <td>
-                    <div className="flex items-start">
-                      <MapPin size={16} className="mr-1.5 mt-0.5 flex-shrink-0 text-base-content/70" />
-                      <div>
-                        {lead.address || '-'}<br />
-                        {lead.city || lead.state || lead.zip_code
-                          ? `${lead.city || ''}, ${lead.state || ''} ${lead.zip_code || ''}`.trim()
-                          : '-'}
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span className={getStatusBadge(lead.status || 'NEW')}>
-                      {lead.status || 'NEW'}
-                    </span>
-                  </td>
-                  <td>{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '-'}</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : filteredLeads.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="text-center py-10">
+                    No leads found. Try adjusting your search or filters.
+                  </td>
+                </tr>
+              ) : (
+                paginatedLeads.map((lead) => (
+                  <tr 
+                    key={lead.id}
+                    className="hover:bg-base-200 cursor-pointer"
+                    onClick={() => handleEdit(lead)}
+                  >
+                    <td>
+                      <div className="flex items-center space-x-3">
+                        <div className="avatar placeholder">
+                          <div className="bg-neutral-focus text-neutral-content rounded-full w-10">
+                            <span>{lead.first_name?.[0]?.toUpperCase() || '?'}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="font-medium">
+                            {lead.first_name} {lead.last_name}
+                          </div>
+                          <div className="text-sm opacity-50">
+                            {lead.email}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{lead.company || '-'}</td>
+                    <td>
+                      <span className={`badge ${getStatusBadge(lead.status || 'NEW')}`}>
+                        {lead.status || 'NEW'}
+                      </span>
+                    </td>
+                    <td>
+                      {lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '-'}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {filteredLeads.length > 0 && (
+          <div className="flex justify-between items-center p-4 border-t border-base-200">
+            <div className="text-sm text-base-content/70">
+              Showing {Math.min(rowsPerPage * (currentPage - 1) + 1, filteredLeads.length)}-{
+                Math.min(rowsPerPage * currentPage, filteredLeads.length)
+              } of {filteredLeads.length} leads
+            </div>
+            <div className="join">
+              <button 
+                className="join-item btn btn-sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                «
+              </button>
+              <button className="join-item btn btn-sm">
+                Page {currentPage}
+              </button>
+              <button 
+                className="join-item btn btn-sm"
+                onClick={() => setCurrentPage(p => p + 1)}
+                disabled={currentPage * rowsPerPage >= filteredLeads.length}
+              >
+                »
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Lead Form Modal */}
@@ -491,7 +367,7 @@ const CrmView: React.FC = () => {
                 </h2>
                 <button
                   onClick={() => setIsFormOpen(false)}
-                  className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+                  className="btn btn-sm btn-circle btn-ghost"
                 >
                   ✕
                 </button>
@@ -499,12 +375,12 @@ const CrmView: React.FC = () => {
               
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="form-control w-full">
-                    <label htmlFor="first_name" className="label">
+                  <div className="form-control">
+                    <label className="label">
                       <span className="label-text">First Name</span>
                     </label>
                     <input
-                      id="first_name"
+                      type="text"
                       name="first_name"
                       className="input input-bordered w-full"
                       value={formData.first_name || ''}
@@ -513,54 +389,52 @@ const CrmView: React.FC = () => {
                     />
                   </div>
                   
-                  <div className="form-control w-full">
-                    <label htmlFor="last_name" className="label">
+                  <div className="form-control">
+                    <label className="label">
                       <span className="label-text">Last Name</span>
                     </label>
                     <input
-                      id="last_name"
+                      type="text"
                       name="last_name"
                       className="input input-bordered w-full"
                       value={formData.last_name || ''}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                  
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text">Email</span>
+                    </label>
+                    <input
+                      type="email"
+                      name="email"
+                      className="input input-bordered w-full"
+                      value={formData.email || ''}
                       onChange={handleInputChange}
                       required
                     />
                   </div>
                   
-                  <div className="form-control w-full">
-                    <label htmlFor="email" className="label">
-                      <span className="label-text">Email</span>
-                    </label>
-                    <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      className="input input-bordered w-full"
-                      value={formData.email || ''}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                  
-                  <div className="form-control w-full">
-                    <label htmlFor="phone" className="label">
+                  <div className="form-control">
+                    <label className="label">
                       <span className="label-text">Phone</span>
                     </label>
                     <input
-                      id="phone"
-                      name="phone"
                       type="tel"
+                      name="phone"
                       className="input input-bordered w-full"
                       value={formData.phone || ''}
                       onChange={handleInputChange}
                     />
                   </div>
                   
-                  <div className="form-control w-full">
-                    <label htmlFor="company" className="label">
+                  <div className="form-control md:col-span-2">
+                    <label className="label">
                       <span className="label-text">Company</span>
                     </label>
                     <input
-                      id="company"
+                      type="text"
                       name="company"
                       className="input input-bordered w-full"
                       value={formData.company || ''}
@@ -568,86 +442,25 @@ const CrmView: React.FC = () => {
                     />
                   </div>
                   
-                  <div className="form-control w-full">
-                    <label htmlFor="status" className="label">
-                      <span className="label-text">Status</span>
+                  <div className="form-control md:col-span-2">
+                    <label className="label">
+                      <span className="label-text">Address</span>
                     </label>
-                    <select
-                      id="status"
-                      name="status"
-                      className="select select-bordered w-full"
-                      value={formData.status || 'NEW'}
-                      onChange={(e) => setFormData((prev: LeadFormData) => ({ ...prev, status: e.target.value }))}
-                    >
-                      {statusOptions.map((status: { value: string; label: string }) => (
-                        <option key={status.value} value={status.value}>
-                          {status.label}
-                        </option>
-                      ))}
-                    </select>
+                    <input
+                      type="text"
+                      name="address"
+                      className="input input-bordered w-full"
+                      value={formData.address || ''}
+                      onChange={handleInputChange}
+                    />
                   </div>
                   
-                  <div className="form-control w-full">
-                    <label htmlFor="assigned_to" className="label">
-                      <span className="label-text">Assign To</span>
-                    </label>
-                    <select
-                      id="assigned_to"
-                      name="assigned_to"
-                      className="select select-bordered w-full"
-                      value={formData.assigned_to || ''}
-                      onChange={(e) => setFormData((prev: LeadFormData) => ({ ...prev, assigned_to: e.target.value || null }))}
-                    >
-                      <option value="">Unassigned</option>
-                      {users.map((user: any) => (
-                        <option key={user.id} value={user.id}>
-                          {user.full_name || user.email}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div className="form-control w-full">
-                    <label htmlFor="campaign_id" className="label">
-                      <span className="label-text">Campaign</span>
-                    </label>
-                    <select
-                      id="campaign_id"
-                      name="campaign_id"
-                      className="select select-bordered w-full"
-                      value={formData.campaign_id || ''}
-                      onChange={(e) => setFormData((prev: LeadFormData) => ({ ...prev, campaign_id: e.target.value || null }))}
-                    >
-                      <option value="">No campaign</option>
-                      {campaigns.map((campaign: any) => (
-                        <option key={campaign.id} value={campaign.id}>
-                          {campaign.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                
-                <div className="form-control w-full">
-                  <label htmlFor="address" className="label">
-                    <span className="label-text">Address</span>
-                  </label>
-                  <input
-                    id="address"
-                    name="address"
-                    className="input input-bordered w-full"
-                    value={formData.address || ''}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="form-control w-full">
-                    <label htmlFor="city" className="label">
+                  <div className="form-control">
+                    <label className="label">
                       <span className="label-text">City</span>
                     </label>
                     <input
-                      id="city"
+                      type="text"
                       name="city"
                       className="input input-bordered w-full"
                       value={formData.city || ''}
@@ -655,12 +468,12 @@ const CrmView: React.FC = () => {
                     />
                   </div>
                   
-                  <div className="form-control w-full">
-                    <label htmlFor="state" className="label">
+                  <div className="form-control">
+                    <label className="label">
                       <span className="label-text">State/Province</span>
                     </label>
                     <input
-                      id="state"
+                      type="text"
                       name="state"
                       className="input input-bordered w-full"
                       value={formData.state || ''}
@@ -668,53 +481,70 @@ const CrmView: React.FC = () => {
                     />
                   </div>
                   
-                  <div className="form-control w-full">
-                    <label htmlFor="zip_code" className="label">
-                      <span className="label-text">ZIP/Postal Code</span>
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text">Postal Code</span>
                     </label>
                     <input
-                      id="zip_code"
+                      type="text"
                       name="zip_code"
                       className="input input-bordered w-full"
                       value={formData.zip_code || ''}
                       onChange={handleInputChange}
                     />
                   </div>
+                  
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text">Status</span>
+                    </label>
+                    <select
+                      name="status"
+                      className="select select-bordered w-full"
+                      value={formData.status || 'NEW'}
+                      onChange={handleInputChange}
+                    >
+                      {statusOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div className="form-control md:col-span-2">
+                    <label className="label">
+                      <span className="label-text">Notes</span>
+                    </label>
+                    <textarea
+                      name="notes"
+                      className="textarea textarea-bordered w-full h-24"
+                      value={formData.notes || ''}
+                      onChange={handleInputChange}
+                    />
+                  </div>
                 </div>
                 
-                <div className="form-control w-full">
-                  <label htmlFor="country" className="label">
-                    <span className="label-text">Country</span>
-                  </label>
-                  <input
-                    id="country"
-                    name="country"
-                    className="input input-bordered w-full"
-                    value={formData.country || ''}
-                    onChange={handleInputChange}
-                  />
-                </div>
-                
-                <div className="form-control w-full">
-                  <label htmlFor="notes" className="label">
-                    <span className="label-text">Notes</span>
-                  </label>
-                  <textarea
-                    id="notes"
-                    name="notes"
-                    rows={3}
-                    value={formData.notes || ''}
-                    onChange={handleInputChange}
-                    className="textarea textarea-bordered w-full"
-                  />
-                </div>
-                
-                <div className="flex justify-end gap-3 pt-4">
-                  <button type="button" className="btn btn-outline" onClick={() => setIsFormOpen(false)} disabled={isSubmitting}>
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setIsFormOpen(false)}
+                    className="btn btn-ghost"
+                  >
                     Cancel
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-                    {isSubmitting ? 'Saving...' : 'Save Lead'}
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <span className="loading loading-spinner"></span>
+                    ) : currentLead ? (
+                      'Update Lead'
+                    ) : (
+                      'Add Lead'
+                    )}
                   </button>
                 </div>
               </form>
@@ -722,143 +552,7 @@ const CrmView: React.FC = () => {
           </div>
         </div>
       )}
-  // ... CrmView component code ...
-
-// --- Table Section (refactored to match LeadsView) ---
-<div className="mb-6 p-4 bg-base-200 rounded-lg">
-  <div className="flex flex-col sm:flex-row gap-4 items-end">
-    {/* Search */}
-    <div className="form-control flex-1">
-      <label className="label">
-        <span className="label-text">Search Leads</span>
-      </label>
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Search by name, email, address, etc..."
-          className="input input-bordered w-full pl-10 pr-10"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        {searchTerm && (
-          <button
-            onClick={() => setSearchTerm('')}
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-          >
-            <XCircle className="h-4 w-4" />
-          </button>
-        )}
-      </div>
     </div>
-    {/* Status Filter */}
-    <div className="form-control w-full sm:w-48">
-      <label className="label">
-        <span className="label-text">Status</span>
-      </label>
-      <select
-        className="select select-bordered w-full"
-        value={statusFilter}
-        onChange={(e) => setStatusFilter(e.target.value)}
-      >
-        <option value="ALL">All Statuses</option>
-        {statusOptions.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
-    </div>
-    {/* Rows per Page */}
-    <div className="form-control w-full sm:w-32">
-      <label className="label">
-        <span className="label-text">Rows</span>
-      </label>
-      <select
-        className="select select-bordered w-full"
-        value={rowsPerPage}
-        onChange={(e) => {
-          setRowsPerPage(Number(e.target.value));
-          setCurrentPage(1);
-        }}
-      >
-        <option value={25}>25</option>
-        <option value={50}>50</option>
-        <option value={100}>100</option>
-      </select>
-    </div>
-  </div>
-</div>
-
-{/* CRM Leads Table (matching LeadsView) */}
-<div className="overflow-x-auto bg-base-100 rounded-lg shadow">
-  <table className="table table-zebra table-sm w-full">
-    <thead>
-      <tr className="text-base-content">
-        <th onClick={() => handleSort('first_name')} className="cursor-pointer hover:bg-base-300">
-          Contact <SortIndicator field={'first_name'} />
-        </th>
-        <th onClick={() => handleSort('company')} className="cursor-pointer hover:bg-base-300">
-          Company <SortIndicator field={'company'} />
-        </th>
-        <th onClick={() => handleSort('address')} className="cursor-pointer hover:bg-base-300">
-          Address <SortIndicator field={'address'} />
-        </th>
-        <th onClick={() => handleSort('status')} className="cursor-pointer hover:bg-base-300">
-          Status <SortIndicator field={'status'} />
-        </th>
-        <th onClick={() => handleSort('created_at')} className="cursor-pointer hover:bg-base-300">
-          Created <SortIndicator field={'created_at'} />
-        </th>
-      </tr>
-    </thead>
-    <tbody>
-      {isLoading && !filteredLeads.length ? (
-        <tr><td colSpan={5} className="text-center py-10">Loading leads...</td></tr>
-      ) : !isLoading && !filteredLeads.length ? (
-        <tr><td colSpan={5} className="text-center py-10">No leads found.</td></tr>
-      ) : (
-        paginatedLeads.map(lead => (
-          <tr
-            key={lead.id}
-            className="hover:bg-base-200 cursor-pointer transition-colors"
-            onClick={() => handleEdit(lead)}
-          >
-            <td>
-              <div className="flex items-center space-x-3">
-                <div>
-                  <div className="flex items-center">
-                    <span className="font-medium">{lead.first_name} {lead.last_name || ''}</span>
-                  </div>
-                  <div className="text-sm opacity-70 flex items-center mt-1">
-                    <Mail className="w-3 h-3 mr-1 flex-shrink-0" />
-                    <span className="truncate max-w-xs" title={lead.email}>{lead.email}</span>
-                  </div>
-                </div>
-              </div>
-            </td>
-            <td>{lead.company || '-'}</td>
-            <td>
-              <div className="flex items-start">
-                <MapPin size={16} className="mr-1.5 mt-0.5 flex-shrink-0 text-base-content/70" />
-                <div>
-                  {lead.address}<br />
-                  {lead.city || lead.state || lead.zip_code
-                    ? `${lead.city || ''}, ${lead.state || ''} ${lead.zip_code || ''}`
-                    : '-'}
-                </div>
-              </div>
-            </td>
-            <td>
-              <span className={getStatusBadge(lead.status || 'NEW')}>
-                {lead.status || 'NEW'}
-              </span>
-            </td>
-            <td>{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '-'}</td>
-          </tr>
-        ))
-      )}
-    </tbody>
-  </table>
-</div>
   );
 };
 
