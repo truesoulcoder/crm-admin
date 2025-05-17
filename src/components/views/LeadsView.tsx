@@ -1,771 +1,995 @@
 'use client';
 
-import { Users, PlusCircle, Trash2, Eye, Search, Filter, ChevronUp, ChevronDown, Briefcase, AtSign, Phone, CalendarDays, Tag, UserCheck, Save, XCircle, AlertTriangle, UploadCloud } from 'lucide-react';
-import React, { useState, useMemo, ChangeEvent, FormEvent, useEffect, useRef, useCallback } from 'react';
+import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, UploadCloud, AlertTriangle, XCircle, Save, Eye, Mail, Phone, MapPin } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
 
-import { createClient } from '@/lib/supabase/client';
-import { Background } from '@/once-ui/components/Background';
+// Using shared Supabase client
+import supabase from '@/lib/supabaseClient';
 
-import type { Tables } from '@/types/supabase';
-import type { PostgrestError } from '@supabase/supabase-js'; 
-
-interface MarketRegionsApiResponse {
-  ok: boolean;
-  marketRegions?: string[];
-  error?: string;
+// Define types (adjust based on your actual schema)
+interface ColumnConfig {
+  key: keyof NormalizedLead | string; // Allow string for keys not directly in NormalizedLead if needed, but prefer keyof for type safety
+  label: string;
+  sortable?: boolean;
 }
 
-interface FileUploadResponse {
-  ok: boolean;
-  error?: string;
-  // Add other potential fields like count if your API returns them
-  count?: number; 
+export interface NormalizedLead {
+  id: string; // Assuming bigserial maps to string or number in frontend, using string for consistency with UUIDs elsewhere.
+  original_lead_id?: string | null; // uuid
+  market_region?: string | null;
+  contact1_name?: string | null;
+  contact1_email_1?: string | null;
+  // contact1_title, contact1_email_2, contact1_phone_1, contact1_phone_2 - assuming these might be needed later based on original interface
+  contact1_title?: string | null; 
+  contact1_email_2?: string | null;
+  contact1_phone_1?: string | null;
+  contact1_phone_2?: string | null;
+  contact2_name?: string | null;
+  contact2_email_1?: string | null;
+  // contact2_title, contact2_email_2, contact2_phone_1, contact2_phone_2 - assuming these might be needed later
+  contact2_title?: string | null;
+  contact2_email_2?: string | null;
+  contact2_phone_1?: string | null;
+  contact2_phone_2?: string | null;
+  contact3_name?: string | null;
+  contact3_email_1?: string | null;
+  mls_curr_list_agent_name?: string | null;
+  mls_curr_list_agent_email?: string | null;
+  property_address?: string | null;
+  property_city?: string | null;
+  property_state?: string | null;
+  property_postal_code?: string | null;
+  property_type?: string | null;
+  beds?: string | null; // Assuming text, adjust if numeric
+  baths?: string | null; // Assuming text, adjust if numeric
+  year_built?: string | null; // Assuming text, adjust if numeric
+  square_footage?: string | null; // Assuming text, adjust if numeric (schema has it as 'text')
+  lot_size_sqft?: string | null; // Assuming text, adjust if numeric
+  wholesale_value?: number | null; // numeric
+  assessed_total?: number | null; // numeric
+  avm_value?: number | null; // numeric
+  price_per_sq_ft?: number | null; // numeric
+  mls_curr_status?: string | null;
+  mls_curr_days_on_market?: string | null;
+  converted: boolean; // not null default false
+  status?: string | null; // This is lead_status in table view, aligning with 'status' field in schema
+  source?: string | null; // This is lead_source in table view
+  notes?: string | null;
+  created_at: string; // timestamp with time zone
+  updated_at: string; // timestamp with time zone
+  // Fields from previous interface not directly in new schema but kept for potential future use or if schema expands:
+  company_name?: string | null;
+  company_industry?: string | null;
+  company_website?: string | null;
+  company_notes?: string | null;
+  county?: string | null;
+  country?: string | null;
+  lead_score?: number | null;
+  assigned_to?: string | null;
+  last_contacted_date?: string | null; // separate from updated_at
+  next_follow_up_date?: string | null;
+  conversion_date?: string | null;
+  lost_reason?: string | null;
+  tags?: string[] | null;
+  custom_fields?: Record<string, any> | null;
+  property_sf?: number | null; // old name for square_footage, kept if used in old data
+  // The 'lead_status' and 'lead_source' used in UI might map to 'status' and 'source' from the schema respectively.
+  // For clarity, the UI will use lead.status and lead.source which map to these schema fields.
+  // The table column header 'lead_status' will display data from 'lead.status'.
+  _primaryContact?: {
+    name: string | null;
+    email: string;
+    type: string;
+    contactType: 'owner1' | 'owner2' | 'owner3' | 'agent';
+  } | null;
 }
 
-// Type guard for FileUploadResponse
-function isFileUploadResponse(obj: unknown): obj is FileUploadResponse {
-  if (typeof obj !== 'object' || obj === null) {
-    return false;
-  }
-  const record = obj as Record<string, unknown>; // Cast to allow property access
-
-  if (typeof record.ok !== 'boolean') {
-    return false;
-  }
-  if (record.error !== undefined && typeof record.error !== 'string') {
-    return false;
-  }
-  if (record.count !== undefined && typeof record.count !== 'number') {
-    return false;
-  }
-  return true;
-}
+const initialNewLeadData: Partial<NormalizedLead> = {
+  contact1_name: '',
+  contact1_email_1: '',
+  notes: '',
+  market_region: '',
+  status: 'UNCONTACTED', // Default status for new leads
+  // Add other fields as necessary for editing/creation
+};
 
 const LeadsView: React.FC = () => {
-  const supabase = createClient(); 
-
-  const [filterMarketRegion, setFilterMarketRegion] = useState<'All' | string>('All');
-  const [uploadMarketRegion, setUploadMarketRegion] = useState<string>(""); // New state for upload
-
-  const [sortField, setSortField] = useState<keyof Tables<'normalized_leads'> | ''>('created_at'); 
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc'); 
-  
-  const [leads, setLeads] = useState<Tables<'normalized_leads'>[]>([]); 
-  const [isLoading, setIsLoading] = useState(true);
+  const [leads, setLeads] = useState<NormalizedLead[]>([]);
+  const [marketRegions, setMarketRegions] = useState<string[]>([]);
+  const [filterMarketRegion, setFilterMarketRegion] = useState<string>('All');
+  const [tableSearchTerm, setTableSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // State for modals - temporarily disable triggers
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  // Define initial state for the new lead form, based on Tables<'normalized_leads'>
-  const initialNewNormalizedLeadData: Partial<Tables<'normalized_leads'>> = {
-    // Fields from normalized_leads.Row, defaulting nullables to null and booleans to false
-    assessed_total: null,
-    avm_value: null,
-    baths: null, // string | null
-    beds: null, // string | null
-    contact1_email_1: '', // Assuming empty string is acceptable initial for form, will become null if not filled and DB expects null
-    contact1_name: '',    // Same as above
-    contact2_email_1: null,
-    contact2_name: null,
-    contact3_email_1: null,
-    contact3_name: null,
-    converted: false, // boolean, not nullable
-    lot_size_sqft: null,
-    market_region: '', // Required in form, so empty string initially
-    mls_curr_days_on_market: null,
-    mls_curr_list_agent_email: null,
-    mls_curr_list_agent_name: null,
-    mls_curr_status: null,
-    notes: null,
-    original_lead_id: null, // This will be generated by crypto.randomUUID() later
-    price_per_sq_ft: null,
-    property_address: '',
-    property_city: null,
-    property_postal_code: '',
-    property_state: '',
-    property_type: '',
-    source: null,
-    square_footage: null,
-    status: null, // e.g., 'New', 'Contacted'
-    wholesale_value: null,
-    year_built: null,
-    // id, created_at, updated_at are handled by DB
-  };
-  const [newLeadData, setNewLeadData] = useState<Partial<Tables<'normalized_leads'>>>(initialNewNormalizedLeadData);
-  const [editingLead, setEditingLead] = useState<Tables<'normalized_leads'> | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  // Table State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(25);
+  const [totalLeads, setTotalLeads] = useState<number>(0);
+  const [sortField, setSortField] = useState<keyof NormalizedLead | ''>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  // State for CSV Upload
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [selectedLead, setSelectedLead] = useState<NormalizedLead | null>(null);
+  const [editFormData, setEditFormData] = useState<Partial<NormalizedLead>>(initialNewLeadData);
+
+  // CSV Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadMarketRegion, setUploadMarketRegion] = useState<string>('');
+  const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Server-side filter options
-  const [allMarketRegions, setAllMarketRegions] = useState<string[]>(['All']);
-  const [filterOptionsLoading, setFilterOptionsLoading] = useState(true);
+  const columnConfigurations: ColumnConfig[] = [
+    { key: 'contact1_name', label: 'Contact', sortable: true },
+    { key: 'property_address', label: 'Property Address', sortable: true }, 
+    { key: 'market_region', label: 'Market', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'avm_value', label: 'AVM', sortable: true } // AVM Value column
+  ];
 
-  // useEffect to dynamically populate market regions from leads data
-  useEffect(() => {
-    if (leads && leads.length > 0) {
-      const dynamicRegions = Array.from(
-        new Set(
-          leads
-            .map(lead => lead.market_region)
-            .filter((region): region is string => region != null && String(region).trim() !== '')
-        )
-      ).sort();
-      setAllMarketRegions(['All', ...dynamicRegions]);
-      setAllMarketRegions(['All', ...dynamicRegions]);
-      // Reset filter to 'All' when leads change to ensure consistency
-      // This prevents the filter from being stuck on a region that might no longer be relevant
-      setFilterMarketRegion('All'); // Now active
-    } else {
-      setAllMarketRegions(['All']); // Default if no leads or leads are empty
+  // Fetch Market Regions
+  const fetchMarketRegions = useCallback(async () => {
+    console.log('Fetching market regions...');
+    try {
+      // First, get a count of distinct market regions to decide on the best approach
+      const { count, error: countError } = await supabase
+        .from('normalized_leads')
+        .select('market_region', { count: 'exact', head: true })
+        .not('market_region', 'is', null);
+
+      if (countError) throw countError;
+      
+      console.log(`Found ${count} non-null market regions in database`);
+      
+      // If we have a reasonable number of distinct values, fetch them directly
+      if (count && count <= 1000) {
+        const { data, error } = await supabase
+          .from('normalized_leads')
+          .select('market_region')
+          .not('market_region', 'is', null)
+          .order('market_region', { ascending: true });
+          
+        if (error) throw error;
+        
+        const uniqueRegions = Array.from(
+          new Set(data.map(item => item.market_region).filter(Boolean))
+        ).sort() as string[];
+        
+        console.log(`Found ${uniqueRegions.length} unique market regions`);
+        setMarketRegions(uniqueRegions);
+      } else {
+        // If too many regions, use a more efficient approach with pagination
+        console.log('Large dataset detected, using paginated approach...');
+        const BATCH_SIZE = 1000;
+        let offset = 0;
+        const allRegions = new Set<string>();
+        let hasMore = true;
+        
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('normalized_leads')
+            .select('market_region')
+            .not('market_region', 'is', null)
+            .order('market_region', { ascending: true })
+            .range(offset, offset + BATCH_SIZE - 1);
+            
+          if (error) throw error;
+          
+          // Add new regions to our set (automatically handles duplicates)
+          data.forEach(item => {
+            if (item.market_region) {
+              allRegions.add(item.market_region);
+            }
+          });
+          
+          // If we got fewer items than requested, we've reached the end
+          if (!data || data.length < BATCH_SIZE) {
+            hasMore = false;
+          } else {
+            offset += BATCH_SIZE;
+          }
+        }
+        
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Convert set to array and sort
+        const sortedRegions = Array.from(allRegions).sort();
+        console.log(`Found ${sortedRegions.length} unique market regions`);
+        setMarketRegions(sortedRegions);
+      }
+    } catch (err) {
+      console.error('Error fetching market regions:', err);
+      setMarketRegions([]);
     }
-    // Assuming setFilterOptionsLoading was primarily for the old API call, manage its state appropriately if it's still needed.
-    // If fetchFilterOptions was the ONLY reason for filterOptionsLoading, this state and its setter might become unused.
-    // For now, we set it to false as the dynamic derivation is quick.
-    setFilterOptionsLoading(false);
-  }, [leads, setAllMarketRegions, setFilterMarketRegion]); // Updated dependency array
+  }, [setMarketRegions]); // Fix variable scope issue by adding setMarketRegions to the dependency array
 
-  // Define fetchNormalizedLeads at the component top-level, wrapped in useCallback
+  // Check if a lead has any valid email address
+  const hasValidEmail = (lead: NormalizedLead) => {
+    return (
+      (lead.contact1_email_1 && lead.contact1_email_1.includes('@')) ||
+      (lead.contact2_email_1 && lead.contact2_email_1.includes('@')) ||
+      (lead.contact3_email_1 && lead.contact3_email_1.includes('@')) ||
+      (lead.mls_curr_list_agent_email && lead.mls_curr_list_agent_email.includes('@'))
+    );
+  };
+
+  // Get status badge color based on status
+  const getStatusBadge = (status: string | null | undefined) => {
+    if (!status) status = 'UNCONTACTED';
+    
+    const baseClasses = 'badge text-xs font-medium px-2 py-1 rounded-md';
+    
+    switch (status.toUpperCase()) {
+      case 'CONTACTED':
+        return `${baseClasses} bg-green-100 text-green-800`;
+      case 'INTERESTED':
+        return `${baseClasses} bg-blue-100 text-blue-800`;
+      case 'NOT INTERESTED':
+        return `${baseClasses} bg-red-100 text-red-800`;
+      case 'FOLLOW UP':
+        return `${baseClasses} bg-yellow-100 text-yellow-800`;
+      case 'UNCONTACTED':
+      default:
+        return `${baseClasses} bg-cyan-100 text-cyan-800`; // Light blue for UNCONTACTED
+    }
+  };
+
+  // Get the primary contact (first available with email) and their type
+  const getPrimaryContact = (lead: NormalizedLead) => {
+    if (lead.contact1_email_1 && lead.contact1_email_1.includes('@')) {
+      return {
+        name: lead.contact1_name,
+        email: lead.contact1_email_1,
+        type: 'Owner 1',
+        contactType: 'owner1',
+        status: lead.status || 'UNCONTACTED'
+      };
+    }
+    if (lead.contact2_email_1 && lead.contact2_email_1.includes('@')) {
+      return {
+        name: lead.contact2_name,
+        email: lead.contact2_email_1,
+        type: 'Owner 2',
+        contactType: 'owner2',
+        status: lead.status || 'UNCONTACTED'
+      };
+    }
+    if (lead.contact3_email_1 && lead.contact3_email_1.includes('@')) {
+      return {
+        name: lead.contact3_name,
+        email: lead.contact3_email_1,
+        type: 'Owner 3',
+        contactType: 'owner3'
+      };
+    }
+    if (lead.mls_curr_list_agent_email && lead.mls_curr_list_agent_email.includes('@')) {
+      return {
+        name: lead.mls_curr_list_agent_name,
+        email: lead.mls_curr_list_agent_email,
+        type: 'Agent',
+        contactType: 'agent'
+      };
+    }
+    return null;
+  };
+
+  // Filter leads by selected market region and search term
+  const filteredLeads = useMemo(() => {
+    let result = [...leads];
+    
+    // Apply market region filter
+    if (filterMarketRegion && filterMarketRegion !== 'All') {
+      result = result.filter(lead => lead.market_region === filterMarketRegion);
+    }
+    
+    // Apply search term filter
+    if (tableSearchTerm) {
+      const searchLower = tableSearchTerm.toLowerCase();
+      result = result.filter(lead => {
+        return (
+          (lead.contact1_name?.toLowerCase().includes(searchLower)) ||
+          (lead.contact1_email_1?.toLowerCase().includes(searchLower)) ||
+          (lead.contact2_name?.toLowerCase().includes(searchLower)) ||
+          (lead.contact2_email_1?.toLowerCase().includes(searchLower)) ||
+          (lead.property_address?.toLowerCase().includes(searchLower)) ||
+          (lead.property_city?.toLowerCase().includes(searchLower)) ||
+          (lead.property_state?.toLowerCase().includes(searchLower)) ||
+          (lead.market_region?.toLowerCase().includes(searchLower)) ||
+          (lead.status?.toLowerCase().includes(searchLower)) ||
+          (lead.notes?.toLowerCase().includes(searchLower))
+        );
+      });
+    }
+    
+    return result;
+  }, [leads, filterMarketRegion, tableSearchTerm]);
+
+  // Fetch Leads
   const fetchNormalizedLeads = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       let query = supabase
         .from('normalized_leads')
-        .select('*');
-      if (filterMarketRegion !== 'All') {
+        .select('*', { count: 'exact' });
+
+      // Apply market region filter if one is selected
+      if (filterMarketRegion && filterMarketRegion !== 'All') {
         query = query.eq('market_region', filterMarketRegion);
       }
-      query = query.order((sortField as string) || 'created_at', { ascending: sortDirection === 'asc' });
-      const { data, error: supabaseError } = await query;
-      if (supabaseError) {
-        throw supabaseError;
-      }
-      setLeads(data || []);
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as any).message === 'string') {
-        setError((err as { message: string }).message);
+
+      // Apply sorting
+      if (sortField) {
+        query = query.order(sortField as string, { ascending: sortDirection === 'asc' });
       } else {
-        setError('An unknown error occurred while fetching leads.');
+        query = query.order('created_at', { ascending: false }); // Default sort
       }
+
+      const from = (currentPage - 1) * rowsPerPage;
+      const to = from + rowsPerPage - 1;
+      query = query.range(from, to);
+
+      const { data, error: supabaseError, count } = await query;
+
+      // Log Supabase response
+      console.log('Supabase fetch response:', { data, supabaseError, count });
+      if (data) {
+        console.log(`Fetched ${data.length} leads from Supabase. Total count (from query): ${count}`);
+      }
+      if (supabaseError) {
+        console.error('Supabase error during fetch:', supabaseError);
+      }
+      // End log Supabase response
+
+      if (supabaseError) throw supabaseError;
+
+      // Filter out leads without valid emails and enhance with contact info
+      const validLeads = (data || [])
+        .filter(lead => hasValidEmail(lead))
+        .map(lead => ({
+          ...lead,
+          _primaryContact: getPrimaryContact(lead)
+        }));
+
+      setLeads(validLeads);
+      setTotalLeads(count || 0);
+
+    } catch (err: any) {
+      console.error('Error fetching leads:', err);
+      setError(err.message || 'Failed to fetch leads.');
     }
     setIsLoading(false);
-  }, [supabase, filterMarketRegion, sortField, sortDirection, setIsLoading, setError, setLeads]); // Added state setters to deps for exhaustive-deps
+  }, [supabase, filterMarketRegion, sortField, sortDirection, currentPage, rowsPerPage]);
 
   useEffect(() => {
-    void fetchNormalizedLeads(); // Mark promise as intentionally not handled here
-  }, [fetchNormalizedLeads]); // Now depends on the memoized fetchNormalizedLeads
+    const loadInitialData = async () => {
+      // Assuming these can be fetched in parallel.
+      // If fetchNormalizedLeads depends on fetchMarketRegions, they should be awaited sequentially.
+      await Promise.all([
+        fetchMarketRegions(),
+        fetchNormalizedLeads()
+      ]);
+    };
 
-  // No client-side search: use leads array directly
-  const displayedLeads = leads;
+    loadInitialData().catch(error => {
+      // This catches errors if loadInitialData itself fails, 
+      // or if Promise.all rejects due to an unhandled error in one of the fetches.
+      // Individual fetches also have their own error handling, which is good.
+      console.error('Error during initial data loading:', error);
+      // Optionally set a general error state if appropriate
+      // setError('Failed to load initial page data.'); 
+    });
+  }, [fetchMarketRegions, fetchNormalizedLeads]); // Initial fetch
 
-  const handleSort = (field: keyof Tables<'normalized_leads'> | '') => {
+  // Handlers
+  const handleSort = (field: keyof NormalizedLead | '') => {
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
       setSortDirection('asc');
     }
+    setCurrentPage(1); // Reset to first page on sort change
   };
 
-  const SortIndicator = ({ field }: { field: keyof Tables<'normalized_leads'> | '' }) => {
-    if (sortField !== field) return null;
-    return sortDirection === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />;
-  };
-
-  // --- Modal handlers - Temporarily disabled or simplified ---
-  const handleOpenModal = () => {
-    setNewLeadData(initialNewNormalizedLeadData); // Reset form data
+  const handleOpenModal = (lead: NormalizedLead) => {
+    // Create a copy of the lead with the primary contact info
+    const leadWithPrimaryContact = {
+      ...lead,
+      // Override the contact1 fields with the primary contact info
+      contact1_name: lead._primaryContact?.name || lead.contact1_name,
+      contact1_email_1: lead._primaryContact?.email || lead.contact1_email_1,
+      // Set the contact type in the form data for reference
+      contact1_title: lead._primaryContact?.type || lead.contact1_title
+    };
+    
+    setSelectedLead(lead);
+    setEditFormData(leadWithPrimaryContact);
     setIsModalOpen(true);
   };
-  const handleCloseModal = () => setIsModalOpen(false);
 
-    const handleOpenEditModal = (lead: Tables<'normalized_leads'>) => {
-      setEditingLead(lead); 
-      setNewLeadData({ 
-        ...initialNewNormalizedLeadData, 
-        ...lead, 
-      });
-      setIsEditModalOpen(true);
-      setError(null); // Clear previous errors
-      setUploadStatus(null); // Clear previous statuses
-    };
-  const handleCloseEditModal = () => { setIsEditModalOpen(false); setEditingLead(null); };
-
-  const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target;
-    const target = e.target as HTMLInputElement; // More specific type for checkbox
-    setNewLeadData(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? target.checked : value,
-    }));
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedLead(null);
+    setEditFormData(initialNewLeadData);
   };
 
-  const handleEditInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleModalInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    const target = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    
+    // Special handling for custom_fields to parse JSON
+    if (name === 'custom_fields') {
+      const updateCustomFields = (prev: Partial<NormalizedLead>) => {
+        try {
+          // If it's valid JSON, parse it, otherwise use empty object
+          const parsedValue = value.trim() ? JSON.parse(value) : {};
+          return {
+            ...prev,
+            custom_fields: parsedValue
+          };
+        } catch (e) {
+          // If JSON is invalid, keep the previous value or use empty object
+          return {
+            ...prev,
+            custom_fields: (prev.custom_fields && typeof prev.custom_fields === 'object') 
+              ? prev.custom_fields 
+              : {}
+          };
+        }
+      };
+      
+      setEditFormData(prev => updateCustomFields(prev));
+      return;
+    }
+    
+    // Handle other input types
+    let processedValue: string | boolean | number | string[] | Record<string, any> | null = value;
+    
+    if (target.type === 'checkbox') {
+      processedValue = (target as HTMLInputElement).checked;
+    } else if (target.type === 'number') {
+      processedValue = value === '' ? null : parseFloat(value);
+    } else if (target instanceof HTMLSelectElement && target.multiple) { // For multi-select
+      processedValue = Array.from(target.selectedOptions).map(option => option.value);
+    }
+    // Add more type coercions if needed, e.g., for date, tags (string to array), custom_fields (string to object)
+
+    setEditFormData(prev => ({ ...prev, [name]: processedValue }));
   };
 
-  const handleSaveLead = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!newLeadData.contact1_name || !newLeadData.contact1_email_1 || !newLeadData.market_region) {
-      alert('Contact Name, Email, and Market Region are required.');
+  const handleSaveLead = async () => {
+    if (!selectedLead?.id) return;
+
+    // Basic validation example (expand as needed)
+    if (!editFormData.contact1_name /* Add more required field checks based on your modal inputs */) {
+      alert('Required field(s) missing.'); // Make this more specific
       return;
     }
 
-    setIsLoading(true); // Use a more specific loading state for the modal if preferred
-    setError(null);
+    // Remove id and created_at from data to be sent to Supabase for update, as these are typically not updatable directly or managed by DB.
+    // updated_at will be handled by the trigger.
+    const { id, created_at, updated_at, ...updateData } = editFormData;
 
+    setIsLoading(true); // Consider a more specific loading state like isSaving
     try {
-      // Construct the object to insert, ensuring all fields match the target type.
-      // Start with ALL fields from initialNewNormalizedLeadData to ensure full coverage with defaults.
-      const baseLeadData = { ...initialNewNormalizedLeadData };
-
-      // Overlay with user-entered data from newLeadData, which is Partial.
-      // For numeric fields from string inputs, explicitly convert and handle nulls.
-      // For string fields that should be null if empty, handle that too.
-      const leadToInsertPrepared = {
-        ...baseLeadData,
-        ...newLeadData, // User's input overrides defaults
-
-        // Explicitly set/override specific fields with conversions or guarantees
-        original_lead_id: crypto.randomUUID(), // This is a required addition
-        
-        // Ensure numeric types (number | null)
-        // If the value from newLeadData is not null/undefined, and its string representation (trimmed) is not empty, convert to Number. Otherwise, null.
-        avm_value: (newLeadData.avm_value !== null && newLeadData.avm_value !== undefined) ? (String(newLeadData.avm_value).trim() === '' ? null : Number(newLeadData.avm_value)) : null,
-        assessed_total: (newLeadData.assessed_total !== null && newLeadData.assessed_total !== undefined) ? (String(newLeadData.assessed_total).trim() === '' ? null : Number(newLeadData.assessed_total)) : null,
-        price_per_sq_ft: (newLeadData.price_per_sq_ft !== null && newLeadData.price_per_sq_ft !== undefined) ? (String(newLeadData.price_per_sq_ft).trim() === '' ? null : Number(newLeadData.price_per_sq_ft)) : null,
-        wholesale_value: (newLeadData.wholesale_value !== null && newLeadData.wholesale_value !== undefined) ? (String(newLeadData.wholesale_value).trim() === '' ? null : Number(newLeadData.wholesale_value)) : null,
-
-        // Ensure string types (string | null) - if form sends empty string for optional, convert to null
-        contact1_email_1: newLeadData.contact1_email_1 || null,
-        contact1_name: newLeadData.contact1_name || null,
-        // Add similar handling for ALL other string | null fields from newLeadData if an empty string from the form should be stored as null
-        // For example:
-        // property_address: newLeadData.property_address || null, // If property_address can be null
-        // beds: newLeadData.beds || null, // If beds is string|null and empty form field means null
-        // baths: newLeadData.baths || null, // If baths is string|null and empty form field means null
-        
-        // 'converted' is boolean, newLeadData might have it as true/false from a checkbox
-        // If newLeadData.converted is undefined, it will take the default from baseLeadData (false)
-        converted: typeof newLeadData.converted === 'boolean' ? newLeadData.converted : baseLeadData.converted,
-
-      } as Omit<Tables<'normalized_leads'>, 'id' | 'created_at' | 'updated_at'> & { original_lead_id: string };
-
-      // Now, assign to the correctly typed variable
-      const leadToInsert: typeof leadToInsertPrepared = leadToInsertPrepared;
-
-
-      // Remove undefined properties that might have come from Partial<NormalizedLead>
-      Object.keys(leadToInsert).forEach(key => leadToInsert[key as keyof typeof leadToInsert] === undefined && delete leadToInsert[key as keyof typeof leadToInsert]);
-
-      const { data: insertedLead, error: insertError } = await supabase
+      const { error: updateError } = await supabase
         .from('normalized_leads')
-        .insert(leadToInsert as any) // Using 'as any' temporarily if TS complains about exact type match for insert
-        .select()
-        .single(); // Assuming you want the inserted record back
+        .update(updateData) // Use updateData which excludes id, created_at, updated_at
+        .eq('id', selectedLead.id);
+      if (updateError) throw updateError;
 
-      if (insertError) {
-        throw insertError;
-      }
-
-      if (insertedLead) {
-        setLeads((prevLeads: Tables<'normalized_leads'>[]) => [insertedLead, ...prevLeads]); // Add to local state
-      }
+      await fetchNormalizedLeads(); // Refresh data
       handleCloseModal();
-    } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as any).message === 'string') {
-        setError((err as { message: string }).message);
-      } else {
-        setError('An unknown error occurred while saving the lead.');
-      }
-      // Keep modal open for user to see error or retry, or close and show a toast
+    } catch (err: any) {
+      console.error('Error saving lead:', err);
+      alert(`Failed to save lead: ${err.message}`);
     } finally {
-      setIsLoading(false); // Reset general loading state, or modal-specific loading state
+      setIsLoading(false);
     }
   };
 
-    const handleSaveEditedLead = async (e: FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      if (!editingLead || !editingLead.id) {
-        setError('No lead selected for editing or missing lead ID.');
-        alert('Error: No lead selected for editing or missing lead ID.');
-        return;
-      }
-      if (!newLeadData.contact1_name || !newLeadData.contact1_email_1 || !newLeadData.market_region) {
-        alert('Contact Name, Contact Email, and Market Region are required.');
-        return;
-      }
-  
-      setIsLoading(true);
-      setError(null);
-  
-      try {
-        // Prepare the data for update.
-        // We use newLeadData which was populated by handleOpenEditModal.
-        // Exclude fields that should not be directly updated or are managed by the DB.
-        const { 
-          id, // Don't send id in the update payload itself
-          created_at, 
-          updated_at, 
-          original_lead_id, // Usually not changed after creation
-          ...payload 
-        } = newLeadData;
-  
-        // Construct the specific update object based on editable fields
-        // Ensure correct types and handle nulls/empty strings appropriately
-        const updatePayload: Partial<Tables<'normalized_leads'>> = {
-          ...initialNewNormalizedLeadData, // Base defaults
-          ...payload, // Overwrite with current form data
-  
-          // Explicit type conversions and null handling for numeric fields
-          avm_value: (payload.avm_value !== null && payload.avm_value !== undefined && String(payload.avm_value).trim() !== '') ? Number(String(payload.avm_value).trim()) : null,
-          assessed_total: (payload.assessed_total !== null && payload.assessed_total !== undefined && String(payload.assessed_total).trim() !== '') ? Number(String(payload.assessed_total).trim()) : null,
-          price_per_sq_ft: (payload.price_per_sq_ft !== null && payload.price_per_sq_ft !== undefined && String(payload.price_per_sq_ft).trim() !== '') ? Number(String(payload.price_per_sq_ft).trim()) : null,
-          wholesale_value: (payload.wholesale_value !== null && payload.wholesale_value !== undefined && String(payload.wholesale_value).trim() !== '') ? Number(String(payload.wholesale_value).trim()) : null,
-          year_built: payload.year_built != null && String(payload.year_built).trim() !== '' ? String(payload.year_built).trim() : null,
-          square_footage: payload.square_footage != null && String(payload.square_footage).trim() !== '' ? String(payload.square_footage).trim() : null,
-          mls_curr_days_on_market: payload.mls_curr_days_on_market != null && String(payload.mls_curr_days_on_market).trim() !== '' ? String(payload.mls_curr_days_on_market).trim() : null,
-  
-  
-          // Ensure string fields that should be null if empty are handled
-          contact1_name: payload.contact1_name || null, // Assuming name can be null if empty string, adjust if it's required
-          contact1_email_1: payload.contact1_email_1 || null, // Same for email
-          market_region: payload.market_region || null, // And market region
-          
-          // For other string fields, if an empty string in form means null in DB:
-          property_address: payload.property_address || null,
-          property_city: payload.property_city || null,
-          property_postal_code: payload.property_postal_code || null,
-          property_state: payload.property_state || null,
-          property_type: payload.property_type || null,
-          beds: payload.beds || null,
-          baths: payload.baths || null,
-          mls_curr_list_agent_email: payload.mls_curr_list_agent_email || null,
-          mls_curr_list_agent_name: payload.mls_curr_list_agent_name || null,
-          mls_curr_status: payload.mls_curr_status || null,
-          notes: payload.notes || null,
-          source: payload.source || null,
-          status: payload.status || null,
-          contact2_name: payload.contact2_name || null,
-          contact2_email_1: payload.contact2_email_1 || null,
-          contact3_name: payload.contact3_name || null,
-          contact3_email_1: payload.contact3_email_1 || null,
-  
-          // Boolean field
-          converted: typeof payload.converted === 'boolean' ? payload.converted : false,
-        };
-        
-        // Remove any keys from updatePayload that are explicitly undefined
-        // as Supabase might interpret undefined differently from null.
-        Object.keys(updatePayload).forEach(key => {
-          if (updatePayload[key as keyof typeof updatePayload] === undefined) {
-            delete updatePayload[key as keyof typeof updatePayload];
-          }
-        });
-  
-        const { data: updatedLeadData, error: updateError }: { data: Tables<'normalized_leads'> | null; error: PostgrestError | null } = await supabase
-          .from('normalized_leads')
-          .update(updatePayload)
-          .eq('id', editingLead.id)
-          .select()
-          .single();
-  
-        if (updateError) {
-          throw updateError;
-        }
-  
-        if (updatedLeadData) {
-          setLeads((prevLeads) =>
-            prevLeads.map((l) => (l.id === updatedLeadData.id ? updatedLeadData : l))
-          );
-          setUploadStatus(`Lead '${updatedLeadData.contact1_name}' updated successfully.`);
-        }
-        handleCloseEditModal();
-      } catch (err: unknown) {
-        let errorMessage = 'An unknown error occurred while updating lead.';
-        if (err instanceof Error) {
-          errorMessage = err.message;
-        } else if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as any).message === 'string') {
-          errorMessage = (err as { message: string }).message;
-        }
-        setError(errorMessage);
-        setUploadStatus(`Failed to update lead: ${errorMessage}`);
-        // Optionally, keep the modal open so the user can see the error or retry.
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-  const handleDeleteLead = (leadId: number) => {
-    alert(`Deleting lead ${leadId} is temporarily disabled.`);
-  };
-
-  // --- CSV Upload Handlers ---
-  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    setSelectedFile(file);
-    if (!file) return;
-    if (!uploadMarketRegion.trim()) {
-      alert('Market Region is required before upload.');
+  const handleDeleteLead = async () => {
+    if (!selectedLead || !confirm('Are you sure you want to delete this lead? This action cannot be undone.')) {
       return;
     }
-    setIsUploading(true);
-    setUploadStatus(null);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('market_region', uploadMarketRegion);
+    setIsLoading(true);
     try {
-      const res = await fetch('/api/leads/upload', { method: 'POST', body: formData });
+      const { error } = await supabase
+        .from('normalized_leads')
+        .delete()
+        .eq('id', selectedLead.id);
 
-      if (!res.ok) {
-        // Try to parse as JSON first for a structured error message
-        if (res.headers.get('content-type')?.includes('application/json')) {
-          const errorData: FileUploadResponse = await res.json();
-          throw new Error(errorData.error || `Upload failed with status: ${res.statusText}`);
-        }
-        // Handle non-JSON error responses, e.g., server error HTML page
-        const textError = await res.text();
-        throw new Error(textError || `Upload failed with status: ${res.statusText}`);
-      }
+      if (error) throw error;
 
-      // Ensure the response is actually JSON before parsing, even for ok responses
-      if (res.headers.get('content-type')?.includes('application/json') !== true) {
-        // Handle non-JSON error responses, e.g., server error HTML page
-        const textError = await res.text();
-        setUploadStatus(`Upload failed: ${res.statusText || textError || 'Server error'}`);
-        setIsUploading(false);
-        return;
-      }
-      const rawResponseData: unknown = await res.json();
-
-      if (isFileUploadResponse(rawResponseData)) {
-        if (rawResponseData.ok) {
-          setUploadStatus(`File processed and leads normalized successfully. ${rawResponseData.count ? `${rawResponseData.count} records processed.` : ''}`);
-          await fetchNormalizedLeads(); // Refresh leads after successful upload
-        } else {
-          setUploadStatus(`Upload failed: ${rawResponseData.error || 'Unknown error from API'}`);
-        }
-      } else {
-        setUploadStatus('Upload failed: Received an invalid response from the server.');
-      }
-    } catch (err) {
-      let errorMessage = 'An unknown error occurred during upload.';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      setUploadStatus(`Upload failed: ${errorMessage}`);
+      setLeads(prev => prev.filter(l => l.id !== selectedLead.id));
+      alert('Lead deleted successfully!');
+      handleCloseModal();
+    } catch (err: any) {
+      console.error('Error deleting lead:', err);
+      alert(`Failed to delete lead: ${err.message}`);
+      setError(`Failed to delete lead: ${err.message}`);
     }
-    setIsUploading(false);
+    setIsLoading(false);
+  };
+
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    setSelectedFile(e.target.files?.[0] || null);
   };
 
   const handleUploadButtonClick = () => {
     fileInputRef.current?.click();
   };
 
-  // --- End CSV Upload Handlers ---
+  const handleFileUpload = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!selectedFile) {
+      alert('Please select a file to upload.');
+      return;
+    }
+    if (!uploadMarketRegion.trim()) {
+      alert('Please specify a Market Region for the uploaded leads.');
+      return;
+    }
 
-  if (isLoading && !isUploading) { // Don't show main loading if only uploading
-    return <div className="flex justify-center items-center h-screen"><span className="loading loading-spinner loading-lg"></span></div>;
-  }
+    setIsUploading(true);
+    setUploadStatus('Uploading...');
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('market_region', uploadMarketRegion); // Pass market region to API
 
-  if (error) {
-    return <div className="flex flex-col justify-center items-center h-screen text-error">
-      <AlertTriangle size={48} className="mb-4" />
-      <p className="text-xl">Error loading leads:</p>
-      <p>{error}</p>
-    </div>;
-  }
+    try {
+      const response = await fetch('/api/leads/upload', { // Assuming API endpoint for upload
+        method: 'POST',
+        body: formData,
+      });
 
-  const getStatusBadge = (status: string | null | undefined) => {
-    if (!status) return <span className="badge badge-ghost badge-sm">Unknown</span>;
-    const normalizedStatus = status.toLowerCase();
-    let badgeClass = 'badge-ghost'; 
+      const result = await response.json();
 
-    if (normalizedStatus.includes('active') || normalizedStatus.includes('new')) badgeClass = 'badge-info';
-    else if (normalizedStatus.includes('pending') || normalizedStatus.includes('contract')) badgeClass = 'badge-warning';
-    else if (normalizedStatus.includes('sold') || normalizedStatus.includes('closed')) badgeClass = 'badge-success';
-    else if (normalizedStatus.includes('expired') || normalizedStatus.includes('cancelled')) badgeClass = 'badge-error';
-  
-    return <span className={`badge ${badgeClass} badge-sm`}>{status}</span>;
+      if (!response.ok) {
+        throw new Error(result.error || 'Upload failed');
+      }
+      setUploadStatus(`Successfully uploaded ${result.count || 0} leads.`);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
+      await fetchNormalizedLeads(); // Refresh leads list
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      setUploadStatus(`Upload failed: ${err.message}`);
+    }
+    setIsUploading(false);
   };
 
-  return (
-    <>
-      <h1 style={{ backgroundColor: 'red', color: 'white', padding: '20px', textAlign: 'center', fontSize: '32px', position: 'fixed', top: '0', left: '0', width: '100%', zIndex: 9999 }}>CASCADE TEST: LEADSVIEW FILE UPDATED</h1>
-    <Background className="p-4 md:p-6 lg:p-8">
-      <header className="mb-6">
-        <h1 className="text-3xl font-bold text-neutral-content flex items-center">
-          <Users size={32} className="mr-3 text-primary" /> Normalized Leads Management
-        </h1>
-      </header>
+  // Sort Indicator Component
+  const SortIndicator = ({ field }: { field: keyof NormalizedLead | '' }) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? <ChevronUp size={16} className="inline ml-1" /> : <ChevronDown size={16} className="inline ml-1" />;
+  };
+  
+  const totalPages = Math.ceil(totalLeads / rowsPerPage) || 1;
 
-      <div className="mb-6 p-4 bg-base-200 rounded-lg shadow flex flex-wrap gap-4 items-center">
-        <div className="form-control min-w-[150px]">
-          <select 
-            className="select select-bordered"
-            value={filterMarketRegion}
-            onChange={(e) => setFilterMarketRegion(e.target.value)}
-            disabled={filterOptionsLoading} // Disable while loading options
-          >
-            {filterOptionsLoading ? (
-              <option value="">Loading regions...</option>
-            ) : (
-              allMarketRegions.map(region => <option key={region} value={region}>{region}</option>))
-            }
-          </select>
-        </div>
-        <button onClick={handleOpenModal} className="btn btn-primary">
-          <PlusCircle size={20} className="mr-2" /> Add New Lead
-        </button>
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={(event) => { handleFileChange(event).catch(err => { let msg = 'File processing failed.'; if (err instanceof Error) { msg = err.message; } else if (typeof err === 'string') { msg = err; } console.error('File processing error:', msg); setUploadStatus(`Error: ${msg}`); }); }}
-          accept=".csv"
-          style={{ display: 'none' }}
-        />
-        <button onClick={handleUploadButtonClick} className="btn btn-secondary" disabled={isUploading}>
-          {isUploading ? (
-            <><span className="loading loading-spinner loading-xs mr-2"></span> Uploading...</>
-          ) : (
-            <><UploadCloud size={20} className="mr-2" /> Upload CSV</>
-          )}
-        </button>
-        <div className="ml-4">
-          <input 
-            type="text" 
-            placeholder="Market Region for Upload"
-            value={uploadMarketRegion}
-            onChange={(e) => setUploadMarketRegion(e.target.value)}
-            className="w-auto"
-          />
-        </div>
+  const getStatusBadgeClass = (status: string | null | undefined): string => {
+    if (!status) return 'badge-ghost';
+    const lowerStatus = status.toLowerCase();
+    if (lowerStatus.includes('new') || lowerStatus.includes('open')) return 'badge-info';
+    if (lowerStatus.includes('contacted') || lowerStatus.includes('step')) return 'badge-success';
+    if (lowerStatus.includes('offer sent') || lowerStatus.includes('pending')) return 'badge-warning';
+    if (lowerStatus.includes('not interested') || lowerStatus.includes('closed') || lowerStatus.includes('lost')) return 'badge-error';
+    return 'badge-neutral'; // Default
+  };
+
+  // Helper to get displayable value
+  const displayValue = (value: any) => value === null || value === undefined ? '-' : String(value);
+
+  return (
+    <div className="p-4 md:p-6 bg-base-200 min-h-screen">
+      <h1 className="text-3xl font-bold mb-6 text-base-content">Lead Management</h1>
+
+      {/* CSV Upload Section */}
+      <div className="mb-6 p-4 bg-base-100 rounded-lg shadow">
+        <h2 className="text-xl font-semibold mb-3 text-base-content">Upload Leads CSV</h2>
+        <form onSubmit={(e) => { e.preventDefault(); void handleFileUpload(e); }} className="space-y-3">
+          <div>
+            <label htmlFor="uploadMarketRegion" className="label-text block mb-1">Market Region for Uploaded Leads:</label>
+            <input 
+              type="text" 
+              id="uploadMarketRegion"
+              placeholder="e.g., Northern California"
+              className="input input-bordered input-sm w-full max-w-xs"
+              value={uploadMarketRegion}
+              onChange={(e) => setUploadMarketRegion(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <input 
+              type="file" 
+              ref={fileInputRef}
+              onChange={handleFileSelect} 
+              accept=".csv"
+              className="file-input file-input-bordered file-input-sm w-full max-w-xs hidden"
+              id="csvFile"
+            />
+            <button 
+              type="button" 
+              onClick={handleUploadButtonClick} 
+              className="btn btn-outline btn-sm mr-2"
+              disabled={isUploading}
+            >
+              <UploadCloud size={16} className="mr-1"/> {selectedFile ? selectedFile.name : 'Choose CSV File'}
+            </button>
+            <button 
+              type="submit" 
+              className="btn btn-primary btn-sm"
+              disabled={isUploading || !selectedFile || !uploadMarketRegion.trim()}
+            >
+              {isUploading ? 'Uploading...' : 'Upload Leads'}
+            </button>
+          </div>
+        </form>
+        {uploadStatus && (
+          <div className={`mt-3 p-2 rounded-md text-sm ${uploadStatus.includes('failed') ? 'bg-error text-error-content' : 'bg-success text-success-content'}`}>
+            {uploadStatus}
+          </div>
+        )}
       </div>
 
-      {uploadStatus && (
-        <div className={`p-4 my-4 rounded-md ${uploadStatus.startsWith('Upload failed') ? 'bg-error text-error-content' : 'bg-success text-success-content'}`}>
-          {uploadStatus}
+      {error && (
+        <div role="alert" className="alert alert-error mb-4">
+          <AlertTriangle size={20}/>
+          <span><strong>Error:</strong> {error}</span>
         </div>
       )}
 
+      {/* Table Search, Filter, and Rows per Page */}
+      <div className="mb-6 p-4 bg-base-200 rounded-lg">
+        <div className="flex flex-col sm:flex-row gap-4 items-end">
+          {/* Search */}
+          <div className="form-control flex-1">
+            <label className="label">
+              <span className="label-text">Search Leads</span>
+            </label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by name, email, address, etc..."
+                className="input input-bordered w-full pl-10 pr-10"
+                value={tableSearchTerm}
+                onChange={(e) => setTableSearchTerm(e.target.value)}
+              />
+              {tableSearchTerm && (
+                <button
+                  onClick={() => setTableSearchTerm('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <XCircle className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+          
+          {/* Region Filter */}
+          <div className="form-control w-full sm:w-48">
+            <label className="label">
+              <span className="label-text">Market Region</span>
+            </label>
+            <select
+              className="select select-bordered w-full"
+              value={filterMarketRegion}
+              onChange={(e) => setFilterMarketRegion(e.target.value)}
+            >
+              <option value="">All Regions</option>
+              {marketRegions.map(region => (
+                <option key={region} value={region}>{region}</option>
+              ))}
+            </select>
+          </div>
+          
+          {/* Rows per Page */}
+          <div className="form-control w-full sm:w-32">
+            <label className="label">
+              <span className="label-text">Rows</span>
+            </label>
+            <select 
+              className="select select-bordered w-full"
+              value={rowsPerPage}
+              onChange={(e) => {
+                setRowsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Leads Table */}
       <div className="overflow-x-auto bg-base-100 rounded-lg shadow">
-        <table className="table table-zebra w-full">
+        <table className="table table-zebra table-sm w-full">
           <thead>
             <tr className="text-base-content">
-              <th onClick={() => handleSort('contact1_name')} className="cursor-pointer hover:bg-base-200">
-                Contact Name <SortIndicator field="contact1_name" />
-              </th>
-              <th onClick={() => handleSort('contact1_email_1')} className="cursor-pointer hover:bg-base-200">
-                Email <SortIndicator field="contact1_email_1" />
-              </th>
-              <th onClick={() => handleSort('property_address')} className="cursor-pointer hover:bg-base-200">
-                Property Address <SortIndicator field="property_address" />
-              </th>
-              <th onClick={() => handleSort('market_region')} className="cursor-pointer hover:bg-base-200">
-                Market Region <SortIndicator field="market_region" />
-              </th>
-              <th onClick={() => handleSort('avm_value')} className="cursor-pointer hover:bg-base-200">
-                AVM Value <SortIndicator field="avm_value" />
-              </th>
-              {/* MLS Status and Created At headers removed as per user request */}
-              <th>Actions</th>
+              {columnConfigurations.map(col => (
+                <th 
+                  key={col.key} 
+                  onClick={() => col.sortable !== false && handleSort(col.key as keyof NormalizedLead)}
+                  className={col.sortable !== false ? 'cursor-pointer hover:bg-base-300' : ''}
+                >
+                  {col.label} {col.sortable !== false && <SortIndicator field={col.key as keyof NormalizedLead} />}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {displayedLeads.length > 0 ? (
-              displayedLeads.map((lead) => (
-                <tr key={lead.id} 
-                  className="hover:bg-base-200 transition-colors duration-150 cursor-pointer" 
-                  onClick={() => handleOpenEditModal(lead)}
-                >
-                  <td>{lead.contact1_name || 'N/A'}</td>
-                  <td>{lead.contact1_email_1 || 'N/A'}</td>
-                  <td>{lead.property_address || 'N/A'}</td>
-                  <td>{lead.market_region || 'N/A'}</td>
-                  <td>{lead.avm_value ? `$${lead.avm_value.toLocaleString()}` : 'N/A'}</td>
-                  <td>{getStatusBadge(lead.mls_curr_status)}</td>
-                  <td>{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : 'N/A'}</td>
-                  <td className="space-x-1">
-                    {/* Edit button removed as the row is now clickable */}
-                    <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); // Prevent row's onClick from firing
-                        handleDeleteLead(lead.id); 
-                      }} 
-                      className="btn btn-xs btn-ghost text-error btn-disabled" 
-                      title="Delete Lead (Disabled)" 
-                      disabled
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))
+            {isLoading && !leads.length ? (
+              <tr><td colSpan={5} className="text-center py-10">Loading leads...</td></tr>
+            ) : !isLoading && !leads.length ? (
+              <tr><td colSpan={5} className="text-center py-10">No leads found.</td></tr>
             ) : (
-              <tr>
-                <td colSpan={6} className="text-center py-8 text-base-content opacity-70">
-                  <Users size={32} className="mx-auto mb-2" />
-                  No leads found. Try adjusting your search or filters.
-                </td>
-              </tr>
+              leads
+                .filter(lead => lead._primaryContact) // Filter out any leads without a primary contact (shouldn't happen due to earlier filtering)
+                .map(lead => {
+                  const contact = lead._primaryContact!; // Non-null assertion since we filtered out nulls
+                  return (
+                    <tr 
+                      key={lead.id} 
+                      className="hover:bg-base-200 cursor-pointer transition-colors"
+                      onClick={() => handleOpenModal(lead)}
+                    >
+                      <td className="py-4">
+                        <div className="flex items-center space-x-3">
+                          <div>
+                            <div className="flex items-center">
+                              <span className="font-medium">{contact.name || 'No Name'}</span>
+                              <span className="badge badge-xs badge-outline ml-2" title={`Contact Type: ${contact.type}`}>
+                                {contact.type}
+                              </span>
+                            </div>
+                            <div className="text-sm opacity-70 flex items-center mt-1">
+                              <Mail className="w-3 h-3 mr-1 flex-shrink-0" />
+                              <span className="truncate max-w-xs" title={contact.email}>
+                                {contact.email}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="flex items-start">
+                          <MapPin size={16} className="mr-1.5 mt-0.5 flex-shrink-0 text-base-content/70" />
+                          <div>
+                            {displayValue(lead.property_address)}<br />
+                            {lead.property_city || lead.property_state || lead.property_postal_code 
+                              ? `${displayValue(lead.property_city)}, ${displayValue(lead.property_state)} ${displayValue(lead.property_postal_code)}` 
+                              : '-'}
+                          </div>
+                        </div>
+                      </td>
+                      <td>{displayValue(lead.market_region)}</td>
+                      <td>
+                        <span className={getStatusBadge(lead.status || 'UNCONTACTED')}>
+                          {lead.status || 'UNCONTACTED'}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap">{lead.avm_value ? `$${Number(lead.avm_value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}</td>
+                      <td>{lead.last_contacted_date 
+                        ? new Date(lead.last_contacted_date).toLocaleDateString() 
+                        : new Date(lead.updated_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  );
+                })
             )}
           </tbody>
         </table>
       </div>
 
-      {isModalOpen && (
+      {/* Pagination Controls */}
+      <div className="mt-6 flex flex-wrap justify-between items-center gap-4 p-4 bg-base-100 rounded-lg shadow">
+        <div>
+          <span className="text-sm text-base-content opacity-70">
+            Page {currentPage} of {totalPages} (Total: {totalLeads} leads)
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <select 
+            className="select select-bordered select-sm"
+            value={rowsPerPage}
+            onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+          >
+            <option value={25}>25/page</option>
+            <option value={50}>50/page</option>
+            <option value={100}>100/page</option>
+          </select>
+          <div className="join">
+            <button 
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              className="join-item btn btn-sm"
+              disabled={currentPage === 1 || isLoading}
+            >
+              « Prev
+            </button>
+            <button 
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              className="join-item btn btn-sm"
+              disabled={currentPage >= totalPages || isLoading}
+            >
+              Next »
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal for Editing Lead */}
+      {isModalOpen && selectedLead && (
         <dialog open className="modal modal-open modal-bottom sm:modal-middle">
           <div className="modal-box w-11/12 max-w-3xl">
-            <button type="button" onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-            <h3 className="font-bold text-lg mb-6">Add New Normalized Lead</h3>
-            <form onSubmit={(e) => { e.preventDefault(); void handleSaveLead(e); }} className="space-y-4">
-              {/* Form fields would need to map to NormalizedLead or a creation DTO */}
-              {/* Row 1 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">Contact Name <span className="text-error">*</span></span></label><input type="text" name="contact1_name" value={newLeadData.contact1_name || ''} onChange={handleInputChange} className="input input-bordered w-full" required /></div>
-                <div><label className="label"><span className="label-text">Contact Email <span className="text-error">*</span></span></label><input type="email" name="contact1_email_1" value={newLeadData.contact1_email_1 || ''} onChange={handleInputChange} className="input input-bordered w-full" required /></div>
+            <button onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"><XCircle size={20}/></button>
+            <h3 className="font-bold text-xl mb-4">Edit Lead: {editFormData.contact1_name || 'N/A'}</h3>
+            
+            <form onSubmit={(e) => { e.preventDefault(); void handleSaveLead(); }} className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+              {/* Dynamically create form fields based on a configuration or list relevant fields explicitly */}
+              {/* For simplicity, listing a few common ones explicitly. Expand as needed. */}
+              <div>
+                <label htmlFor="modal-contact1_name" className="label"><span className="label-text">Contact Name</span></label>
+                <input type="text" id="modal-contact1_name" name="contact1_name" value={editFormData.contact1_name || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-              {/* Row 2 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">Market Region <span className="text-error">*</span></span></label><input type="text" name="market_region" value={newLeadData.market_region || ''} onChange={handleInputChange} className="input input-bordered w-full" required /></div>
-                <div><label className="label"><span className="label-text">MLS Current Status</span></label><input type="text" name="mls_curr_status" value={newLeadData.mls_curr_status || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-contact1_email_1" className="label"><span className="label-text">Contact Email</span></label>
+                <input type="email" id="modal-contact1_email_1" name="contact1_email_1" value={editFormData.contact1_email_1 || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-              {/* Row 3: Property Address Details */}
-              <div><label className="label"><span className="label-text">Property Full Address</span></label><input type="text" name="property_address" value={newLeadData.property_address || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><label className="label"><span className="label-text">Property State</span></label><input type="text" name="property_state" value={newLeadData.property_state || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">Property Postal Code</span></label><input type="text" name="property_postal_code" value={newLeadData.property_postal_code || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-market_region" className="label"><span className="label-text">Market Region</span></label>
+                <input type="text" id="modal-market_region" name="market_region" value={editFormData.market_region || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-              {/* Row 4 */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">Property Type</span></label><input type="text" name="property_type" value={newLeadData.property_type || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">AVM Value</span></label><input type="number" name="avm_value" value={newLeadData.avm_value || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-property_address" className="label"><span className="label-text">Property Address</span></label>
+                <input type="text" id="modal-property_address" name="property_address" value={editFormData.property_address || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-              
-              {error && <p className="text-error text-sm">Error: {error}</p>}
-
-              <div className="modal-action mt-6">
-                <button type="button" onClick={handleCloseModal} className="btn btn-ghost">Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={isLoading}>{isLoading ? <span className='loading loading-spinner loading-xs'></span> : 'Save Lead'}</button>
+              <div>
+                <label htmlFor="modal-property_city" className="label"><span className="label-text">City</span></label>
+                <input type="text" id="modal-property_city" name="property_city" value={editFormData.property_city || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-            </form>
-          </div>
-        </dialog>
-      )}
-
-      {/* Edit Lead Modal */}
-      {isEditModalOpen && editingLead && (
-         <dialog open className="modal modal-open modal-bottom sm:modal-middle">
-          <div className="modal-box w-11/12 max-w-3xl">
-            <button type="button" onClick={handleCloseEditModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-            <h3 className="font-bold text-lg mb-6">Edit Lead: {editingLead.contact1_name || 'N/A'}</h3>
-            <form onSubmit={(event) => { handleSaveEditedLead(event).catch(err => {
-                let errorMessage = 'Failed to save lead details.';
-                if (err instanceof Error) {
-                  errorMessage = err.message;
-                } else if (typeof err === 'string') {
-                  errorMessage = err;
-                }
-                setError(errorMessage);
-              }); }} className="space-y-4">
-              {/* Row 1: Contact Info */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">Contact Name <span className="text-error">*</span></span></label><input type="text" name="contact1_name" value={newLeadData.contact1_name || ''} onChange={handleInputChange} className="input input-bordered w-full" required /></div>
-                <div><label className="label"><span className="label-text">Contact Email <span className="text-error">*</span></span></label><input type="email" name="contact1_email_1" value={newLeadData.contact1_email_1 || ''} onChange={handleInputChange} className="input input-bordered w-full" required/></div>
+              <div>
+                <label htmlFor="modal-property_state" className="label"><span className="label-text">State</span></label>
+                <input type="text" id="modal-property_state" name="property_state" value={editFormData.property_state || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">Contact 2 Name</span></label><input type="text" name="contact2_name" value={newLeadData.contact2_name || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">Contact 2 Email</span></label><input type="email" name="contact2_email_1" value={newLeadData.contact2_email_1 || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-property_postal_code" className="label"><span className="label-text">Postal Code</span></label>
+                <input type="text" id="modal-property_postal_code" name="property_postal_code" value={editFormData.property_postal_code || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">Contact 3 Name</span></label><input type="text" name="contact3_name" value={newLeadData.contact3_name || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">Contact 3 Email</span></label><input type="email" name="contact3_email_1" value={newLeadData.contact3_email_1 || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-status" className="label"><span className="label-text">Status</span></label>
+                <input type="text" id="modal-status" name="status" value={editFormData.status || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-
-              {/* Row 2: Market & MLS */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">Market Region <span className="text-error">*</span></span></label><input type="text" name="market_region" value={newLeadData.market_region || ''} onChange={handleInputChange} className="input input-bordered w-full" required /></div>
-                <div><label className="label"><span className="label-text">MLS Current Status</span></label><input type="text" name="mls_curr_status" value={newLeadData.mls_curr_status || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-notes" className="label"><span className="label-text">Notes</span></label>
+                <textarea id="modal-notes" name="notes" value={editFormData.notes || ''} onChange={handleModalInputChange} className="textarea textarea-bordered w-full" rows={3}></textarea>
               </div>
-              
-              {/* Row 3: Property Address Details */}
-              <div><label className="label"><span className="label-text">Property Full Address</span></label><input type="text" name="property_address" value={newLeadData.property_address || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div><label className="label"><span className="label-text">Property City</span></label><input type="text" name="property_city" value={newLeadData.property_city || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">Property State</span></label><input type="text" name="property_state" value={newLeadData.property_state || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">Property Postal Code</span></label><input type="text" name="property_postal_code" value={newLeadData.property_postal_code || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              {/* Add more fields here as required, e.g., property_type, beds, baths, etc. */}
+              <div>
+                <label htmlFor="modal-property_type" className="label"><span className="label-text">Property Type</span></label>
+                <input type="text" id="modal-property_type" name="property_type" value={editFormData.property_type || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-
-              {/* Row 4: Property Details */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">Property Type</span></label><input type="text" name="property_type" value={newLeadData.property_type || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">Year Built</span></label><input type="number" name="year_built" value={newLeadData.year_built || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-beds" className="label"><span className="label-text">Beds</span></label>
+                <input type="text" id="modal-beds" name="beds" value={editFormData.beds || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">Beds</span></label><input type="text" name="beds" value={newLeadData.beds || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">Baths</span></label><input type="text" name="baths" value={newLeadData.baths || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-baths" className="label"><span className="label-text">Baths</span></label>
+                <input type="text" id="modal-baths" name="baths" value={editFormData.baths || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">Square Footage</span></label><input type="number" name="square_footage" value={newLeadData.square_footage || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">Lot Size (SqFt)</span></label><input type="text" name="lot_size_sqft" value={newLeadData.lot_size_sqft || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-year_built" className="label"><span className="label-text">Year Built</span></label>
+                <input type="text" id="modal-year_built" name="year_built" value={editFormData.year_built || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-
-              {/* Row 5: Financials */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">AVM Value</span></label><input type="number" name="avm_value" value={newLeadData.avm_value || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">Assessed Total</span></label><input type="number" name="assessed_total" value={newLeadData.assessed_total || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-square_footage" className="label"><span className="label-text">Square Footage</span></label>
+                <input type="text" id="modal-square_footage" name="square_footage" value={editFormData.square_footage || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <div><label className="label"><span className="label-text">Price Per SqFt</span></label><input type="number" name="price_per_sq_ft" value={newLeadData.price_per_sq_ft || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">Wholesale Value</span></label><input type="number" name="wholesale_value" value={newLeadData.wholesale_value || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-lot_size_sqft" className="label"><span className="label-text">Lot Size Sqft</span></label>
+                <input type="text" id="modal-lot_size_sqft" name="lot_size_sqft" value={editFormData.lot_size_sqft || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-
-              {/* Row 6: MLS Details */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">MLS Days On Market</span></label><input type="number" name="mls_curr_days_on_market" value={newLeadData.mls_curr_days_on_market || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">MLS List Agent Name</span></label><input type="text" name="mls_curr_list_agent_name" value={newLeadData.mls_curr_list_agent_name || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-wholesale_value" className="label"><span className="label-text">Wholesale Value</span></label>
+                <input type="number" id="modal-wholesale_value" name="wholesale_value" value={editFormData.wholesale_value || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-              <div><label className="label"><span className="label-text">MLS List Agent Email</span></label><input type="email" name="mls_curr_list_agent_email" value={newLeadData.mls_curr_list_agent_email || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-              
-              {/* Row 7: Status, Source, Notes */}
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div><label className="label"><span className="label-text">Lead Status</span></label><input type="text" name="status" value={newLeadData.status || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
-                <div><label className="label"><span className="label-text">Lead Source</span></label><input type="text" name="source" value={newLeadData.source || ''} onChange={handleInputChange} className="input input-bordered w-full" /></div>
+              <div>
+                <label htmlFor="modal-assessed_total" className="label"><span className="label-text">Assessed Total</span></label>
+                <input type="number" id="modal-assessed_total" name="assessed_total" value={editFormData.assessed_total || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-              <div><label className="label"><span className="label-text">Notes</span></label><textarea name="notes" value={newLeadData.notes || ''} onChange={handleInputChange} className="textarea textarea-bordered w-full" rows={3}></textarea></div>
-              
-              {/* Converted Checkbox */}
-              <div className="form-control">
-                <label className="label cursor-pointer">
-                  <span className="label-text">Converted Lead</span> 
-                  <input type="checkbox" name="converted" checked={!!newLeadData.converted} onChange={(e) => setNewLeadData(prev => ({...prev, converted: e.target.checked }))} className="checkbox checkbox-primary" />
+              <div>
+                <label htmlFor="modal-avm_value" className="label"><span className="label-text">AVM Value</span></label>
+                <input type="number" id="modal-avm_value" name="avm_value" value={editFormData.avm_value || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-price_per_sq_ft" className="label"><span className="label-text">Price Per Sq Ft</span></label>
+                <input type="number" id="modal-price_per_sq_ft" name="price_per_sq_ft" value={editFormData.price_per_sq_ft || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-mls_curr_status" className="label"><span className="label-text">MLS Current Status</span></label>
+                <input type="text" id="modal-mls_curr_status" name="mls_curr_status" value={editFormData.mls_curr_status || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-mls_curr_days_on_market" className="label"><span className="label-text">MLS Current Days on Market</span></label>
+                <input type="text" id="modal-mls_curr_days_on_market" name="mls_curr_days_on_market" value={editFormData.mls_curr_days_on_market || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-converted" className="label"><span className="label-text">Converted</span></label>
+                <input type="checkbox" id="modal-converted" name="converted" checked={!!editFormData.converted} onChange={handleModalInputChange} className="checkbox checkbox-primary" />
+              </div>
+              <div>
+                <label htmlFor="modal-last_contacted_date" className="label"><span className="label-text">Last Contacted Date</span></label>
+                <input type="date" id="modal-last_contacted_date" name="last_contacted_date" value={editFormData.last_contacted_date || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-next_follow_up_date" className="label"><span className="label-text">Next Follow Up Date</span></label>
+                <input type="date" id="modal-next_follow_up_date" name="next_follow_up_date" value={editFormData.next_follow_up_date || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-conversion_date" className="label"><span className="label-text">Conversion Date</span></label>
+                <input type="date" id="modal-conversion_date" name="conversion_date" value={editFormData.conversion_date || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-lost_reason" className="label"><span className="label-text">Lost Reason</span></label>
+                <input type="text" id="modal-lost_reason" name="lost_reason" value={editFormData.lost_reason || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-tags" className="label"><span className="label-text">Tags</span></label>
+                <input type="text" id="modal-tags" name="tags" value={editFormData.tags || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-custom_fields" className="label">
+                  <span className="label-text">Custom Fields</span>
                 </label>
+                <textarea 
+                  id="modal-custom_fields"
+                  name="custom_fields"
+                  value={typeof editFormData.custom_fields === 'object' 
+                    ? JSON.stringify(editFormData.custom_fields, null, 2) 
+                    : editFormData.custom_fields || ''}
+                  onChange={handleModalInputChange} 
+                  className="textarea textarea-bordered w-full h-32 font-mono text-sm"
+                  placeholder="Enter JSON data or leave empty"
+                />
               </div>
-
-              {error && <p className="text-error text-sm mt-2">Error: {error}</p>}
-              {uploadStatus && !error && <p className="text-success text-sm mt-2">{uploadStatus}</p>}
-
-
+              <div>
+                <label htmlFor="modal-property_sf" className="label"><span className="label-text">Property SF</span></label>
+                <input type="number" id="modal-property_sf" name="property_sf" value={editFormData.property_sf || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-lead_score" className="label"><span className="label-text">Lead Score</span></label>
+                <input type="number" id="modal-lead_score" name="lead_score" value={editFormData.lead_score || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-assigned_to" className="label"><span className="label-text">Assigned To</span></label>
+                <input type="text" id="modal-assigned_to" name="assigned_to" value={editFormData.assigned_to || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
               <div className="modal-action mt-6">
-                <button type="button" onClick={handleCloseEditModal} className="btn btn-ghost">Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={isLoading}>{isLoading ? <span className='loading loading-spinner loading-xs'></span> : 'Save Changes'}</button>
+                <button type="button" onClick={() => void handleDeleteLead()} className="btn btn-error btn-outline mr-auto" disabled={isLoading}>
+                  <Trash2 size={16}/> Delete Lead
+                </button>
+                <button type="button" onClick={handleCloseModal} className="btn btn-ghost" disabled={isLoading}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isLoading}>
+                  <Save size={16}/> {isLoading ? 'Saving...' : 'Save Changes'}
+                </button>
               </div>
             </form>
           </div>
+           {/* Optional: click outside to close */}
+          <form method="dialog" className="modal-backdrop">
+            <button type="button" onClick={handleCloseModal}>close</button>
+          </form>
         </dialog>
       )}
-    </Background>
-  </> 
+    </div>
   );
-} // End of LeadsView function body
+};
 
 export default LeadsView;
-

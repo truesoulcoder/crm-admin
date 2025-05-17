@@ -20,7 +20,10 @@ export async function GET(req: NextRequest) {
       redirectUri = `${supabaseUrl}/auth/v1/callback`;
     }
   }
-  const redirectTo = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUri)}`;
+  
+  // Include profile and email scopes to get user's profile picture and email
+  const scopes = ['profile', 'email'];
+  const redirectTo = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUri)}&scopes=${encodeURIComponent(scopes.join(' '))}`;
   return NextResponse.redirect(redirectTo);
 }
 

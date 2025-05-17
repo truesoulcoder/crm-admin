@@ -1,41 +1,56 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+'use client';
+
+import { Menu, Bell, UserCircle, Search } from 'lucide-react';
 import Image from 'next/image';
-import { Menu, Bell, UserCircle, Sun, Moon, Search } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+
+import ThemeSelector from '@/components/ThemeSelector';
 
 interface NavbarProps {
   onMenuClick: () => void; // For mobile sidebar toggle
 }
 
 const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
-  const [currentTheme, setCurrentTheme] = useState('light');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // Initialize theme from localStorage or default
-    const savedTheme = localStorage.getItem('theme') || 'light';
-    setCurrentTheme(savedTheme);
-    document.documentElement.setAttribute('data-theme', savedTheme);
-  }, []);
+    interface GmailProfileResponse {
+      picture?: string;
+      name?: string;
+      email?: string;
+      [key: string]: unknown;
+    }
 
-  useEffect(() => {
-    fetch('/api/gmail/profile')
-      .then(res => res.json())
-      .then(profile => {
-        setAvatarUrl(profile.picture || null);
-        setFullName(profile.name || null);
-      })
-      .catch(err => console.error('Gmail profile error:', err));
-  }, []);
+    const fetchProfile = async (): Promise<GmailProfileResponse> => {
+      const res = await fetch('/api/gmail/profile');
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      const data = await res.json() as GmailProfileResponse;
+      return data;
+    };
 
-  const toggleTheme = () => {
-    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-    setCurrentTheme(newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-  };
+    const loadProfile = async () => {
+      try {
+        setIsLoading(true);
+        const data = await fetchProfile();
+        setAvatarUrl(data.picture || null);
+        setFullName(data.name || null);
+      } catch (error: unknown) {
+        // In a production app, log to an error reporting service
+        // eslint-disable-next-line no-console
+        console.error('Gmail profile error:', error instanceof Error ? error.message : 'Unknown error');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadProfile();
+  }, []);
 
   return (
     <nav className="navbar bg-base-100 shadow-sm sticky top-0 z-20">
@@ -52,10 +67,8 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
           </div>
         </div>
       </div>
-      <div className="navbar-end">
-        <button onClick={toggleTheme} className="btn btn-ghost btn-circle">
-          {currentTheme === 'light' ? <Sun size={20} /> : <Moon size={20} />}
-        </button>
+      <div className="navbar-end gap-1">
+        <ThemeSelector />
         {/* Notification bell */}
         <div className="dropdown dropdown-end ml-2">
           <button tabIndex={0} className="btn btn-ghost btn-circle">
@@ -78,8 +91,21 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
         <div className="dropdown dropdown-end ml-2">
           <button tabIndex={0} className="btn btn-ghost btn-circle avatar">
             <div className="w-8 rounded-full ring ring-primary ring-offset-base-100 ring-offset-1">
-              {avatarUrl ? (
-                <Image src={avatarUrl} alt="User avatar" width={32} height={32} />
+              {isLoading ? (
+                <div className="w-8 h-8 rounded-full bg-base-300 animate-pulse" />
+              ) : avatarUrl ? (
+                <Image 
+                  src={avatarUrl} 
+                  alt={fullName || 'User avatar'} 
+                  width={32} 
+                  height={32}
+                  className="rounded-full"
+                  onError={(e) => {
+                    // Fallback to UserCircle if image fails to load
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                  }}
+                />
               ) : (
                 <UserCircle size={32} className="text-primary" />
               )}
@@ -89,10 +115,20 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
             <li>
               <a
                 onClick={() => {
-                  import('@/lib/auth').then(({ logout }) => {
-                    logout();
-                    window.location.href = '/';
-                  });
+                  const handleLogout = async () => {
+                    try {
+                      const { logout } = await import('@/lib/auth');
+                      await logout();
+                      window.location.href = '/';
+                    } catch (error) {
+                      // In a production app, log to an error reporting service
+                      // eslint-disable-next-line no-console
+                      console.error('Logout failed:', error);
+                      // Optionally show an error message to the user
+                      alert('Logout failed. Please try again.');
+                    }
+                  };
+                  void handleLogout();
                 }}
               >
                 Logout

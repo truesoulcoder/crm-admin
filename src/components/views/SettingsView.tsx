@@ -1,229 +1,717 @@
 'use client';
 
-import { Settings, UserCircle, Palette, Bell, Lock, Briefcase, CreditCard, HelpCircle, Moon, Sun, Info } from 'lucide-react';
-import React, { useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
+import { Shield, Key, Palette, BarChart2, Building2, Mail, Phone, Image as ImageIcon } from 'lucide-react';
+import { useState, useEffect } from 'react';
 
-type Theme = 'light' | 'dark' | 'system';
-type NotificationChannel = 'email' | 'sms' | 'inApp';
+type SettingsTab = 'access' | 'delegation' | 'branding' | 'analytics';
 
-interface ProfileSettings {
-  fullName: string;
-  email: string;
-  timezone: string;
-  language: string;
-  avatarUrl?: string;
+interface AccessControlSettings {
+  allowedEmails: string[];
+  restrictByDomain: boolean;
+  allowedDomain: string;
 }
 
-interface AppearanceSettings {
-  theme: Theme;
-  fontSize: 'small' | 'medium' | 'large';
-  showTooltips: boolean;
+interface DelegationSettings {
+  googleServiceAccountKey: string;
+  clientId: string;
+  clientEmail: string;
+  privateKey: string;
+  tokenUri: string;
+  scopes: string[];
 }
 
-interface NotificationSettings {
-  newLead: NotificationChannel[];
-  campaignUpdate: NotificationChannel[];
-  systemAlerts: NotificationChannel[];
-  newsletter: boolean;
+interface BrandingSettings {
+  companyName: string;
+  companyLogo: string;
+  companyPhone: string;
+  supportEmail: string;
+  titleCompanyName: string;
 }
 
-interface SecuritySettings {
-  twoFactorAuth: boolean;
-  passwordLastChanged: string;
-  activeSessions: number;
+interface AnalyticsSettings {
+  enabled: boolean;
+  trackCampaigns: boolean;
+  trackUsers: boolean;
+  trackPageViews: boolean;
+  trackEvents: boolean;
 }
 
-const mockProfile: ProfileSettings = {
-  fullName: 'Casey Jones',
-  email: 'casey.jones@example.com',
-  timezone: 'America/New_York (GMT-4)',
-  language: 'English (US)',
-  avatarUrl: 'https://i.pravatar.cc/150?u=casey',
-};
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-const mockAppearance: AppearanceSettings = {
-  theme: 'system',
-  fontSize: 'medium',
-  showTooltips: true,
-};
-
-const mockNotifications: NotificationSettings = {
-  newLead: ['email', 'inApp'],
-  campaignUpdate: ['email'],
-  systemAlerts: ['inApp', 'sms'],
-  newsletter: true,
-};
-
-const mockSecurity: SecuritySettings = {
-  twoFactorAuth: true,
-  passwordLastChanged: '2024-04-15',
-  activeSessions: 2,
-};
-
-
-const SettingsView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'security' | 'integrations' | 'billing' | 'support'>('profile');
+const SettingsView = () => {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('access');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   
-  // Dummy state for controlled components - in a real app, these would update the mock data or backend
-  const [profile, setProfile] = useState<ProfileSettings>(mockProfile);
-  const [appearance, setAppearance] = useState<AppearanceSettings>(mockAppearance);
-  const [notifications, setNotifications] = useState<NotificationSettings>(mockNotifications);
-  const [security, setSecurity] = useState<SecuritySettings>(mockSecurity);
-
-  const handleThemeChange = (theme: Theme) => {
-    setAppearance(prev => ({ ...prev, theme }));
-    // In a real app, you'd also apply the theme, e.g., by setting data-theme on <html>
-    if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
-    else if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
-    else { // system preference
-        // This requires more logic to detect system preference and listen for changes
-        // For DaisyUI, you might remove data-theme or set it based on prefers-color-scheme
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+  const [accessControl, setAccessControl] = useState<AccessControlSettings>({
+    allowedEmails: [],
+    restrictByDomain: false,
+    allowedDomain: '',
+  });
+  
+  const [delegation, setDelegation] = useState<DelegationSettings>({
+    googleServiceAccountKey: '',
+    clientId: '',
+    clientEmail: '',
+    privateKey: '',
+    tokenUri: 'https://oauth2.googleapis.com/token',
+    scopes: ['https://www.googleapis.com/auth/gmail.send'],
+  });
+  
+  const [isUploading, setIsUploading] = useState(false);
+  const [branding, setBranding] = useState<BrandingSettings>({
+    companyName: '',
+    companyLogo: '',
+    companyPhone: '',
+    supportEmail: '',
+    titleCompanyName: '',
+  });
+  
+  const handleLogoUpload = async (file: File) => {
+    if (!file) return;
+    
+    setIsUploading(true);
+    setError(null);
+    
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `logo-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+      
+      // Upload to Supabase Storage
+      const { data, error: uploadError } = await supabase.storage
+        .from('media')
+        .upload(filePath, file);
+        
+      if (uploadError) throw uploadError;
+      
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('media')
+        .getPublicUrl(filePath);
+        
+      setBranding(prev => ({
+        ...prev,
+        companyLogo: publicUrl
+      }));
+      
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+      setError(
+        error instanceof Error 
+          ? `Failed to upload logo: ${error.message}`
+          : 'Failed to upload logo. Please try again.'
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
+  
+  const [analytics, setAnalytics] = useState<AnalyticsSettings>({
+    enabled: false,
+    trackCampaigns: false,
+    trackUsers: false,
+    trackPageViews: false,
+    trackEvents: false,
+  });
+  
+  // Load settings on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        setIsLoading(true);
+        
+        // In a real implementation, you would fetch these from your database
+        // const { data } = await supabase.from('settings').select('*').single();
+        // if (data) {
+        //   setAccessControl(data.access_control);
+        //   setDelegation(data.delegation);
+        //   setBranding(data.branding);
+        //   setAnalytics(data.analytics);
+        // }
+        
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        setError(
+          error instanceof Error 
+            ? `Failed to load settings: ${error.message}`
+            : 'Failed to load settings. Please try again.'
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadSettings();
+  }, [supabase]);
+  
+  const saveSettings = async (section: SettingsTab) => {
+    try {
+      setIsSaving(true);
+      setError(null);
+      setSuccess(null);
+      
+      // In a real implementation, you would save to your database
+      // await supabase
+      //   .from('settings')
+      //   .upsert({
+      //     id: 1, // or use your settings ID
+      //     [section]: {
+      //       ...(section === 'access' ? accessControl : {}),
+      //       ...(section === 'delegation' ? delegation : {}),
+      //       ...(section === 'branding' ? branding : {}),
+      //       ...(section === 'analytics' ? analytics : {}),
+      //     },
+      //     updated_at: new Date().toISOString(),
+      //   });
+      
+      setSuccess(`${section.charAt(0).toUpperCase() + section.slice(1)} settings saved successfully!`);
+    } catch (error) {
+      console.error(`Error saving ${section} settings:`, error);
+      setError(`Failed to save ${section} settings. Please try again.`);
+    } finally {
+      setIsSaving(false);
     }
   };
   
   const renderTabContent = () => {
+    if (isLoading) {
+      return (
+        <div className="flex justify-center items-center h-64">
+          <span className="loading loading-spinner loading-lg"></span>
+        </div>
+      );
+    }
+    
     switch (activeTab) {
-      case 'profile':
+      case 'access':
         return (
           <div className="space-y-6">
-            <h2 className="text-2xl font-semibold text-base-content flex items-center"><UserCircle className="mr-3 text-primary" size={28}/> Profile Settings</h2>
-            <div className="form-control">
-              <label className="label"><span className="label-text">Full Name</span></label>
-              <input type="text" value={profile.fullName} onChange={e => setProfile(p => ({...p, fullName: e.target.value}))} className="input input-bordered" />
-            </div>
-            <div className="form-control">
-              <label className="label"><span className="label-text">Email Address</span></label>
-              <input type="email" value={profile.email} onChange={e => setProfile(p => ({...p, email: e.target.value}))} className="input input-bordered" />
-            </div>
-            <div className="form-control">
-              <label className="label"><span className="label-text">Timezone</span></label>
-              <select className="select select-bordered" value={profile.timezone} onChange={e => setProfile(p => ({...p, timezone: e.target.value}))}>
-                <option>America/New_York (GMT-4)</option>
-                <option>Europe/London (GMT+1)</option>
-                <option>Asia/Tokyo (GMT+9)</option>
-              </select>
-            </div>
-             <div className="form-control">
-                <label className="label"><span className="label-text">Avatar URL (Optional)</span></label>
-                <input type="url" value={profile.avatarUrl} onChange={e => setProfile(p => ({...p, avatarUrl: e.target.value}))} placeholder="https://example.com/avatar.png" className="input input-bordered" />
-            </div>
-            <button className="btn btn-primary">Update Profile</button>
-          </div>
-        );
-      case 'appearance':
-        return (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-semibold text-base-content flex items-center"><Palette className="mr-3 text-accent" size={28}/> Appearance</h2>
-            <div className="form-control">
-              <label className="label"><span className="label-text">Theme</span></label>
-              <div className="flex gap-2">
-                <button className={`btn ${appearance.theme === 'light' ? 'btn-active' : ''}`} onClick={() => handleThemeChange('light')}><Sun size={16} className="mr-1"/> Light</button>
-                <button className={`btn ${appearance.theme === 'dark' ? 'btn-active' : ''}`} onClick={() => handleThemeChange('dark')}><Moon size={16} className="mr-1"/> Dark</button>
-                <button className={`btn ${appearance.theme === 'system' ? 'btn-active' : ''}`} onClick={() => handleThemeChange('system')}>System</button>
+            <h2 className="text-2xl font-semibold flex items-center">
+              <Shield className="mr-2" size={24} /> Access Control
+            </h2>
+            
+            <div className="card bg-base-200 p-6">
+              <div className="form-control">
+                <label className="label cursor-pointer justify-start gap-2">
+                  <input 
+                    type="checkbox" 
+                    className="toggle toggle-primary" 
+                    checked={accessControl.restrictByDomain}
+                    onChange={(e) => setAccessControl({...accessControl, restrictByDomain: e.target.checked})}
+                  />
+                  <span className="label-text">Restrict access by domain</span>
+                </label>
+              </div>
+              
+              {accessControl.restrictByDomain && (
+                <div className="form-control mt-4">
+                  <label className="label">
+                    <span className="label-text">Allowed Domain</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    className="input input-bordered w-full" 
+                    placeholder="example.com"
+                    value={accessControl.allowedDomain}
+                    onChange={(e) => setAccessControl({...accessControl, allowedDomain: e.target.value})}
+                  />
+                  <label className="label">
+                    <span className="label-text-alt">Users with emails from this domain will have full access</span>
+                  </label>
+                </div>
+              )}
+              
+              <div className="form-control mt-6">
+                <label className="label">
+                  <span className="label-text">Whitelisted Email Addresses</span>
+                </label>
+                <div className="space-y-2">
+                  {accessControl.allowedEmails.map((email, index) => (
+                    <div key={index} className="flex gap-2">
+                      <input 
+                        type="email" 
+                        className="input input-bordered flex-1" 
+                        value={email}
+                        onChange={(e) => {
+                          const newEmails = [...accessControl.allowedEmails];
+                          newEmails[index] = e.target.value;
+                          setAccessControl({...accessControl, allowedEmails: newEmails});
+                        }}
+                      />
+                      <button 
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => {
+                          const newEmails = accessControl.allowedEmails.filter((_, i) => i !== index);
+                          setAccessControl({...accessControl, allowedEmails: newEmails});
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <button 
+                    className="btn btn-ghost btn-sm mt-2"
+                    onClick={() => {
+                      setAccessControl({
+                        ...accessControl, 
+                        allowedEmails: [...accessControl.allowedEmails, '']
+                      });
+                    }}
+                  >
+                    + Add Email
+                  </button>
+                </div>
+              </div>
+              
+              <div className="mt-8">
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => saveSettings('access')}
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Saving...' : 'Save Access Settings'}
+                </button>
               </div>
             </div>
-            <div className="form-control">
-              <label className="label"><span className="label-text">Font Size</span></label>
-              <select className="select select-bordered" value={appearance.fontSize} onChange={e => setAppearance(a => ({...a, fontSize: e.target.value as any}))}>
-                <option value="small">Small</option>
-                <option value="medium">Medium</option>
-                <option value="large">Large</option>
-              </select>
-            </div>
-            <div className="form-control">
-                <label className="label cursor-pointer justify-start gap-2">
-                    <input type="checkbox" checked={appearance.showTooltips} onChange={e => setAppearance(a => ({...a, showTooltips: e.target.checked}))} className="checkbox checkbox-primary" />
-                    <span className="label-text">Show Tooltips</span> 
-                </label>
-            </div>
-            <button className="btn btn-primary">Save Appearance</button>
           </div>
         );
-      case 'notifications':
+        
+      case 'delegation':
         return (
           <div className="space-y-6">
-            <h2 className="text-2xl font-semibold text-base-content flex items-center"><Bell className="mr-3 text-info" size={28}/> Notification Settings</h2>
-            {/* Simplified for brevity - In a real app, this would be more detailed */}
-            <p>Configure how you receive notifications for various events.</p>
-            <div className="form-control">
-                <label className="label cursor-pointer justify-start gap-2">
-                    <input type="checkbox" checked={notifications.newsletter} onChange={e => setNotifications(n => ({...n, newsletter: e.target.checked}))} className="checkbox checkbox-primary" />
-                    <span className="label-text">Subscribe to Newsletter</span> 
-                </label>
-            </div>
-            <p className="text-sm text-base-content/70">Detailed notification channel settings (Email, SMS, In-App) for New Leads, Campaign Updates, System Alerts would go here.</p>
-            <button className="btn btn-primary">Update Notifications</button>
-          </div>
-        );
-      case 'security':
-         return (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-semibold text-base-content flex items-center"><Lock className="mr-3 text-error" size={28}/> Security Settings</h2>
-            <div className="form-control">
-                <label className="label cursor-pointer justify-start gap-2">
-                    <input type="checkbox" checked={security.twoFactorAuth} onChange={e => setSecurity(s => ({...s, twoFactorAuth: e.target.checked}))} className="checkbox checkbox-primary" />
-                    <span className="label-text">Enable Two-Factor Authentication (2FA)</span> 
-                </label>
-            </div>
-            <p className="text-sm">Password last changed: {new Date(security.passwordLastChanged).toLocaleDateString()}</p>
-            <p className="text-sm">Active sessions: {security.activeSessions}</p>
-            <div className="flex gap-2">
-                <button className="btn btn-secondary">Change Password</button>
-                <button className="btn btn-outline btn-error">Log out all other sessions</button>
-            </div>
-          </div>
-        );
-      // Placeholder for other tabs
-      default:
-        return (
-            <div className="card bg-base-200">
-                <div className="card-body items-center text-center">
-                    <Info size={48} className="text-neutral mb-4" />
-                    <h2 className="card-title">{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h2>
-                    <p>Settings for {activeTab} will be displayed here.</p>
+            <h2 className="text-2xl font-semibold flex items-center">
+              <Key className="mr-2" size={24} /> Domain-Wide Delegation
+            </h2>
+            
+            <div className="card bg-base-200 p-6">
+              <div className="space-y-4">
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Google Service Account Key (JSON)</span>
+                  </label>
+                  <textarea 
+                    className="textarea textarea-bordered h-32 font-mono text-xs" 
+                    placeholder="Paste your service account JSON key"
+                    value={delegation.googleServiceAccountKey}
+                    onChange={(e) => setDelegation({...delegation, googleServiceAccountKey: e.target.value})}
+                  />
                 </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text">Client ID</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      className="input input-bordered w-full" 
+                      value={delegation.clientId}
+                      onChange={(e) => setDelegation({...delegation, clientId: e.target.value})}
+                    />
+                  </div>
+                  
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text">Client Email</span>
+                    </label>
+                    <input 
+                      type="email" 
+                      className="input input-bordered w-full" 
+                      value={delegation.clientEmail}
+                      onChange={(e) => setDelegation({...delegation, clientEmail: e.target.value})}
+                    />
+                  </div>
+                </div>
+                
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Private Key</span>
+                  </label>
+                  <textarea 
+                    className="textarea textarea-bordered h-32 font-mono text-xs" 
+                    placeholder="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+                    value={delegation.privateKey}
+                    onChange={(e) => setDelegation({...delegation, privateKey: e.target.value})}
+                  />
+                </div>
+                
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Token URI</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    className="input input-bordered w-full" 
+                    value={delegation.tokenUri}
+                    onChange={(e) => setDelegation({...delegation, tokenUri: e.target.value})}
+                  />
+                </div>
+                
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">OAuth Scopes</span>
+                  </label>
+                  <div className="space-y-2">
+                    {delegation.scopes.map((scope, index) => (
+                      <div key={index} className="flex gap-2">
+                        <input 
+                          type="text" 
+                          className="input input-bordered flex-1 font-mono text-xs" 
+                          value={scope}
+                          onChange={(e) => {
+                            const newScopes = [...delegation.scopes];
+                            newScopes[index] = e.target.value;
+                            setDelegation({...delegation, scopes: newScopes});
+                          }}
+                        />
+                        <button 
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => {
+                            const newScopes = delegation.scopes.filter((_, i) => i !== index);
+                            setDelegation({...delegation, scopes: newScopes});
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <button 
+                      className="btn btn-ghost btn-sm mt-2"
+                      onClick={() => {
+                        setDelegation({
+                          ...delegation, 
+                          scopes: [...delegation.scopes, '']
+                        });
+                      }}
+                    >
+                      + Add Scope
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="mt-6">
+                  <button 
+                    className="btn btn-primary"
+                    onClick={() => saveSettings('delegation')}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Saving...' : 'Save Delegation Settings'}
+                  </button>
+                </div>
+              </div>
             </div>
+          </div>
         );
+        
+      case 'branding':
+        return (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-semibold flex items-center">
+              <Building2 className="mr-2" size={24} /> Branding
+            </h2>
+            
+            <div className="card bg-base-200 p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Company Name</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    className="input input-bordered w-full" 
+                    value={branding.companyName}
+                    onChange={(e) => setBranding({...branding, companyName: e.target.value})}
+                  />
+                </div>
+                
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Title Company Name</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    className="input input-bordered w-full" 
+                    value={branding.titleCompanyName}
+                    onChange={(e) => setBranding({...branding, titleCompanyName: e.target.value})}
+                    placeholder="e.g., John Doe"
+                  />
+                </div>
+                
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Support Email</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                      <Mail className="w-5 h-5 text-gray-500" />
+                    </div>
+                    <input 
+                      type="email" 
+                      className="input input-bordered w-full pl-10" 
+                      value={branding.supportEmail}
+                      onChange={(e) => setBranding({...branding, supportEmail: e.target.value})}
+                      placeholder="support@example.com"
+                    />
+                  </div>
+                </div>
+                
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Company Phone</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                      <Phone className="w-5 h-5 text-gray-500" />
+                    </div>
+                    <input 
+                      type="tel" 
+                      className="input input-bordered w-full pl-10" 
+                      value={branding.companyPhone}
+                      onChange={(e) => setBranding({...branding, companyPhone: e.target.value})}
+                      placeholder="+1 (555) 123-4567"
+                    />
+                  </div>
+                </div>
+                
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text">Company Logo</span>
+                  </label>
+                  <div className="flex items-center space-x-4">
+                    <div className="avatar">
+                      <div className="w-16 h-16 rounded-lg bg-base-300 flex items-center justify-center">
+                        {branding.companyLogo ? (
+                          <img 
+                            src={branding.companyLogo} 
+                            alt="Company Logo" 
+                            className="w-full h-full object-contain p-1" 
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.src = '/default-company-logo.png';
+                            }}
+                          />
+                        ) : (
+                          <ImageIcon className="w-8 h-8 text-gray-400" />
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <input 
+                        type="file" 
+                        className="file-input file-input-bordered w-full max-w-xs"
+                        accept="image/png, image/jpeg, image/jpg, image/svg+xml"
+                        disabled={isUploading}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            await handleLogoUpload(file);
+                          }
+                        }}
+                      />
+                      <div className="text-xs text-gray-500 mt-1">
+                        {isUploading ? 'Uploading...' : 'PNG, JPG, or SVG. Max 2MB. Recommended size: 200x50px'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-8">
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => saveSettings('branding')}
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Saving...' : 'Save Branding Settings'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+        
+      case 'analytics':
+        return (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-semibold flex items-center">
+              <BarChart2 className="mr-2" size={24} /> Analytics & Reporting
+            </h2>
+            
+            <div className="card bg-base-200 p-6">
+              <div className="form-control">
+                <label className="label cursor-pointer justify-start gap-2">
+                  <input 
+                    type="checkbox" 
+                    className="toggle toggle-primary" 
+                    checked={analytics.enabled}
+                    onChange={(e) => setAnalytics({...analytics, enabled: e.target.checked})}
+                  />
+                  <span className="label-text font-medium">Enable Analytics</span>
+                </label>
+                <label className="label">
+                  <span className="label-text-alt">Track and analyze user interactions within the application</span>
+                </label>
+              </div>
+              
+              <div className="mt-6 space-y-4">
+                <h3 className="font-medium">Track the following metrics:</h3>
+                
+                <div className="form-control">
+                  <label className="label cursor-pointer justify-start gap-2">
+                    <input 
+                      type="checkbox" 
+                      className="checkbox checkbox-primary" 
+                      checked={analytics.trackCampaigns}
+                      onChange={(e) => setAnalytics({...analytics, trackCampaigns: e.target.checked})}
+                      disabled={!analytics.enabled}
+                    />
+                    <span className="label-text">Campaign Performance</span>
+                  </label>
+                  <label className="label ml-6">
+                    <span className="label-text-alt">Open rates, click-through rates, conversions</span>
+                  </label>
+                </div>
+                
+                <div className="form-control">
+                  <label className="label cursor-pointer justify-start gap-2">
+                    <input 
+                      type="checkbox" 
+                      className="checkbox checkbox-primary" 
+                      checked={analytics.trackUsers}
+                      onChange={(e) => setAnalytics({...analytics, trackUsers: e.target.checked})}
+                      disabled={!analytics.enabled}
+                    />
+                    <span className="label-text">User Activity</span>
+                  </label>
+                  <label className="label ml-6">
+                    <span className="label-text-alt">Active users, session duration, feature usage</span>
+                  </label>
+                </div>
+                
+                <div className="form-control">
+                  <label className="label cursor-pointer justify-start gap-2">
+                    <input 
+                      type="checkbox" 
+                      className="checkbox checkbox-primary" 
+                      checked={analytics.trackPageViews}
+                      onChange={(e) => setAnalytics({...analytics, trackPageViews: e.target.checked})}
+                      disabled={!analytics.enabled}
+                    />
+                    <span className="label-text">Page Views</span>
+                  </label>
+                  <label className="label ml-6">
+                    <span className="label-text-alt">Most visited pages, navigation paths</span>
+                  </label>
+                </div>
+                
+                <div className="form-control">
+                  <label className="label cursor-pointer justify-start gap-2">
+                    <input 
+                      type="checkbox" 
+                      className="checkbox checkbox-primary" 
+                      checked={analytics.trackEvents}
+                      onChange={(e) => setAnalytics({...analytics, trackEvents: e.target.checked})}
+                      disabled={!analytics.enabled}
+                    />
+                    <span className="label-text">Custom Events</span>
+                  </label>
+                  <label className="label ml-6">
+                    <span className="label-text-alt">Button clicks, form submissions, downloads</span>
+                  </label>
+                </div>
+              </div>
+              
+              <div className="mt-8">
+                <button 
+                  className="btn btn-primary"
+                  onClick={() => saveSettings('analytics')}
+                  disabled={isSaving}
+                >
+                  {isSaving ? 'Saving...' : 'Save Analytics Settings'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+        
+      default:
+        return null;
     }
   };
-
-  const settingsTabs = [
-    { id: 'profile', label: 'Profile', icon: UserCircle },
-    { id: 'appearance', label: 'Appearance', icon: Palette },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'security', label: 'Security', icon: Lock },
-    { id: 'integrations', label: 'Integrations', icon: Briefcase },
-    { id: 'billing', label: 'Billing', icon: CreditCard },
-    { id: 'support', label: 'Support', icon: HelpCircle },
-  ] as const; // Use "as const" for stricter type checking on tab IDs
-
+  
   return (
-    <div className="p-4 md:p-6 lg:p-8">
-      <h1 className="text-3xl font-bold text-base-content mb-8 flex items-center">
-        <Settings size={32} className="mr-3 text-warning" /> Application Settings
-      </h1>
-      
+    <div className="container mx-auto p-4 md:p-6">
       <div className="flex flex-col md:flex-row gap-6">
-        {/* Sidebar Navigation for Settings */}
-        <div className="w-full md:w-1/4 card bg-base-100 shadow-lg p-2">
-          <ul className="menu p-2 rounded-box">
-            {settingsTabs.map(tab => (
-              <li key={tab.id}>
-                <a 
-                  className={`${activeTab === tab.id ? 'active' : ''}`}
-                  onClick={() => setActiveTab(tab.id as typeof activeTab)} // Cast needed due to "as const"
+        {/* Sidebar Navigation */}
+        <div className="w-full md:w-64 flex-shrink-0">
+          <div className="card bg-base-200 p-4">
+            <ul className="menu bg-base-200 rounded-box">
+              <li>
+                <button 
+                  className={`flex items-center ${activeTab === 'access' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('access')}
                 >
-                  <tab.icon size={18} className="mr-2" /> {tab.label}
-                </a>
+                  <Shield className="w-5 h-5" />
+                  <span>Access Control</span>
+                </button>
               </li>
-            ))}
-          </ul>
+              <li>
+                <button 
+                  className={`flex items-center ${activeTab === 'delegation' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('delegation')}
+                >
+                  <Key className="w-5 h-5" />
+                  <span>Domain Delegation</span>
+                </button>
+              </li>
+              <li>
+                <button 
+                  className={`flex items-center ${activeTab === 'branding' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('branding')}
+                >
+                  <Building2 className="w-5 h-5" />
+                  <span>Branding</span>
+                </button>
+              </li>
+              <li>
+                <button 
+                  className={`flex items-center ${activeTab === 'analytics' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('analytics')}
+                >
+                  <BarChart2 className="w-5 h-5" />
+                  <span>Analytics</span>
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
-
-        {/* Main Content Area for Settings */}
-        <div className="w-full md:w-3/4 card bg-base-100 shadow-lg p-6 md:p-8">
+        
+        {/* Main Content */}
+        <div className="flex-1">
+          {error && (
+            <div className="alert alert-error mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{error}</span>
+            </div>
+          )}
+          
+          {success && (
+            <div className="alert alert-success mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{success}</span>
+            </div>
+          )}
+          
           {renderTabContent()}
         </div>
       </div>

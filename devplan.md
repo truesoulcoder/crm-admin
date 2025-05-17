@@ -1,54 +1,36 @@
 # Development Plan
 
-## Objective: Fix Supabase Environment Variables and Build Issues (Completed)
+## Phase 1: Core CRM Features
 
-- [x] Rename `NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY` to `SUPABASE_SERVICE_ROLE_KEY` for security.
-- [x] Update API routes to use `SUPABASE_SERVICE_ROLE_KEY`:
-    - [x] `src/app/api/normalized-leads/route.ts`
-    - [x] `src/app/api/leads/upload/route.ts`
-    - [x] `src/app/api/email-senders/route.ts`
-    - [x] `src/app/api/email-senders/[id]/route.ts`
-    - [x] `src/app/api/admin/sync-gmail-avatars/route.ts`
-- [x] Update error messages in relevant files to reflect the new variable name.
-- [x] Fix `__dirname` issue in `eslint.config.js` for ES module scope.
-- [x] Resolve "Argument expression expected" lint error in `src/app/api/normalized-leads/route.ts`.
-- [x] Ensure `npm run build` completes successfully.
-- [x] User to verify `SUPABASE_SERVICE_ROLE_KEY` in `.env.local`.
+### 1. Lead Management
+    -   **Task 1.1: Data Integration & Filtering**
+        -   [/] Integrate real data from `normalized_leads` table. (New component fetches data)
+        -   [/] Implement filtering by user-created market regions. (New component includes dropdown filter)
+    -   **Task 1.2: Table Interactivity - Basic**
+        -   [/] Implement on-hover row highlighting. (New component includes hover styling)
+        -   [/] Implement clickable rows that popup lead card modals. (New component implements this)
+    -   **Task 1.3: Lead Card Modal**
+        -   [/] Create a modal for viewing and editing lead details. (New component implements this)
+        -   [/] Implement data editing and saving functionality in the modal. (New component includes save logic)
+        -   [/] Implement note-adding functionality in the modal. (New component includes notes field in modal)
+    -   **Task 1.4: Table Interactivity - Advanced**
+        -   [/] Implement sortable columns in the leads table. (New component implements sortable columns)
+        -   [/] Implement pagination with options for 25, 50, or 100 rows per page. (New component implements pagination)
+    -   **Task 1.5: CSV Upload & Processing**
+        -   [/] Implement functionality to upload raw CSV files. (New component implements CSV upload UI and logic)
+        -   [/] Process uploaded CSVs into the `normalized_leads` table. (New component calls `/api/leads/upload` for processing)
 
-## Objective: Refactor LeadsView Component (Completed)
+### 2. Email Sender Management
+    -   [ ] To be defined.
 
-- [x] **File:** `src/components/views/LeadsView.tsx`
-    - [x] **Import Order:** Corrected to comply with linting rules.
-    - [x] **Type Safety:**
-        - [x] Updated `isFileUploadResponse` type guard for `unknown` parameter and safe property access.
-        - [x] Improved error handling in `catch` blocks with type checks for `unknown` errors.
-        - [x] Ensured safer handling of API responses and data assignments.
-    - [x] **Promise Handling:** Resolved `@typescript-eslint/no-misused-promises` & `@typescript-eslint/no-floating-promises` by correctly managing async operations.
-    - [x] **Console Statements:** Eliminated `no-console` violations.
-    - [x] **General Unsafe Operations:** Addressed various `@typescript-eslint/no-unsafe-*` errors through stricter typing.
+### 3. Template Management
+    -   [ ] To be defined.
 
-## Objective: Resolve Build Error in TemplatesView (In Progress)
+### 4. Campaign Management
+    -   [ ] To be defined.
 
-- [ ] **File:** `src/components/views/TemplatesView.tsx`
-    - [x] Correct import path for Tiptap Link extension from local file to `@tiptap/extension-link`.
-    - [x] Fix Tiptap import order (`@tiptap/react` after `@tiptap/extension-placeholder`).
-    - [x] Fix unsafe 'any' in `fetchTemplates` catch block.
-    - [x] Fix `Expected property shorthand` error in `Flex.tsx` (e.g. `aspectRatio: aspectRatio` -> `aspectRatio`).
-    - [x] Update `debounce` function to use `unknown[]` instead of `any[]`.
-    - [x] Fix floating promise errors for `onClick` handlers in JSX.
-    - [x] Remove console.log and console.error statements.
-    - [x] Fix debounce function type inference with `P extends unknown[], R`.
-    - [x] Correct import order and remove empty lines in import groups.
-    - [x] Address unused `_jsonError` variable warning by changing `catch (_jsonError)` to `catch {`.
-    - [x] Fix corrupted `handleDeleteTemplate` function (parsing error around line 391/395) in `TemplatesView.tsx`.
-    - [x] Fix `no-unsafe-assignment` for `data` in `fetchTemplates` (typed as `DocumentTemplate[]`). 
-    - [x] Fix `no-unsafe-assignment` for `errorData` in `handleSubmitTemplate` and `handleDeleteTemplate` (typed as `ApiErrorResponse`). 
-    - [x] Wrap `closeModal` in `useCallback` with correct empty dependency array `[]` to stabilize it.
-
-## Objective: Resolve Build Errors in dashboard/page.tsx
-
-- [ ] **File:** `src/app/dashboard/page.tsx`
-    - [ ] Fix `no-misused-promises` for async event handler around line 361.
+### 5. Dashboard & Monitoring
+    -   [ ] To be defined.
     - [ ] Fix `no-misused-promises` for async event handler around line 380.
     - [ ] Fix `no-misused-promises` for async event handler around line 402.
 

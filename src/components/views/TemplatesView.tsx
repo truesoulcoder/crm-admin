@@ -249,8 +249,15 @@ const TemplatesView: React.FC = () => {
       if (!response.ok) {
         throw new Error(`Failed to fetch templates: ${response.statusText}`);
       }
-      const data: DocumentTemplate[] = await response.json();
-      setDocumentTemplates(data);
+      const responseJson = await response.json();
+      if (responseJson && Array.isArray(responseJson.data)) {
+        setDocumentTemplates(responseJson.data as DocumentTemplate[]);
+      } else {
+        console.error("API /api/document-templates response did not contain a 'data' array. Received:", responseJson);
+        setDocumentTemplates([]); // Default to an empty array to prevent runtime error
+        setError("Received invalid data format for templates from API.");
+        setToast({ message: "Error: Could not load templates due to API data format issue.", type: 'error' });
+      }
     } catch (e: unknown) {
       if (e instanceof Error) {
         setError(e.message);
