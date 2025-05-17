@@ -19,6 +19,12 @@
     -   **Task 1.5: CSV Upload & Processing**
         -   [/] Implement functionality to upload raw CSV files. (New component implements CSV upload UI and logic)
         -   [/] Process uploaded CSVs into the `normalized_leads` table. (New component calls `/api/leads/upload` for processing)
+    -   **Task 1.6: Refactor `CrmView.tsx` for DaisyUI and Error Resolution**
+        -   [x] Corrected JSX structural errors (e.g., mismatched/extra closing tags).
+        -   [x] Replaced custom UI components (Input, Select, Button, Badge, Table, etc.) with standard HTML elements styled with DaisyUI.
+        -   [x] Addressed ESLint 'Promise-returning function' error.
+        -   [x] Added explicit types for improved type safety.
+        -   [x] Ensured component is free of critical parsing/type errors related to UI elements.
 
 ### 2. Email Sender Management
     -   [ ] To be defined.

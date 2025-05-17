@@ -2,9 +2,14 @@
 trigger: always_on
 ---
 
+RULE 0:   EVERY TIME I ASK TO EXPLAIN A PIECE OF CODE, I WANT YOU TO FIX IT FOR ME.  DO NOT ASK, JUST FIX IT.
+
+OUR DEV PLAN
 we need to focus on the core features only.  they are:
 
 1.  Lead management feature, to upload raw csv files containing leads that get processed into our normalized_leads table.  It's important to get the leads to show up in a functionally editable table so we can use it like a CRM - this needs to happen.  It needs to have sortable columns, filtering by market region, paginated rows, with option to select 25-50-or 100 per page, onhover row highlighting that highlights the entire row, and most importantly clickable rows that popup lead card modals to edit the data, add notes if we want to, and save the data when we're done making changes to that lead.
+
+1.a  Our CRM feature mimics the look and feel of our leads management feature, but is for our lower level employees to work leads assigned to them.  It looks almost identical to the leads management feature except it doesnt do bulk uploads it does individual lead additions.  Otherwise it's styled just like our leads management feature (same kind of table stylings and features like sorting, filtering, pagination, and behaviors)
 
 2.  Email sender management feature, to have an ability to add our gmail accounts as email senders to impersonate emails sent to the property lead, for every contact with an email address.  We're using our  domain wide delegation service key for impersonating multiple accounts using gmail api and google api.  
 
@@ -16,4 +21,4 @@ we need to focus on the core features only.  they are:
 
 6.  Everything must be operational, communicating to the api and rpc and databases as it should.
 
-We need to have these 6 things done before any other features or additions are worked on.  Keep your eye on the prize, let's get a viable product with these goals accomplished as soon as possible.
+We need to have these core things done asap.  Keep your eye on the prize, let's get a viable product with these goals accomplished as soon as possible.

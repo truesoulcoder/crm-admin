@@ -1,93 +1,123 @@
 'use client';
 
-import React from 'react';
-import { Sun, Moon, Monitor, Palette } from 'lucide-react';
-import { useTheme, THEMES } from '@/hooks/useTheme';
+import { Sun, Moon, Monitor } from 'lucide-react';
+import { useState } from 'react';
 
-type ThemeGroup = {
-  label: string;
-  themes: string[];
-};
+import { useTheme } from '@/hooks/useTheme';
+import type { Theme, ThemeName } from '@/hooks/useTheme';
 
-const THEME_GROUPS: ThemeGroup[] = [
-  {
-    label: 'Light',
-    themes: ['light', 'cupcake', 'bumblebee', 'emerald', 'corporate', 'pastel', 'fantasy', 'wireframe', 'cmyk', 'autumn', 'acid', 'lemonade', 'winter']
-  },
-  {
-    label: 'Dark',
-    themes: ['dark', 'synthwave', 'halloween', 'forest', 'black', 'luxury', 'dracula', 'business', 'night', 'coffee']
-  },
-  {
-    label: 'Colorful',
-    themes: ['retro', 'cyberpunk', 'valentine', 'garden', 'aqua', 'lofi']
-  }
-];
+interface ThemeGroupProps {
+  title: string;
+  themes: readonly ThemeName[];
+  currentTheme: ThemeName;
+  onSelect: (theme: Theme) => void;
+}
+
+const ThemeGroup = ({ 
+  title, 
+  themes, 
+  currentTheme, 
+  onSelect 
+}: ThemeGroupProps) => (
+  <div className="mb-4">
+    <div className="text-xs font-semibold text-base-content/70 px-2 py-1">
+      {title}
+    </div>
+    <div className="grid grid-cols-2 gap-1">
+      {themes.map((themeName) => (
+        <button
+          key={themeName}
+          onClick={() => onSelect(themeName)}
+          className={`btn btn-sm btn-ghost justify-start text-sm capitalize ${
+            currentTheme === themeName ? 'btn-active' : ''
+          }`}
+          data-theme={themeName}
+        >
+          <div 
+            className="w-3 h-3 rounded-full mr-2"
+            style={{
+              background: themeName === 'light' || themeName === 'dark' 
+                ? `linear-gradient(135deg, hsl(var(--b1) / 0.8) 0%, hsl(var(--b2) / 0.8) 100%)`
+                : `linear-gradient(135deg, 
+                    hsl(var(--${themeName}-primary) / 0.8) 0%, 
+                    hsl(var(--${themeName}-secondary) / 0.8) 100%)`
+            }}
+          />
+          {themeName}
+          {currentTheme === themeName && (
+            <span className="ml-auto badge badge-primary badge-xs">✓</span>
+          )}
+        </button>
+      ))}
+    </div>
+  </div>
+);
 
 export default function ThemeSelector() {
-  const { theme, setTheme, resolvedTheme } = useTheme();
-  const [isOpen, setIsOpen] = React.useState(false);
+  const { 
+    theme, 
+    setTheme, 
+    resolvedTheme, 
+    themeGroups 
+  } = useTheme();
+  const [isOpen, setIsOpen] = useState(false);
 
-  const getThemeIcon = (themeName: string) => {
-    if (themeName === 'system') return <Monitor size={16} className="mr-1" />;
-    if (themeName === 'light') return <Sun size={16} className="mr-1" />;
-    if (themeName === 'dark') return <Moon size={16} className="mr-1" />;
-    return <Palette size={16} className="mr-1" />;
+  // Get the appropriate icon based on the current theme
+  const getThemeIcon = () => {
+    if (theme === 'system') return <Monitor size={16} />;
+    if (resolvedTheme === 'light') return <Sun size={16} />;
+    return <Moon size={16} />;
   };
-
-  const getThemePreview = (themeName: string) => (
-    <div 
-      className="w-4 h-4 rounded-full border border-base-content/20"
-      style={{
-        background: `linear-gradient(135deg, 
-          hsl(var(--${themeName}-primary) / 0.8) 0%, 
-          hsl(var(--${themeName}-primary) / 0.6) 50%, 
-          hsl(var(--${themeName}-secondary) / 0.8) 100%)`
-      }}
-    />
-  );
 
   return (
     <div className="dropdown dropdown-end">
-      <label tabIndex={0} className="btn btn-ghost btn-sm">
-        <Palette size={16} className="mr-1" />
-        <span className="hidden sm:inline">Theme</span>
+      <label tabIndex={0} className="btn btn-ghost btn-circle">
+        {getThemeIcon()}
       </label>
-      <div className="dropdown-content z-[1] p-2 shadow-2xl bg-base-300 rounded-box w-64 max-h-96 overflow-y-auto">
-        <div className="p-2">
-          <div className="font-bold text-sm mb-2 px-2">Select Theme</div>
-          
-          {/* System theme option */}
-          <div className="mb-4">
-            <button
-              className={`w-full text-left p-2 rounded-lg flex items-center ${theme === 'system' ? 'bg-primary/10 text-primary' : 'hover:bg-base-200'}`}
-              onClick={() => setTheme('system')}
-            >
-              <Monitor size={16} className="mr-2" />
-              <span>System</span>
-              {theme === 'system' && <span className="ml-auto badge badge-primary badge-xs">Active</span>}
-            </button>
-          </div>
-
-          {/* Theme groups */}
-          {THEME_GROUPS.map((group) => (
-            <div key={group.label} className="mb-4">
-              <div className="text-xs font-semibold text-base-content/50 px-2 mb-1">{group.label}</div>
-              <div className="grid grid-cols-2 gap-2">
-                {group.themes.map((t) => (
-                  <button
-                    key={t}
-                    className={`flex items-center p-2 rounded-lg text-sm ${theme === t ? 'bg-primary/10 text-primary' : 'hover:bg-base-200'}`}
-                    onClick={() => setTheme(t as any)}
-                  >
-                    {getThemePreview(t)}
-                    <span className="ml-2 capitalize">{t}</span>
-                    {theme === t && <span className="ml-auto badge badge-primary badge-xs">✓</span>}
-                  </button>
-                ))}
-              </div>
+      <div 
+        tabIndex={0}
+        className="dropdown-content z-[1] p-4 shadow-2xl bg-base-100 rounded-box w-80"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-lg">Theme</h3>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setTheme('light')}
+                className={`btn btn-sm btn-ghost ${theme === 'light' ? 'btn-active' : ''}`}
+              >
+                <Sun size={16} />
+              </button>
+              <button
+                onClick={() => setTheme('dark')}
+                className={`btn btn-sm btn-ghost ${theme === 'dark' ? 'btn-active' : ''}`}
+              >
+                <Moon size={16} />
+              </button>
+              <button
+                onClick={() => setTheme('system')}
+                className={`btn btn-sm btn-ghost ${theme === 'system' ? 'btn-active' : ''}`}
+              >
+                <Monitor size={16} />
+              </button>
             </div>
-          ))}
+          </div>
+          
+          <div className="divider my-1"></div>
+          
+          <ThemeGroup
+            title="Light Themes"
+            themes={themeGroups.light}
+            currentTheme={resolvedTheme}
+            onSelect={setTheme}
+          />
+          
+          <ThemeGroup
+            title="Dark Themes"
+            themes={themeGroups.dark}
+            currentTheme={resolvedTheme}
+            onSelect={setTheme}
+          />
         </div>
       </div>
     </div>

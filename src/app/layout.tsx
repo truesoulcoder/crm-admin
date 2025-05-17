@@ -2,8 +2,8 @@
 
 import { useEffect } from 'react';
 
-import { useTheme } from '@/hooks/useTheme';
 import MainAppShell from '@/components/layout/MainAppShell';
+import { useTheme } from '@/hooks/useTheme';
 
 import './globals.css';
 

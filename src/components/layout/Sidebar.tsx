@@ -1,16 +1,23 @@
 'use client';
 
-import React from 'react';
+import clsx from 'clsx';
+import { LayoutDashboard, Users, FileText, Send, UserCog, Settings, Briefcase, Contact } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, FileText, Send, UserCog, Settings, Briefcase } from 'lucide-react';
-import { CrmView } from '@/types';
-import clsx from 'clsx';
-import { LetterFx } from '../../once-ui/components';
+import React from 'react';
+
+import { LetterFx } from '@/once-ui/components';
+
+import type { CrmView } from '@/types/index';
+import type { FC, ReactElement } from 'react';
+
+type ViewPath = {
+  [K in CrmView]: string;
+};
 
 interface MenuItem {
   view: CrmView;
-  icon: React.ReactElement;
+  icon: ReactElement;
   label: string;
 }
 
@@ -20,20 +27,22 @@ const menuItems: MenuItem[] = [
   { view: 'campaigns', icon: <Send size={20} />, label: 'Campaigns' },
   { view: 'templates', icon: <FileText size={20} />, label: 'Templates' },
   { view: 'senders', icon: <UserCog size={20} />, label: 'Senders' },
+  { view: 'crm', icon: <Contact size={20} />, label: 'CRM' },
   { view: 'settings', icon: <Settings size={20} />, label: 'Settings' },
 ];
 
-const Sidebar: React.FC = () => {
+const Sidebar: FC = () => {
   const pathname = usePathname();
 
   // Map CrmView to route paths
-  const viewToPath: Record<CrmView, string> = {
+  const viewToPath: ViewPath = {
     dashboard: '/dashboard',
     leads: '/leads',
     campaigns: '/campaigns',
     templates: '/templates',
     senders: '/email-senders',
-    settings: '/settings',
+    crm: '/crm',
+    settings: '/settings'
   };
 
   return (

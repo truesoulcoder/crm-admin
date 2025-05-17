@@ -95,6 +95,7 @@ const initialNewLeadData: Partial<NormalizedLead> = {
 
 const LeadsView: React.FC = () => {
   const [leads, setLeads] = useState<NormalizedLead[]>([]);
+  const [contactType, setContactType] = useState<'owner1' | 'owner2' | 'owner3' | 'agent'>('owner1');
   const [marketRegions, setMarketRegions] = useState<string[]>([]);
   const [filterMarketRegion, setFilterMarketRegion] = useState<string>('All');
   const [tableSearchTerm, setTableSearchTerm] = useState('');
@@ -394,7 +395,7 @@ const LeadsView: React.FC = () => {
     setCurrentPage(1); // Reset to first page on sort change
   };
 
-  const handleOpenModal = (lead: NormalizedLead) => {
+  const handleOpenModal = (lead: NormalizedLead, contactTypeOverride?: 'owner1' | 'owner2' | 'owner3' | 'agent') => {
     // Create a copy of the lead with the primary contact info
     const leadWithPrimaryContact = {
       ...lead,
@@ -407,6 +408,7 @@ const LeadsView: React.FC = () => {
     
     setSelectedLead(lead);
     setEditFormData(leadWithPrimaryContact);
+    setContactType(contactTypeOverride || lead._primaryContact?.contactType || 'owner1');
     setIsModalOpen(true);
   };
 
@@ -463,21 +465,43 @@ const LeadsView: React.FC = () => {
   const handleSaveLead = async () => {
     if (!selectedLead?.id) return;
 
+    // Map modal fields to correct contact fields
+    const contactNum = contactType === 'owner1' ? '1' : contactType === 'owner2' ? '2' : contactType === 'owner3' ? '3' : '1';
+    const contactFields = {
+      [`contact${contactNum}_name`]: editFormData[`contact${contactNum}_name`],
+      [`contact${contactNum}_email_1`]: editFormData[`contact${contactNum}_email_1`],
+    };
+
     // Basic validation example (expand as needed)
-    if (!editFormData.contact1_name /* Add more required field checks based on your modal inputs */) {
+    if (!contactFields[`contact${contactNum}_name`] /* Add more required field checks based on your modal inputs */) {
       alert('Required field(s) missing.'); // Make this more specific
       return;
     }
 
-    // Remove id and created_at from data to be sent to Supabase for update, as these are typically not updatable directly or managed by DB.
-    // updated_at will be handled by the trigger.
-    const { id, created_at, updated_at, ...updateData } = editFormData;
+    // Remove id, created_at, updated_at, and _primaryContact from data to be sent to Supabase for update
+    // Only update the relevant contact fields for the selected contact
+    const { id, created_at, updated_at, _primaryContact, ...rest } = editFormData;
+    const updateData: Partial<NormalizedLead> = {};
+    // Only update the name/email for the selected contact
+    if (contactType === 'owner1') {
+      updateData.contact1_name = rest.contact1_name;
+      updateData.contact1_email_1 = rest.contact1_email_1;
+    } else if (contactType === 'owner2') {
+      updateData.contact2_name = rest.contact2_name;
+      updateData.contact2_email_1 = rest.contact2_email_1;
+    } else if (contactType === 'owner3') {
+      updateData.contact3_name = rest.contact3_name;
+      updateData.contact3_email_1 = rest.contact3_email_1;
+    } else if (contactType === 'agent') {
+      updateData.mls_curr_list_agent_name = rest.mls_curr_list_agent_name;
+      updateData.mls_curr_list_agent_email = rest.mls_curr_list_agent_email;
+    }
 
     setIsLoading(true); // Consider a more specific loading state like isSaving
     try {
       const { error: updateError } = await supabase
         .from('normalized_leads')
-        .update(updateData) // Use updateData which excludes id, created_at, updated_at
+        .update(updateData)
         .eq('id', selectedLead.id);
       if (updateError) throw updateError;
 
@@ -485,11 +509,12 @@ const LeadsView: React.FC = () => {
       handleCloseModal();
     } catch (err: any) {
       console.error('Error saving lead:', err);
-      alert(`Failed to save lead: ${err.message}`);
+      alert(`Failed to save lead: ${err?.message || JSON.stringify(err) || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
   };
+
 
   const handleDeleteLead = async () => {
     if (!selectedLead || !confirm('Are you sure you want to delete this lead? This action cannot be undone.')) {
@@ -739,7 +764,7 @@ const LeadsView: React.FC = () => {
                     <tr 
                       key={lead.id} 
                       className="hover:bg-base-200 cursor-pointer transition-colors"
-                      onClick={() => handleOpenModal(lead)}
+                      onClick={() => handleOpenModal(lead, contact.contactType)}
                     >
                       <td className="py-4">
                         <div className="flex items-center space-x-3">
@@ -837,11 +862,11 @@ const LeadsView: React.FC = () => {
               {/* For simplicity, listing a few common ones explicitly. Expand as needed. */}
               <div>
                 <label htmlFor="modal-contact1_name" className="label"><span className="label-text">Contact Name</span></label>
-                <input type="text" id="modal-contact1_name" name="contact1_name" value={editFormData.contact1_name || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                <input type="text" id="modal-contact_name" name={`contact${contactType === 'owner1' ? '1' : contactType === 'owner2' ? '2' : contactType === 'owner3' ? '3' : '1'}_name`} value={editFormData[`contact${contactType === 'owner1' ? '1' : contactType === 'owner2' ? '2' : contactType === 'owner3' ? '3' : '1'}_name`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div>
                 <label htmlFor="modal-contact1_email_1" className="label"><span className="label-text">Contact Email</span></label>
-                <input type="email" id="modal-contact1_email_1" name="contact1_email_1" value={editFormData.contact1_email_1 || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                <input type="email" id="modal-contact_email_1" name={`contact${contactType === 'owner1' ? '1' : contactType === 'owner2' ? '2' : contactType === 'owner3' ? '3' : '1'}_email_1`} value={editFormData[`contact${contactType === 'owner1' ? '1' : contactType === 'owner2' ? '2' : contactType === 'owner3' ? '3' : '1'}_email_1`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div>
                 <label htmlFor="modal-market_region" className="label"><span className="label-text">Market Region</span></label>

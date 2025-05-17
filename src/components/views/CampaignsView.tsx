@@ -4,12 +4,13 @@ import { createBrowserClient } from '@supabase/ssr';
 import { Mail, BarChart2, Edit3, Trash2, PlayCircle, PauseCircle, AlertTriangle, X, Check, List } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useCallback } from 'react';
+import CampaignMonitorView from './CampaignMonitorView';
 
 import { LetterFx, Avatar, AvatarGroup, AvatarProps } from '@/once-ui/components';
 // eslint-disable-next-line import/no-unresolved
 import { Campaign } from '@/types/index';
 
-const CampaignMonitorView = dynamic(() => import('./CampaignMonitorView'), { ssr: false });
+// const CampaignMonitorView = dynamic(() => import('./CampaignMonitorView'), { ssr: false });
 
 // Helper function to generate initials
 const getInitials = (name?: string): string => {

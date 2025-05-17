@@ -1,5 +1,7 @@
+'use client';
+
 import { ReactNode } from 'react';
-import Sidebar from '@/components/ui/Sidebar';
+
 
 export default function DashboardLayout({
   children,
@@ -7,11 +9,8 @@ export default function DashboardLayout({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-      <main className="flex-1 p-6">
-        {children}
-      </main>
-    </div>
+    <main className="flex-1 p-6">
+      {children}
+    </main>
   );
 }

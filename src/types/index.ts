@@ -7,6 +7,7 @@ export type CrmView =
   | 'campaigns'
   | 'templates'
   | 'senders'
+  | 'crm'
   | 'settings';
 
 // Example Lead type (align with your Supabase schema)

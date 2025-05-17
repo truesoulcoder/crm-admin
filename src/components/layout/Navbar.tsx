@@ -1,12 +1,11 @@
 'use client';
 
-'use client';
-
-import { Menu, Bell, UserCircle, Search } from 'lucide-react';
+import { Menu, UserCircle, Search } from 'lucide-react';
 import Image from 'next/image';
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import ThemeSelector from '@/components/ThemeSelector';
+import { createClient } from '@/lib/supabase/client';
 
 interface NavbarProps {
   onMenuClick: () => void; // For mobile sidebar toggle
@@ -18,38 +17,45 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    interface GmailProfileResponse {
-      picture?: string;
-      name?: string;
-      email?: string;
-      [key: string]: unknown;
-    }
-
-    const fetchProfile = async (): Promise<GmailProfileResponse> => {
-      const res = await fetch('/api/gmail/profile');
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-      const data = await res.json() as GmailProfileResponse;
-      return data;
-    };
-
     const loadProfile = async () => {
       try {
         setIsLoading(true);
-        const data = await fetchProfile();
-        setAvatarUrl(data.picture || null);
-        setFullName(data.name || null);
+        const supabase = createClient();
+        
+        // Get the current user session
+        const { data: { user }, error } = await supabase.auth.getUser();
+        
+        if (error) throw error;
+        if (!user) throw new Error('No user logged in');
+        
+        // Set user data from the auth session with proper type safety
+        setAvatarUrl(user.user_metadata?.avatar_url || null);
+        setFullName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User');
       } catch (error: unknown) {
-        // In a production app, log to an error reporting service
-        // eslint-disable-next-line no-console
-        console.error('Gmail profile error:', error instanceof Error ? error.message : 'Unknown error');
+        console.error('Error loading user profile:', error instanceof Error ? error.message : 'Unknown error');
       } finally {
         setIsLoading(false);
       }
     };
 
     void loadProfile();
+    
+    // Set up auth state change listener
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const user = session.user;
+        setAvatarUrl(user.user_metadata?.avatar_url || null);
+        setFullName(user.user_metadata?.full_name || user.email?.split('@')[0] || 'User');
+      } else if (event === 'SIGNED_OUT') {
+        setAvatarUrl(null);
+        setFullName(null);
+      }
+    });
+    
+    return () => {
+      subscription?.unsubscribe();
+    };
   }, []);
 
   return (
@@ -69,24 +75,6 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
       </div>
       <div className="navbar-end gap-1">
         <ThemeSelector />
-        {/* Notification bell */}
-        <div className="dropdown dropdown-end ml-2">
-          <button tabIndex={0} className="btn btn-ghost btn-circle">
-            <div className="indicator">
-              <Bell size={20} />
-              <span className="badge badge-xs badge-primary indicator-item">3</span>
-            </div>
-          </button>
-          <div tabIndex={0} className="mt-3 z-[1] card card-compact dropdown-content w-52 bg-base-100 shadow">
-            <div className="card-body">
-              <span className="font-bold text-lg">3 Notifications</span>
-              <div className="text-info">You have new leads!</div>
-              <div className="card-actions">
-                <button className="btn btn-primary btn-block btn-sm">View all</button>
-              </div>
-            </div>
-          </div>
-        </div>
         {/* Avatar dropdown */}
         <div className="dropdown dropdown-end ml-2">
           <button tabIndex={0} className="btn btn-ghost btn-circle avatar">

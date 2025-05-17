@@ -1,8 +1,9 @@
 "use client";
-import { useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { parseOAuthHash, setLoginState } from "../lib/auth";
+import { useEffect } from "react";
+
+import { parseOAuthHash, setLoginState } from "@/lib/auth";
 
 export default function Home() {
   const router = useRouter();
@@ -27,7 +28,7 @@ export default function Home() {
       }
     };
 
-    processAuth();
+    void processAuth();
   }, [router]);
 
   const handleGoogleLogin = () => {
