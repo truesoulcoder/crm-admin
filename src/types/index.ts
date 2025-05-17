@@ -56,12 +56,17 @@ export interface EmailTemplate {
 // Sender type (unified)
 export interface Sender {
   id: string;
+  user_id: string;
   name: string;
   email: string;
-  avatarUrl?: string;
   is_active: boolean;
-  last_authorized_at?: string;
+  is_default: boolean;
+  credentials_json?: any;
+  created_at: string;
+  updated_at: string;
+  photo_url?: string;
   status_message?: string;
+  last_authorized_at?: string;
 }
 
 // Example CampaignStep type

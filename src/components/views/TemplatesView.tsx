@@ -156,51 +156,97 @@ const MenuBar: React.FC<{ editor: Editor | null }> = ({ editor }) => {
 
 const TemplatesView: React.FC = () => {
   const [toast, setToast] = useState<{message: string, type?: 'success' | 'error' | 'info'}|null>(null);
-
+  const [isClient, setIsClient] = useState(false);
+  
+  // State for search and filter
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<string>('All'); 
-  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
-
+  const [filterType, setFilterType] = useState<string>('All');
+  
+  // State for templates data
   const [documentTemplates, setDocumentTemplates] = useState<DocumentTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
+  
+  // State for template form
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
-  const [newTemplateType, setNewTemplateType] = useState<string>('email'); 
+  const [newTemplateType, setNewTemplateType] = useState<string>('email');
   const [newTemplateSubject, setNewTemplateSubject] = useState('');
-  const [newTemplateBody, setNewTemplateBody] = useState(''); 
+  const [newTemplateBody, setNewTemplateBody] = useState('');
   const [rawPlaceholdersInput, setRawPlaceholdersInput] = useState('');
   const [clickablePlaceholders, setClickablePlaceholders] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<DocumentTemplate | null>(null);
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        bulletList: {
-          keepMarks: true,
-          keepAttributes: false, 
-        },
-        orderedList: {
-          keepMarks: true,
-          keepAttributes: false,
-        },
-      }),
-      Placeholder.configure({ placeholder: 'Enter HTML content here... use {{placeholder_name}} for variables.' }),
-      Link,
-    ],
-    content: newTemplateBody,
-    onUpdate: ({ editor }) => {
-      setNewTemplateBody(editor.getHTML());
-    },
-    immediatelyRender: false,
-    editorProps: {
-      attributes: {
-        class: 'prose dark:prose-invert prose-sm sm:prose-base lg:prose-lg xl:prose-2xl p-3 min-h-[10rem] border border-base-300 rounded-md focus:outline-none focus:border-primary w-full',
+  // Set client-side flag on mount
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  // Initialize editor only on client side
+  const editor = useEditor(
+    {
+      extensions: [
+        StarterKit.configure({
+          bulletList: {
+            keepMarks: true,
+            keepAttributes: false,
+          },
+          orderedList: {
+            keepMarks: true,
+            keepAttributes: false,
+          },
+        }),
+        Placeholder.configure({
+          placeholder: 'Enter HTML content here... use {{placeholder_name}} for variables.'
+        }),
+        Link,
+      ],
+      content: newTemplateBody,
+      onUpdate: ({ editor }) => {
+        const html = editor.getHTML();
+        console.log('Editor content updated:', html);
+        setNewTemplateBody(html);
       },
+      editorProps: {
+        attributes: {
+          class: 'prose dark:prose-invert prose-sm sm:prose-base lg:prose-lg xl:prose-2xl p-3 min-h-[10rem] border border-base-300 rounded-md focus:outline-none focus:border-primary w-full',
+        },
+      },
+      autofocus: false,
+      editable: isClient,
+      injectCSS: isClient,
     },
-  });
+    [isClient]
+  );
+
+  // Update editor content when newTemplateBody changes
+  useEffect(() => {
+    if (editor) {
+      console.log('Editor useEffect - Current HTML:', editor.getHTML());
+      console.log('New Template Body:', newTemplateBody);
+      if (editor.getHTML() !== newTemplateBody) {
+        console.log('Updating editor content');
+        editor.commands.setContent(newTemplateBody || '');
+      }
+    }
+  }, [editor, newTemplateBody]);
+  
+  // Log when template body changes
+  useEffect(() => {
+    console.log('Template body changed:', {
+      hasContent: !!newTemplateBody,
+      length: newTemplateBody.length,
+      trimmedLength: newTemplateBody.trim().length
+    });
+  }, [newTemplateBody]);
+
+  useEffect(() => {
+    console.log('Template Name:', newTemplateName);
+    console.log('Template Body:', newTemplateBody);
+    console.log('Is Button Disabled:', !newTemplateName || !newTemplateBody);
+  }, [newTemplateName, newTemplateBody]);
 
   useEffect(() => {
     if (editor && editor.getHTML() !== newTemplateBody) {
@@ -245,32 +291,21 @@ const TemplatesView: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/document-templates');
+      const response = await fetch('/api/email-templates');
       if (!response.ok) {
-        throw new Error(`Failed to fetch templates: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to fetch templates');
       }
-      const responseJson = await response.json();
-      if (responseJson && Array.isArray(responseJson.data)) {
-        setDocumentTemplates(responseJson.data as DocumentTemplate[]);
-      } else {
-        console.error("API /api/document-templates response did not contain a 'data' array. Received:", responseJson);
-        setDocumentTemplates([]); // Default to an empty array to prevent runtime error
-        setError("Received invalid data format for templates from API.");
-        setToast({ message: "Error: Could not load templates due to API data format issue.", type: 'error' });
-      }
-    } catch (e: unknown) {
-      if (e instanceof Error) {
-        setError(e.message);
-        setToast({ message: e.message, type: 'error' });
-      } else {
-        const unknownErrorMessage = 'An unknown error occurred while fetching templates.';
-        setError(unknownErrorMessage);
-        setToast({ message: unknownErrorMessage, type: 'error' });
-      }
+      const data = await response.json();
+      setDocumentTemplates(data);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred while fetching templates';
+      setError(errorMessage);
+      console.error('Error fetching templates:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [setToast, setError, setIsLoading, setDocumentTemplates]); // Added dependencies
+  }, []);
 
   useEffect(() => {
     void fetchTemplates();
@@ -317,64 +352,74 @@ const TemplatesView: React.FC = () => {
   }, []);
 
   const handleSubmitTemplate = useCallback(async () => {
-    if (!editor) return;
+    console.log('handleSubmitTemplate called with:', {
+      name: newTemplateName,
+      bodyLength: newTemplateBody.length,
+      type: newTemplateType,
+      subject: newTemplateSubject
+    });
+    
+    if (!editor) {
+      console.error('Editor not initialized');
+      return;
+    }
+    
     setModalError(null);
-
-    if (!newTemplateName.trim()) {
+    
+    // Validate form
+    const templateName = newTemplateName.trim();
+    const templateBody = newTemplateBody.trim();
+    const templateSubject = newTemplateSubject.trim();
+    
+    if (!templateName) {
       setModalError('Template name is required.');
       return;
     }
-    if (!newTemplateBody.trim()) {
-      setModalError('Template body cannot be empty.');
+    
+    if (!templateBody) {
+      setModalError('Template content cannot be empty.');
       return;
     }
-
-    const placeholdersToSave = rawPlaceholdersInput.split(',').map(p => p.trim()).filter(p => p.startsWith('{{') && p.endsWith('}}'));
-    if (rawPlaceholdersInput.trim() && placeholdersToSave.length === 0 && !DEFAULT_PLACEHOLDERS.some(dp => rawPlaceholdersInput.includes(dp))) {
-        if (!rawPlaceholdersInput.split(',').every(p => p.trim().startsWith('{{') && p.trim().endsWith('}}'))) {
-            setModalError('Custom placeholders must be in {{placeholder_name}} format.');
-            return;
-        }
+    
+    if (!templateSubject) {
+      setModalError('Email subject is required.');
+      return;
     }
 
     setIsSubmitting(true);
     const method = editingTemplate ? 'PUT' : 'POST';
-    const url = editingTemplate ? `/api/document-templates?id=${editingTemplate.id}` : '/api/document-templates';
+    const url = '/api/email-templates' + (editingTemplate ? `?id=${editingTemplate.id}` : '');
 
     try {
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: newTemplateName,
-          template_type: newTemplateType,
-          subject: newTemplateType === 'email' ? newTemplateSubject : null,
-          body: newTemplateBody,
-          available_placeholders: placeholdersToSave.length > 0 ? placeholdersToSave : DEFAULT_PLACEHOLDERS,
-          is_active: true, 
+          name: templateName,
+          subject: templateSubject,
+          body_html: templateBody,
+          // Generate plain text version by stripping HTML tags
+          body_text: templateBody.replace(/<[^>]*>?/gm, '') 
         }),
       });
 
+      const responseData = await response.json();
+      
       if (!response.ok) {
-        let errorMsg = 'Failed to save template';
-        try {
-          const errorData: ApiErrorResponse = await response.json();
-          errorMsg = errorData.error || errorMsg;
-        } catch {
-          errorMsg = `Failed to save template: ${response.statusText}`;
-        }
-        throw new Error(errorMsg);
+        throw new Error(responseData.error || 'Failed to save template');
       }
 
-      setToast({ message: `Template ${editingTemplate ? 'updated' : 'created'} successfully!`, type: 'success' });
+      setToast({ 
+        message: `Template ${editingTemplate ? 'updated' : 'created'} successfully!`, 
+        type: 'success' 
+      });
+      
       closeModal();
       await fetchTemplates(); 
     } catch (e: unknown) {
-      if (e instanceof Error) {
-        setModalError(e.message);
-      } else {
-        setModalError('An unknown error occurred while saving the template.');
-      }
+      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred while saving the template.';
+      setModalError(errorMessage);
+      console.error('Error saving template:', e);
     } finally {
       setIsSubmitting(false);
     }
@@ -384,30 +429,30 @@ const TemplatesView: React.FC = () => {
     if (!window.confirm('Are you sure you want to delete this template?')) {
       return;
     }
-    setIsSubmitting(true);
+
     try {
-      const response = await fetch(`/api/document-templates?id=${id}`, {
+      const response = await fetch(`/api/email-templates?id=${id}`, {
         method: 'DELETE',
       });
+
       if (!response.ok) {
-        let errorMsg = 'Failed to delete template';
-        try {
-          const errorData: ApiErrorResponse = await response.json();
-          errorMsg = errorData.error || errorMsg;
-        } catch {
-          // response was not JSON, use default message or statusText
-          errorMsg = `Failed to delete template: ${response.statusText}`;
-        }
-        throw new Error(errorMsg);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to delete template');
       }
+
       setToast({ message: 'Template deleted successfully!', type: 'success' });
-      await fetchTemplates(); // Re-fetch templates after deletion
-    } catch (e: unknown) {
-      if (e instanceof Error) {
-        setToast({ message: e.message, type: 'error' });
-      } else {
-        setToast({ message: 'An unknown error occurred while deleting the template.', type: 'error' });
+      await fetchTemplates();
+    } catch (err: unknown) {
+      let errorMessage = 'An error occurred while deleting the template.';
+      if (err instanceof Error) {
+        errorMessage = err.message;
       }
+      setError(errorMessage);
+      setToast({ message: errorMessage, type: 'error' });
+      console.error('Error deleting template:', err);
+      // It might be better to not re-fetch if the deletion failed, 
+      // or to ensure the UI reflects the failed state, but for now, keeping existing logic.
+      await fetchTemplates(); 
     } finally {
       setIsSubmitting(false);
     }
@@ -592,8 +637,48 @@ const TemplatesView: React.FC = () => {
               <EditorContent editor={editor} />
             </div>
             <div className="modal-action mt-6">
+              {/* Debug info - will appear in browser dev tools */}
+              <div className="hidden" data-debug-info={JSON.stringify({
+                isSubmitting,
+                newTemplateName: `'${newTemplateName}'`,
+                newTemplateNameTrimmed: `'${newTemplateName.trim()}'`,
+                newTemplateBody: `'${newTemplateBody.substring(0, 20)}...'`,
+                newTemplateBodyTrimmed: `'${newTemplateBody.trim().substring(0, 20)}...'`,
+                newTemplateType: newTemplateType,
+                newTemplateSubject: `'${newTemplateSubject}'`,
+                disabledBecause: {
+                  isSubmitting,
+                  noName: !newTemplateName.trim(),
+                  noBody: !newTemplateBody.trim(),
+                  isEmail: newTemplateType === 'email',
+                  noSubject: newTemplateType === 'email' && !newTemplateSubject.trim()
+                }
+              })} />
+              
               <button className="btn btn-ghost" onClick={closeModal} disabled={isSubmitting}>Cancel</button>
-              <button className="btn btn-primary" onClick={() => void handleSubmitTemplate()} disabled={isSubmitting || !newTemplateName || !newTemplateBody}>
+              <button 
+                type="button"
+                className="btn btn-primary" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  console.log('Create Template button clicked');
+                  console.log('Current state:', {
+                    isSubmitting,
+                    newTemplateName,
+                    newTemplateBody: newTemplateBody.substring(0, 50) + '...',
+                    newTemplateType,
+                    newTemplateSubject,
+                    disabled: isSubmitting || !newTemplateName.trim() || !newTemplateBody.trim() || (newTemplateType === 'email' && !newTemplateSubject.trim())
+                  });
+                  if (!isSubmitting && 
+                      newTemplateName.trim() && 
+                      newTemplateBody.trim() && 
+                      (newTemplateType !== 'email' || newTemplateSubject.trim())) {
+                    void handleSubmitTemplate();
+                  }
+                }}
+                disabled={isSubmitting || !newTemplateName.trim() || !newTemplateBody.trim() || (newTemplateType === 'email' && !newTemplateSubject.trim())}
+              >
                 {isSubmitting && <Loader2 className="animate-spin mr-2" size={18} />} 
                 {isSubmitting ? (editingTemplate ? 'Saving...' : 'Creating...') : (editingTemplate ? 'Save Changes' : 'Create Template')}
               </button>

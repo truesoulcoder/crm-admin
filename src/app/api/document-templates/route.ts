@@ -1,77 +1,91 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, type CookieOptions } from '@supabase/ssr'; // Updated import
-import { cookies, type ReadonlyRequestCookies } from 'next/headers'; // For createServerClient
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { z } from 'zod';
-import type { Database } from '../../types/supabase'; // TODO: Define Database type in src/types.ts or replace with correct path
-// If Database is not defined, temporarily use 'any' and update later.
+import type { Database } from '@/types/supabase';
 
-// Refined Zod schema for document templates, aligning with assumed DB columns
+type DocumentTemplate = Database['public']['Tables']['document_templates']['Row'];
+type InsertDocumentTemplate = Database['public']['Tables']['document_templates']['Insert'];
+type UpdateDocumentTemplate = Database['public']['Tables']['document_templates']['Update'];
+
+// Zod schema for document templates
 const documentTemplateSchema = z.object({
-  name: z.string().min(1, 'Template name cannot be empty.'),
-  template_type: z.string().min(1, 'Template type cannot be empty.'), // e.g., 'email', 'loi_document'
-  body: z.string().min(1, 'Template body (content) cannot be empty.'),
-  subject: z.string().optional().nullable(),
-  available_placeholders: z.array(z.string()).optional().nullable(),
-  is_active: z.boolean().optional().default(true),
-  // created_by will be added from session for create, id/created_at/updated_at are DB managed
+  name: z.string().min(1, 'Template name is required'),
+  type: z.enum(['email', 'pdf'], { 
+    required_error: 'Template type is required',
+    invalid_type_error: 'Template type must be either "email" or "pdf"' 
+  }),
+  subject: z.string().nullish(),
+  content: z.string().min(1, 'Template content is required'),
+  is_active: z.boolean().optional().default(true)
 });
 
-// Schema for creation (can omit fields like is_active if always defaulted)
-const createDocumentTemplateSchema = documentTemplateSchema.omit({ is_active: true });
-
-export interface DocumentTemplate {
-  id: string; // UUID
-  created_by: string | null; // UUID - Changed from user_id
-  name: string;
-  template_type: string;
-  body: string;
-  subject?: string | null;
-  available_placeholders?: string[] | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
 // Helper to get Supabase client for Route Handlers
-function getSupabaseSessionCookie(cookieStore: ReadonlyRequestCookies, projectRef: string) {
-  // Try to reassemble chunked cookies if present
+async function getSupabaseSessionCookie(projectRef: string) {
+  const cookieStore = await cookies();
+  // Try to get the auth token
   let session = cookieStore.get(`sb-${projectRef}-auth-token`);
   if (!session) {
-    // Try chunked
+    // Try to reassemble chunked cookies if present
     let i = 0;
     let chunk = '';
-    while (cookieStore.get(`sb-${projectRef}-auth-token.${i}`)) {
-      chunk += cookieStore.get(`sb-${projectRef}-auth-token.${i}`).value;
+    let chunkCookie;
+    
+    while ((chunkCookie = cookieStore.get(`sb-${projectRef}-auth-token.${i}`)) !== undefined) {
+      chunk += chunkCookie.value;
       i++;
     }
+    
     if (chunk) {
-      session = { value: chunk };
+      session = {
+        name: `sb-${projectRef}-auth-token`,
+        value: chunk
+      };
     }
   }
   return session;
 }
 
-async function getSupabaseRouteHandlerClient() {
-  const cookieStore = await cookies();
-  const projectRef = process.env.NEXT_PUBLIC_SUPABASE_URL!.split('https://')[1].split('.')[0];
-  // DEBUG: Output cookies to help diagnose auth/session issues
-  console.log('Cookies in API route:', cookieStore.getAll());
-  // Fix for chunked cookies
-  const sessionCookie = getSupabaseSessionCookie(cookieStore, projectRef);
+function getSupabaseRouteHandlerClient() {
+  const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const projectAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const projectRef = projectUrl.split('https://')[1].split('.')[0];
 
   return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    projectUrl,
+    projectAnonKey,
     {
       cookies: {
-        get(name: string) {
-          if (name === `sb-${projectRef}-auth-token` && sessionCookie) {
-            return sessionCookie.value;
+        async get(name: string): Promise<string | undefined> {
+          const cookieStore = await cookies(); // Fresh store on each get
+          if (name === `sb-${projectRef}-auth-token`) {
+            // Use our custom logic for the main auth token, which might be chunked
+            const specialSessionCookie = await getSupabaseSessionCookie(projectRef);
+            return specialSessionCookie?.value;
           }
+          // For any other cookie, defer to the standard store behavior
           return cookieStore.get(name)?.value;
         },
-        set(name: string, value: string, options: CookieOptions) { cookieStore.set({ name, value, ...options }); },
-        remove(name: string, options: CookieOptions) { cookieStore.set({ name, value: '', ...options }); },
+        async set(name: string, value: string, options: CookieOptions): Promise<void> {
+          try {
+            const cookieStore = await cookies();
+            cookieStore.set({ name, value, ...options });
+          } catch (error) {
+            // The `set` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing user sessions.
+            console.warn(`[Supabase Client] Failed to set cookie '${name}' from Route Handler. Error: ${error}`);
+          }
+        },
+        async remove(name: string, options: CookieOptions): Promise<void> {
+          try {
+            const cookieStore = await cookies();
+            cookieStore.delete({ name, ...options });
+          } catch (error) {
+            // The `delete` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing user sessions.
+            console.warn(`[Supabase Client] Failed to remove cookie '${name}' from Route Handler. Error: ${error}`);
+          }
+        },
       },
     }
   );
@@ -89,7 +103,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '10', 10);
-    const filterIsActive = searchParams.get('is_active'); // Optional filter
+    const filterIsActive = searchParams.get('is_active');
+    const type = searchParams.get('type'); // Optional type filter
 
     if (isNaN(page) || page < 1) {
       return NextResponse.json({ error: 'Invalid page number.' }, { status: 400 });
@@ -104,79 +119,302 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from('document_templates')
       .select('*', { count: 'exact' })
-      .eq('created_by', user.id);
+      .eq('created_by', user.id)
+      .is('deleted_at', null); // Only include non-deleted templates
 
     if (filterIsActive === 'true' || filterIsActive === 'false') {
       query = query.eq('is_active', filterIsActive === 'true');
-    } else {
-      // Default to fetching active templates if no specific filter is provided
-      query = query.eq('is_active', true);
     }
     
-    query = query.order('name', { ascending: true }).range(from, to);
+    if (type === 'email' || type === 'pdf') {
+      query = query.eq('type', type);
+    }
+    
+    query = query.order('created_at', { ascending: false }).range(from, to);
 
-    const { data, error, count } = await query;
+    const { data, error: queryError, count } = await query;
 
-    if (error) {
-      console.error('Error fetching document templates:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (queryError) {
+      console.error('Error fetching document templates:', queryError);
+      return NextResponse.json({ error: queryError.message }, { status: 500 });
     }
 
     return NextResponse.json({
-      data,
-      totalCount: count,
+      data: data || [],
+      totalCount: count || 0,
       page,
       pageSize,
       totalPages: count ? Math.ceil(count / pageSize) : 0,
     });
   } catch (err: any) {
     console.error('Unexpected error in GET /api/document-templates:', err);
-    return NextResponse.json({ error: err.message || 'An unexpected error occurred.' }, { status: 500 });
+    return NextResponse.json(
+      { error: err.message || 'An unexpected error occurred while fetching document templates.' }, 
+      { status: 500 }
+    );
   }
 }
 
 // POST handler to create a new document template
 export async function POST(request: NextRequest) {
   const supabase = await getSupabaseRouteHandlerClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
+  
   try {
-    const body = await request.json();
-    // Use createDocumentTemplateSchema which expects DB-aligned field names
-    // If API receives 'content' and 'type', they need to be mapped before validation or Zod schema adjusted
-    // Assuming API client sends 'name', 'template_type', 'body', 'subject', etc.
-    const validation = createDocumentTemplateSchema.safeParse(body);
-
-    if (!validation.success) {
-      return NextResponse.json({ error: 'Invalid input', details: validation.error.flatten() }, { status: 400 });
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Parse and validate request body
+    const body = await request.json();
+    const validation = documentTemplateSchema.safeParse(body);
+
+    if (!validation.success) {
+      return NextResponse.json(
+        { 
+          error: 'Invalid input', 
+          details: validation.error.flatten() 
+        }, 
+        { status: 400 }
+      );
+    }
+
+    // Check if template with same name already exists for this user
+    const { data: existingTemplate, error: checkError } = await supabase
+      .from('document_templates')
+      .select('id')
+      .eq('created_by', user.id)
+      .eq('name', validation.data.name)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking for existing template:', checkError);
+      return NextResponse.json(
+        { error: 'Error checking for existing template' },
+        { status: 500 }
+      );
+    }
+
+    if (existingTemplate) {
+      return NextResponse.json(
+        { error: 'A template with this name already exists' },
+        { status: 409 }
+      );
+    }
+
+    // Prepare template data for insertion
     const templateData = {
-      ...validation.data,
-      created_by: user.id, // Changed from user_id
-      is_active: true, // Explicitly set, though create schema defaults it if not omitted
+      name: validation.data.name,
+      type: validation.data.type,
+      subject: validation.data.subject || null,
+      content: validation.data.content,
+      created_by: user.id,
+      is_active: validation.data.is_active ?? true,
+      deleted_at: null
     };
 
-    const { data, error } = await supabase
+    // Insert the new template
+    const { data: newTemplate, error: insertError } = await supabase
       .from('document_templates')
       .insert(templateData)
       .select()
       .single();
 
-    if (error) {
-      console.error('Supabase error creating template:', error);
-      if (error.code === '23505') { // Postgres unique violation error code
-        return NextResponse.json({ error: 'A template with this name already exists for your account.' }, { status: 409 });
-      }
-      return NextResponse.json({ error: error.message || 'Failed to create template' }, { status: 500 });
+    if (insertError) {
+      console.error('Error creating document template:', insertError);
+      return NextResponse.json(
+        { error: 'Failed to create document template' },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json(data, { status: 201 });
+    return NextResponse.json(newTemplate, { status: 201 });
   } catch (e: any) {
-    console.error('Error in POST /api/document-templates:', e);
-    return NextResponse.json({ error: e.message || 'An unexpected error occurred' }, { status: 500 });
+    console.error('Unexpected error in POST /api/document-templates:', e);
+    return NextResponse.json(
+      { error: 'An unexpected error occurred while creating the document template' },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT handler to update an existing document template
+export async function PUT(request: NextRequest) {
+  const supabase = await getSupabaseRouteHandlerClient();
+  
+  try {
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get template ID from URL
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Template ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Parse and validate request body
+    const body = await request.json();
+    const validation = documentTemplateSchema.safeParse(body);
+
+    if (!validation.success) {
+      return NextResponse.json(
+        { 
+          error: 'Invalid input', 
+          details: validation.error.flatten() 
+        }, 
+        { status: 400 }
+      );
+    }
+
+    // Verify the template exists and belongs to the user
+    const { data: existingTemplate, error: fetchError } = await supabase
+      .from('document_templates')
+      .select('id, name')
+      .eq('id', id)
+      .eq('created_by', user.id)
+      .is('deleted_at', null)
+      .single();
+
+    if (fetchError) {
+      return NextResponse.json(
+        { error: 'Template not found or access denied' },
+        { status: 404 }
+      );
+    }
+
+    // Check if another template with the same name exists (excluding current template)
+    if (validation.data.name !== existingTemplate.name) {
+      const { data: nameConflict, error: checkError } = await supabase
+        .from('document_templates')
+        .select('id')
+        .eq('created_by', user.id)
+        .eq('name', validation.data.name)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('Error checking for name conflict:', checkError);
+        return NextResponse.json(
+          { error: 'Error checking for existing template name' },
+          { status: 500 }
+        );
+      }
+
+      if (nameConflict) {
+        return NextResponse.json(
+          { error: 'A template with this name already exists' },
+          { status: 409 }
+        );
+      }
+    }
+
+    // Prepare update data
+    const updateData = {
+      name: validation.data.name,
+      type: validation.data.type,
+      subject: validation.data.subject || null,
+      content: validation.data.content,
+      is_active: validation.data.is_active ?? true,
+      updated_at: new Date().toISOString()
+    };
+
+    // Update the template
+    const { data: updatedTemplate, error: updateError } = await supabase
+      .from('document_templates')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating document template:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to update document template' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(updatedTemplate);
+  } catch (e: any) {
+    console.error('Unexpected error in PUT /api/document-templates:', e);
+    return NextResponse.json(
+      { error: 'An unexpected error occurred while updating the document template' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE handler to soft-delete a document template
+export async function DELETE(request: NextRequest) {
+  const supabase = await getSupabaseRouteHandlerClient();
+  
+  try {
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get template ID from URL
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Template ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Verify the template exists and belongs to the user
+    const { data: existingTemplate, error: fetchError } = await supabase
+      .from('document_templates')
+      .select('id')
+      .eq('id', id)
+      .eq('created_by', user.id)
+      .is('deleted_at', null)
+      .single();
+
+    if (fetchError) {
+      return NextResponse.json(
+        { error: 'Template not found or access denied' },
+        { status: 404 }
+      );
+    }
+
+    // Soft delete the template by setting deleted_at
+    const { error: deleteError } = await supabase
+      .from('document_templates')
+      .update({ 
+        deleted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (deleteError) {
+      console.error('Error deleting document template:', deleteError);
+      return NextResponse.json(
+        { error: 'Failed to delete document template' },
+        { status: 500 }
+      );
+    }
+
+    return new Response(null, { status: 204 });
+  } catch (e: any) {
+    console.error('Unexpected error in DELETE /api/document-templates:', e);
+    return NextResponse.json(
+      { error: 'An unexpected error occurred while deleting the document template' },
+      { status: 500 }
+    );
   }
 }

@@ -3,7 +3,7 @@
 import { PlusCircle, Edit3, Trash2, ShieldAlert, Mail, Power, PowerOff, Upload } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 
-import { Sender } from '@/types';
+import type { Sender } from '@/types/index';
 
 const SendersView: React.FC = () => {
   // State for the senders list and loading
@@ -16,8 +16,8 @@ const SendersView: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSender, setEditingSender] = useState<Sender | null>(null);
   const [senderFormData, setSenderFormData] = useState({ 
-    employee_name: '', 
-    employee_email: '' 
+    name: '', 
+    email: '' 
   });
   const [modalError, setModalError] = useState<string | null>(null);
   
@@ -30,8 +30,8 @@ const SendersView: React.FC = () => {
 
   // Filter senders based on search term
   const filteredSenders = senders.filter(sender =>
-    sender.employee_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    sender.employee_email?.toLowerCase().includes(searchTerm.toLowerCase())
+    sender.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    sender.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Fetch senders from the API
@@ -39,15 +39,43 @@ const SendersView: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
+      console.log('Fetching senders from /api/email-senders...');
       const response = await fetch('/api/email-senders');
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Error response:', errorData);
         throw new Error(errorData.error || 'Failed to fetch senders');
       }
+      
       const data = await response.json();
-      setSenders(data);
+      console.log('Fetched senders:', data);
+      
+      if (!Array.isArray(data)) {
+        console.error('Expected an array of senders but got:', data);
+        throw new Error('Invalid response format: expected an array of senders');
+      }
+      
+      // Ensure required fields exist
+      const validatedSenders = data.map(sender => ({
+        id: sender.id || '',
+        user_id: sender.user_id || '',
+        name: sender.name || '',
+        email: sender.email || '',
+        is_active: sender.is_active ?? true,
+        is_default: sender.is_default ?? false,
+        created_at: sender.created_at || new Date().toISOString(),
+        updated_at: sender.updated_at || new Date().toISOString(),
+        photo_url: sender.photo_url,
+        status_message: sender.status_message
+      }));
+      
+      console.log('Validated senders:', validatedSenders);
+      setSenders(validatedSenders);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred';
+      console.error('Error in fetchSenders:', err);
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -69,7 +97,7 @@ const SendersView: React.FC = () => {
   // Modal handlers
   const openModalToAdd = () => {
     setEditingSender(null);
-    setSenderFormData({ employee_name: '', employee_email: '' });
+    setSenderFormData({ name: '', email: '' });
     setModalError(null);
     setIsModalOpen(true);
   };
@@ -77,8 +105,8 @@ const SendersView: React.FC = () => {
   const openModalToEdit = (sender: Sender) => {
     setEditingSender(sender);
     setSenderFormData({ 
-      employee_name: sender.employee_name, 
-      employee_email: sender.employee_email 
+      name: sender.name || '', 
+      email: sender.email || '' 
     });
     setModalError(null);
     setIsModalOpen(true);
@@ -87,7 +115,7 @@ const SendersView: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingSender(null);
-    setSenderFormData({ employee_name: '', employee_email: '' });
+    setSenderFormData({ name: '', email: '' });
     setModalError(null);
   };
 
@@ -101,12 +129,12 @@ const SendersView: React.FC = () => {
     e.preventDefault();
     setModalError(null);
 
-    if (!senderFormData.employee_name.trim() || !senderFormData.employee_email.trim()) {
-      setModalError('Both employee name and email are required.');
+    if (!senderFormData.name.trim() || !senderFormData.email.trim()) {
+      setModalError('Both name and email are required.');
       return;
     }
     
-    if (!/\S+@\S+\.\S+/.test(senderFormData.employee_email)) {
+    if (!/\S+@\S+\.\S+/.test(senderFormData.email)) {
       setModalError('Please enter a valid email address.');
       return;
     }
@@ -134,7 +162,7 @@ const SendersView: React.FC = () => {
   };
 
   // Sender action handlers
-  const handleDeleteSender = async (senderId: number) => {
+  const handleDeleteSender = async (senderId: string) => {
     if (!window.confirm('Are you sure you want to delete this email sender?')) {
       return;
     }
@@ -242,8 +270,8 @@ const SendersView: React.FC = () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              employee_name: row.name,
-              employee_email: row.email,
+              name: row.name,
+              email: row.email,
               is_active: true
             }),
           });
@@ -377,8 +405,8 @@ const SendersView: React.FC = () => {
               <tbody>
                 {filteredSenders.map((sender) => (
                   <tr key={sender.id} className="hover">
-                    <td className="font-medium">{sender.employee_name}</td>
-                    <td>{sender.employee_email}</td>
+                    <td className="font-medium">{sender.name}</td>
+                    <td>{sender.email}</td>
                     <td className="text-center">
                       <button
                         className={`btn btn-xs ${sender.is_active ? 'btn-success' : 'btn-error'}`}
@@ -434,9 +462,9 @@ const SendersView: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  name="employee_name"
+                  name="name"
                   className="input input-bordered w-full"
-                  value={senderFormData.employee_name}
+                  value={senderFormData.name}
                   onChange={handleSenderFormChange}
                   required
                 />
@@ -447,9 +475,9 @@ const SendersView: React.FC = () => {
                 </label>
                 <input
                   type="email"
-                  name="employee_email"
+                  name="email"
                   className="input input-bordered w-full"
-                  value={senderFormData.employee_email}
+                  value={senderFormData.email}
                   onChange={handleSenderFormChange}
                   required
                 />

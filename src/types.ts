@@ -1,9 +1,4 @@
 // Shared types for CRM
-
-// TODO: Replace this with your generated Supabase Database type
-export type Database = any;
-
-
 export interface Sender {
   id: number;
   employee_name: string;
@@ -14,7 +9,6 @@ export interface Sender {
   photo_url?: string;
 }
 
-// Campaign data with optional stats for front-end view
 export interface Campaign {
   id: string;
   name: string;
