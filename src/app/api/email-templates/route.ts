@@ -8,26 +8,28 @@ const emailTemplateSchema = z.object({
   name: z.string().min(1, 'Template name is required'),
   subject: z.string().min(1, 'Email subject is required'),
   body_html: z.string().min(1, 'Email content is required'),
-  body_text: z.string().optional()
+  body_text: z.string().optional(),
+  is_active: z.boolean().optional().default(true)
 });
 
 // Helper to get Supabase client
 async function getSupabaseRouteHandlerClient() {
-  const cookieStore = cookies();
-  
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
+        async get(name: string): Promise<string | undefined> {
+          const cookieStore = await cookies();
           return cookieStore.get(name)?.value;
         },
-        set(name: string, value: string, options: CookieOptions) {
+        async set(name: string, value: string, options: CookieOptions): Promise<void> {
+          const cookieStore = await cookies();
           cookieStore.set({ name, value, ...options });
         },
-        remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: '', ...options });
+        async remove(name: string, options: CookieOptions): Promise<void> {
+          const cookieStore = await cookies();
+          cookieStore.delete({ name, ...options });
         },
       },
     }
@@ -117,7 +119,8 @@ export async function POST(req: NextRequest) {
       name: validation.data.name,
       subject: validation.data.subject,
       body_html: validation.data.body_html,
-      body_text: validation.data.body_text || ''
+      body_text: validation.data.body_text || '',
+      is_active: validation.data.is_active // Will be true by default from schema
     };
     
     const { data: newTemplate, error: insertError } = await supabase

@@ -316,11 +316,9 @@ const TemplatesView: React.FC = () => {
     setNewTemplateName('');
     setNewTemplateType('email');
     setNewTemplateSubject('');
-    setNewTemplateBody(''); 
-    setRawPlaceholdersInput(''); // Start with empty input for custom placeholders
-    // For new templates, set clickablePlaceholders to defaults initially.
-    // The effect above will then merge if user types custom ones.
-    setClickablePlaceholders([...DEFAULT_PLACEHOLDERS]); 
+    setNewTemplateBody('');
+    setRawPlaceholdersInput('');
+    setClickablePlaceholders([...DEFAULT_PLACEHOLDERS]);
     setModalError(null);
     setIsTemplateModalOpen(true);
   };
@@ -330,7 +328,7 @@ const TemplatesView: React.FC = () => {
     setNewTemplateName(template.name);
     setNewTemplateType(template.template_type);
     setNewTemplateSubject(template.subject || '');
-    setNewTemplateBody(template.body); 
+    setNewTemplateBody(template.body);
     const currentPlaceholders = template.available_placeholders || [];
     setRawPlaceholdersInput(currentPlaceholders.join(', '));
     // For editing, clickablePlaceholders are derived from rawPlaceholdersInput via useEffect
@@ -346,9 +344,9 @@ const TemplatesView: React.FC = () => {
     setNewTemplateName('');
     setNewTemplateType('email');
     setNewTemplateSubject('');
-    setNewTemplateBody(''); 
-    setRawPlaceholdersInput(''); 
-    setClickablePlaceholders([]); // Clear clickable on close
+    setNewTemplateBody('');
+    setRawPlaceholdersInput('');
+    setClickablePlaceholders([]);
   }, []);
 
   const handleSubmitTemplate = useCallback(async () => {
@@ -381,26 +379,32 @@ const TemplatesView: React.FC = () => {
       return;
     }
     
-    if (!templateSubject) {
-      setModalError('Email subject is required.');
+    if (newTemplateType === 'email' && !templateSubject) {
+      setModalError('Email subject is required for email templates.');
       return;
     }
 
     setIsSubmitting(true);
     const method = editingTemplate ? 'PUT' : 'POST';
-    const url = '/api/email-templates' + (editingTemplate ? `?id=${editingTemplate.id}` : '');
+    const url = editingTemplate 
+      ? `/api/document-templates?id=${editingTemplate.id}` 
+      : '/api/document-templates';
+
+    const templateTypeForAPI = newTemplateType === 'loi_document' ? 'pdf' : newTemplateType;
+    const apiPayload = {
+      name: templateName,
+      type: templateTypeForAPI,
+      content: templateBody,
+      subject: newTemplateType === 'email' ? templateSubject : undefined,
+      available_placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : undefined,
+      // is_active is handled by the backend by default
+    };
 
     try {
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: templateName,
-          subject: templateSubject,
-          body_html: templateBody,
-          // Generate plain text version by stripping HTML tags
-          body_text: templateBody.replace(/<[^>]*>?/gm, '') 
-        }),
+        body: JSON.stringify(apiPayload),
       });
 
       const responseData = await response.json();
@@ -431,7 +435,7 @@ const TemplatesView: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`/api/email-templates?id=${id}`, {
+      const response = await fetch(`/api/document-templates?id=${id}`, {
         method: 'DELETE',
       });
 
@@ -466,7 +470,10 @@ const TemplatesView: React.FC = () => {
     return matchesSearch && matchesType;
   });
 
-  const uniqueTemplateTypes = Array.from(new Set(documentTemplates.map(t => t.template_type)));
+  const validTemplateTypes = documentTemplates
+    .map(t => t.template_type)
+    .filter((tt): tt is string => typeof tt === 'string' && tt.trim() !== '');
+  const uniqueTemplateTypes = Array.from(new Set(validTemplateTypes));
 
   if (isLoading) {
     return (
