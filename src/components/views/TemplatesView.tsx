@@ -18,7 +18,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import Toast from '@/components/ui/Toast';
 
@@ -73,12 +73,21 @@ interface ApiErrorResponse {
   error?: string;
 }
 
-const getTypeBadge = (template_type: DocumentTemplate['template_type']) => {
+const getTypeBadge = (template_type: string) => {
+  const type = template_type.toLowerCase();
   let badgeClass = 'badge-outline';
-  if (template_type.toLowerCase() === 'email') badgeClass = 'badge-primary badge-outline';
-  else if (template_type.toLowerCase() === 'loi_document') badgeClass = 'badge-secondary badge-outline';
-  else badgeClass = 'badge-neutral badge-outline'; 
-  return <span className={`badge ${badgeClass}`}>{template_type}</span>;
+  let displayText = template_type;
+  
+  if (type === 'email') {
+    badgeClass = 'badge-primary';
+  } else if (type === 'document') {
+    badgeClass = 'badge-secondary';
+    displayText = 'Document';
+  } else {
+    badgeClass = 'badge-neutral';
+  }
+  
+  return <span className={`badge ${badgeClass} capitalize`}>{displayText}</span>;
 };
 
 const MenuBar: React.FC<{ editor: Editor | null }> = ({ editor }) => {
@@ -190,6 +199,10 @@ const TemplatesView: React.FC = () => {
     setIsClient(true);
   }, []);
 
+  // Track if this is the initial load
+  const isInitialLoad = useRef(true);
+  const lastContent = useRef('');
+
   // Initialize editor only on client side
   const editor = useEditor(
     {
@@ -213,8 +226,11 @@ const TemplatesView: React.FC = () => {
       onUpdate: ({ editor }) => {
         if (!isClient) return;
         const html = editor.getHTML();
-        console.log('Editor content updated:', html);
-        setNewTemplateBody(html);
+        // Only update state if content actually changed
+        if (html !== lastContent.current) {
+          lastContent.current = html;
+          setNewTemplateBody(html);
+        }
       },
       editorProps: {
         attributes: {
@@ -224,45 +240,35 @@ const TemplatesView: React.FC = () => {
       autofocus: false,
       editable: isClient,
       injectCSS: isClient,
-      // Only include valid editor options
       enablePasteRules: isClient,
       enableInputRules: isClient,
     },
-    [isClient, newTemplateBody]
+    [isClient] // Removed newTemplateBody from deps to prevent re-initialization
   );
 
-  // Update editor content when newTemplateBody changes
+  // Update editor content when newTemplateBody changes (only on initial load or when editing a different template)
   useEffect(() => {
-    if (editor) {
-      console.log('Editor useEffect - Current HTML:', editor.getHTML());
-      console.log('New Template Body:', newTemplateBody);
-      if (editor.getHTML() !== newTemplateBody) {
-        console.log('Updating editor content');
-        editor.commands.setContent(newTemplateBody || '');
+    if (editor && newTemplateBody !== lastContent.current) {
+      // Only update if content is different
+      const currentContent = editor.getHTML();
+      if (currentContent !== newTemplateBody) {
+        // Use a small timeout to ensure the editor is fully initialized
+        const timer = setTimeout(() => {
+          editor.commands.setContent(newTemplateBody || '');
+          lastContent.current = newTemplateBody;
+        }, 10);
+        return () => clearTimeout(timer);
       }
     }
   }, [editor, newTemplateBody]);
-  
-  // Log when template body changes
-  useEffect(() => {
-    console.log('Template body changed:', {
-      hasContent: !!newTemplateBody,
-      length: newTemplateBody.length,
-      trimmedLength: newTemplateBody.trim().length
-    });
-  }, [newTemplateBody]);
 
+  // Clean up refs on unmount
   useEffect(() => {
-    console.log('Template Name:', newTemplateName);
-    console.log('Template Body:', newTemplateBody);
-    console.log('Is Button Disabled:', !newTemplateName || !newTemplateBody);
-  }, [newTemplateName, newTemplateBody]);
-
-  useEffect(() => {
-    if (editor && editor.getHTML() !== newTemplateBody) {
-      editor.commands.setContent(newTemplateBody || '', false); 
-    }
-  }, [newTemplateBody, editor]);
+    return () => {
+      isInitialLoad.current = true;
+      lastContent.current = '';
+    };
+  }, []);
 
   // Step 1: Create a stable callback for the core logic
   const parseAndSetPlaceholders = useCallback((placeholdersString: string, isEditing: boolean) => {
@@ -300,14 +306,88 @@ const TemplatesView: React.FC = () => {
   const fetchTemplates = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    
     try {
-      const response = await fetch('/api/email-templates');
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to fetch templates');
+      // Fetch both email and document templates in parallel
+      const [emailTemplatesRes, documentTemplatesRes] = await Promise.all([
+        fetch('/api/email-templates'),
+        fetch('/api/document-templates')
+      ]);
+
+      if (!emailTemplatesRes.ok || !documentTemplatesRes.ok) {
+        const emailError = emailTemplatesRes.ok ? null : await emailTemplatesRes.json().catch(() => ({}));
+        const docError = documentTemplatesRes.ok ? null : await documentTemplatesRes.json().catch(() => ({}));
+        
+        console.error('Error fetching templates:', { 
+          emailError: emailError?.error, 
+          docError: docError?.error 
+        });
+        
+        throw new Error(
+          [emailError?.error, docError?.error]
+            .filter(Boolean)
+            .join('; ') || 'Failed to fetch templates'
+        );
       }
-      const data = await response.json();
-      setDocumentTemplates(data);
+
+      let emailTemplates = [];
+      let documentTemplates = [];
+
+      try {
+        const emailData = await emailTemplatesRes.json();
+        emailTemplates = Array.isArray(emailData) ? emailData : [];
+      } catch (e) {
+        console.error('Error parsing email templates:', e);
+        emailTemplates = [];
+      }
+
+      try {
+        const docData = await documentTemplatesRes.json();
+        // Handle both direct array and paginated response formats
+        documentTemplates = Array.isArray(docData) 
+          ? docData 
+          : (docData.data && Array.isArray(docData.data) ? docData.data : []);
+      } catch (e) {
+        console.error('Error parsing document templates:', e);
+        documentTemplates = [];
+      }
+
+      // Combine and normalize the templates
+      const processedEmailTemplates = emailTemplates.map((t: any) => ({
+        ...t,
+        id: t.id,
+        name: t.name,
+        body: t.body || '',  // email-templates use 'body'
+        subject: t.subject || '',
+        template_type: 'email',
+        is_active: t.is_active !== false, // default to true if not set
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+        available_placeholders: t.available_placeholders || []
+      }));
+      
+      const processedDocumentTemplates = documentTemplates.map((t: any) => ({
+        ...t,
+        id: t.id,
+        name: t.name,
+        body: t.content || '',  // document-templates use 'content' but we map to 'body' for UI
+        subject: t.subject || '',
+        template_type: 'document',
+        is_active: t.is_active !== false, // default to true if not set
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+        available_placeholders: t.available_placeholders || []
+      }));
+      
+      const combinedTemplates = [
+        ...processedEmailTemplates,
+        ...processedDocumentTemplates
+      ];
+      
+      console.log('Total templates loaded:', combinedTemplates.length, 
+        `(${processedEmailTemplates.length} email, ${processedDocumentTemplates.length} document)`);
+
+      setDocumentTemplates(combinedTemplates);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred while fetching templates';
       setError(errorMessage);
@@ -395,41 +475,69 @@ const TemplatesView: React.FC = () => {
     }
 
     setIsSubmitting(true);
+    const isEmailTemplate = newTemplateType === 'email';
+    const endpoint = isEmailTemplate ? 'email-templates' : 'document-templates';
     const method = editingTemplate ? 'PUT' : 'POST';
     const url = editingTemplate 
-      ? `/api/document-templates?id=${editingTemplate.id}` 
-      : '/api/document-templates';
-
-    const templateTypeForAPI = newTemplateType === 'loi_document' ? 'pdf' : newTemplateType;
-    const apiPayload = {
-      name: templateName,
-      type: templateTypeForAPI,
-      content: templateBody,
-      subject: newTemplateType === 'email' ? templateSubject : undefined,
-      available_placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : undefined,
-      // is_active is handled by the backend by default
-    };
+      ? `/api/${endpoint}?id=${editingTemplate.id}` 
+      : `/api/${endpoint}`;
 
     try {
+      // Prepare template data based on template type
+      const templateData = isEmailTemplate 
+        ? {
+            name: templateName,
+            body: templateBody, // email-templates table uses 'body'
+            subject: templateSubject,
+            is_active: true,
+            available_placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : null,
+          }
+        : {
+            name: templateName,
+            content: templateBody, // document-templates table uses 'content'
+            type: 'pdf',
+            is_active: true,
+            available_placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : null,
+          };
+      
+      console.log('Saving with data:', { isEmailTemplate, endpoint, templateData });
+
+      console.log('Sending template data:', templateData);
+
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(apiPayload),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(templateData),
       });
 
       const responseData = await response.json();
       
       if (!response.ok) {
+        console.error('API Error:', responseData);
         throw new Error(responseData.error || 'Failed to save template');
       }
 
+      // Close the modal first to prevent any UI conflicts
+      closeModal();
+      
+      // Show success message
       setToast({ 
         message: `Template ${editingTemplate ? 'updated' : 'created'} successfully!`, 
         type: 'success' 
       });
       
-      closeModal();
-      await fetchTemplates(); 
+      // Refresh the templates list
+      try {
+        await fetchTemplates();
+      } catch (error) {
+        console.error('Error refreshing templates:', error);
+        setToast({
+          message: 'Template saved, but there was an error refreshing the list',
+          type: 'error'
+        });
+      }
     } catch (e: unknown) {
       const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred while saving the template.';
       setModalError(errorMessage);
@@ -472,18 +580,32 @@ const TemplatesView: React.FC = () => {
     }
   }, [fetchTemplates]);
 
+  // Filter templates based on search term and type
   const filteredTemplates = documentTemplates.filter(template => {
     if (!template.is_active) return false; // Ensure only active templates are considered
-    const matchesSearch = template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           (template.subject && template.subject.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchesType = filterType === 'All' || (template.template_type && template.template_type.toLowerCase() === filterType.toLowerCase());
+    
+    // Check if template matches search term (name or subject)
+    const searchTermLower = searchTerm.toLowerCase();
+    const matchesSearch = searchTerm === '' || 
+      template.name.toLowerCase().includes(searchTermLower) ||
+      (template.subject && template.subject.toLowerCase().includes(searchTermLower));
+    
+    // Check if template matches selected type
+    const matchesType = filterType === 'All' || 
+      template.template_type.toLowerCase() === filterType.toLowerCase();
+    
     return matchesSearch && matchesType;
   });
+  
+  if (filteredTemplates.length === 0) {
+    console.log('No templates match the current filter');
+  }
 
-  const validTemplateTypes = documentTemplates
-    .map(t => t.template_type)
-    .filter((tt): tt is string => typeof tt === 'string' && tt.trim() !== '');
-  const uniqueTemplateTypes = Array.from(new Set(validTemplateTypes));
+  // Static list of template types for filtering
+  const templateTypeOptions = [
+    { value: 'email', label: 'Email' },
+    { value: 'document', label: 'Document' } // Changed from 'loi_document' to 'document' to match the filter
+  ];
 
   if (isLoading) {
     return (
@@ -537,8 +659,10 @@ const TemplatesView: React.FC = () => {
               onChange={(e) => setFilterType(e.target.value)}
             >
               <option value="All">All Types</option>
-              {uniqueTemplateTypes.map(template_type => (
-                <option key={template_type} value={template_type}>{template_type.charAt(0).toUpperCase() + template_type.slice(1)}</option>
+              {templateTypeOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
             </select>
           </div>
@@ -595,7 +719,14 @@ const TemplatesView: React.FC = () => {
             )}
             <div className="form-control">
               <label className="label"><span className="label-text">Template Name*</span></label>
-              <input type="text" placeholder="e.g. Initial Outreach Q1" className="input input-bordered w-full" value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} readOnly={isSubmitting} />
+              <input 
+                type="text" 
+                placeholder={newTemplateType === 'loi_document' ? 'e.g. Standard LOI' : 'e.g. Initial Outreach Q1'} 
+                className="input input-bordered w-full" 
+                value={newTemplateName} 
+                onChange={(e) => setNewTemplateName(e.target.value)} 
+                readOnly={isSubmitting} 
+              />
             </div>
             <div className="form-control mt-4">
               <label className="label"><span className="label-text">Template Type</span></label>
@@ -606,7 +737,12 @@ const TemplatesView: React.FC = () => {
                   className="toggle toggle-primary align-middle"
                   checked={newTemplateType === 'loi_document'}
                   onChange={(e) => {
-                    setNewTemplateType(e.target.checked ? 'loi_document' : 'email');
+                    const isLOI = e.target.checked;
+                    setNewTemplateType(isLOI ? 'loi_document' : 'email');
+                    // Clear subject when switching to LOI document
+                    if (isLOI) {
+                      setNewTemplateSubject('');
+                    }
                   }}
                   disabled={isSubmitting}
                 />
@@ -615,8 +751,15 @@ const TemplatesView: React.FC = () => {
             </div>
             {newTemplateType === 'email' && (
               <div className="form-control mt-4">
-                <label className="label"><span className="label-text">Subject Line</span></label>
-                <input type="text" placeholder="e.g. Following up on your property" className="input input-bordered w-full" value={newTemplateSubject} onChange={(e) => setNewTemplateSubject(e.target.value)} readOnly={isSubmitting} />
+                <label className="label"><span className="label-text">Subject Line*</span></label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Following up on your property" 
+                  className="input input-bordered w-full" 
+                  value={newTemplateSubject} 
+                  onChange={(e) => setNewTemplateSubject(e.target.value)} 
+                  readOnly={isSubmitting} 
+                />
               </div>
             )}
             <div className="form-control mt-4">

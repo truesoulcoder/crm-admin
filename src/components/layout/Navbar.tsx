@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 
 import ThemeSelector from '@/components/ThemeSelector';
 import { createClient } from '@/lib/supabase/client';
+import { updateUserProfile } from '@/actions/update-user-profile';
 
 interface NavbarProps {
   onMenuClick: () => void; // For mobile sidebar toggle
@@ -30,21 +31,12 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
         if (error) throw error;
         if (!user) throw new Error('No user logged in');
         
-        console.log('User data:', user); // Debug log
-        
-        // Extract user data from the auth session
-        // Debug log the entire user object to see what data we're getting
-        console.log('User object:', user);
-        
         // Try multiple possible locations for the avatar URL
-        const avatarUrl = user.user_metadata?.avatar_url || 
-                         user.user_metadata?.picture ||
-                         user.identities?.[0]?.identity_data?.avatar_url ||
-                         user.identities?.[0]?.identity_data?.picture ||
-                         null;
-        
-        // Debug log the avatar URL
-        console.log('Avatar URL:', avatarUrl);
+        let avatarUrl = user.user_metadata?.avatar_url || 
+                       user.user_metadata?.picture ||
+                       user.identities?.[0]?.identity_data?.avatar_url ||
+                       user.identities?.[0]?.identity_data?.picture ||
+                       null;
         
         const fullName = user.user_metadata?.full_name ||
                         user.user_metadata?.name ||
@@ -52,6 +44,20 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
                         user.identities?.[0]?.identity_data?.name ||
                         user.email?.split('@')[0] ||
                         'User';
+        
+        // Only try to update profile if we don't have an avatar URL yet
+        if (!avatarUrl) {
+          const { error: updateError } = await updateUserProfile();
+          if (!updateError) {
+            // If update was successful, refetch user data
+            const { data: { user: updatedUser } } = await supabase.auth.getUser();
+            if (updatedUser) {
+              avatarUrl = updatedUser.user_metadata?.avatar_url || 
+                         updatedUser.identities?.[0]?.identity_data?.avatar_url ||
+                         null;
+            }
+          }
+        }
         
         // Force HTTPS if the URL is from Google and using HTTP
         const processedAvatarUrl = avatarUrl?.startsWith('http://') && avatarUrl.includes('googleusercontent.com')
@@ -72,21 +78,45 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
     
     // Set up auth state change listener
     const supabase = createClient();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        const user = session.user;
-        const avatarUrl = user.user_metadata?.avatar_url || 
+        try {
+          const user = session.user;
+          let avatarUrl = user.user_metadata?.avatar_url || 
                          user.identities?.[0]?.identity_data?.avatar_url ||
                          null;
-        const fullName = user.user_metadata?.full_name ||
-                        user.identities?.[0]?.identity_data?.full_name ||
-                        user.user_metadata?.name ||
-                        user.email?.split('@')[0] ||
-                        'User';
-        
-        setAvatarUrl(avatarUrl);
-        setFullName(fullName);
-        setEmail(user.email || null);
+          
+          // Only try to update profile if we don't have an avatar URL yet
+          if (!avatarUrl) {
+            const { error: updateError } = await updateUserProfile();
+            if (!updateError) {
+              // If update was successful, refetch user data
+              const { data: { user: updatedUser } } = await supabase.auth.getUser();
+              if (updatedUser) {
+                avatarUrl = updatedUser.user_metadata?.avatar_url || 
+                           updatedUser.identities?.[0]?.identity_data?.avatar_url ||
+                           null;
+              }
+            }
+          }
+          
+          const fullName = user.user_metadata?.full_name ||
+                          user.identities?.[0]?.identity_data?.full_name ||
+                          user.user_metadata?.name ||
+                          user.email?.split('@')[0] ||
+                          'User';
+          
+          // Force HTTPS if the URL is from Google and using HTTP
+          const processedAvatarUrl = avatarUrl?.startsWith('http://') && avatarUrl.includes('googleusercontent.com')
+            ? avatarUrl.replace('http://', 'https://')
+            : avatarUrl;
+          
+          setAvatarUrl(processedAvatarUrl || null);
+          setFullName(fullName);
+          setEmail(user.email || null);
+        } catch (error) {
+          console.error('Error in auth state change:', error);
+        }
       } else if (event === 'SIGNED_OUT') {
         setAvatarUrl(null);
         setFullName(null);
