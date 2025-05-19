@@ -4,7 +4,7 @@ import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, UploadCloud,
 import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
 
 // Using shared Supabase client
-import supabase from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabase/client';
 
 // Define types (adjust based on your actual schema)
 interface ColumnConfig {
