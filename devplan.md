@@ -42,6 +42,11 @@
         -   [x] Placeholder management.
         -   [x] Search and filter templates.
         -   [x] API integration for template operations.
+        -   [x] PDF Preview functionality:
+            -   [x] Added inline PDF preview for document templates
+            -   [x] Modal-based PDF viewer with loading/error states
+            -   [x] API endpoint for generating sample PDFs from templates
+            -   [x] TypeScript type safety improvements
 
 ### 4. Campaign Management
     -   [x] Core functionality implemented (`CampaignsView.tsx`):
@@ -50,7 +55,15 @@
         -   [x] Select senders and templates for campaigns.
         -   [x] Monitor basic campaign status (view for detailed monitoring exists).
         -   [x] Supabase and API integration for campaign operations.
-        -   [ ] Advanced features (e.g., quota-based, interval-driven sending) as per `follow-these-rules.md` may still need implementation/verification.
+        -   [x] Advanced features implemented in `campaignEngine.ts`:
+            -   [x] Quota-based sending with daily limits
+            -   [x] Interval-driven sending with configurable delays
+            -   [x] Sender allocation with round-robin selection
+            -   [x] Pre-flight check with test email to admin
+            -   [x] TypeScript type safety improvements
+            -   [x] Error handling and retry logic
+            -   [x] PDF attachment generation for document templates
+            -   [x] Multi-recipient handling (contacts 1-3 + agent)
 
 ### 5. Dashboard & Monitoring
     -   [x] Core `DashboardView.tsx` component implemented and integrated into `dashboard/page.tsx`.

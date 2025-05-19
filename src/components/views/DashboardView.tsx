@@ -13,6 +13,18 @@ import {
 import { useUser } from '@/contexts/UserContext'; // Added import
 
 // Interfaces
+interface EmailEvent {
+  id: string;
+  campaign_id: string;
+  lead_id: string;
+  recipient_email: string;
+  status: 'queued' | 'sending' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
+  error_message?: string;
+  created_at?: string;
+  updated_at?: string;
+  // Add other fields that might be present in your email_events table
+}
+
 interface SenderKpi {
   sender_id: string;
   sender_name: string; 
@@ -88,7 +100,7 @@ const DashboardView: React.FC = () => {
     }
   }, [consoleLogs]);
 
-  // Set up realtime subscription for campaign activities
+  // Set up realtime subscription for campaign activities and KPI updates
   useEffect(() => {
     if (!supabase) return;
 
@@ -106,22 +118,31 @@ const DashboardView: React.FC = () => {
 
     cleanupChannels();
 
-    // Only subscribe if we have a selected campaign
-    if (!selectedCampaignId) return;
-
     // Add a small delay before setting up new subscriptions
     const setupDelay = 500; // 500ms delay
     const timeoutId = setTimeout(() => {
-      setupCampaignRealtime();
+      // Always set up email realtime for KPI updates, even without selected campaign
       setupEmailRealtime();
+      
+      // Only set up campaign realtime if we have a selected campaign
+      if (selectedCampaignId) {
+        setupCampaignRealtime();
+      }
     }, setupDelay);
+
+    // Set up interval to refresh KPI data periodically (every 30 seconds)
+    // as a fallback for realtime updates
+    const kpiRefreshInterval = setInterval(() => {
+      fetchKpiData().catch(console.error);
+    }, 30000);
 
     // Cleanup function
     return () => {
       clearTimeout(timeoutId);
+      clearInterval(kpiRefreshInterval);
       cleanupChannels();
     };
-  }, [supabase, selectedCampaignId, addConsoleLog]);
+  }, [supabase, selectedCampaignId, addConsoleLog, fetchKpiData]);
 
   // Set up realtime subscription for campaign status changes
   const setupCampaignRealtime = () => {
@@ -201,35 +222,72 @@ const DashboardView: React.FC = () => {
 
   // Set up realtime subscription for email activities
   const setupEmailRealtime = () => {
-    if (!supabase || !selectedCampaignId) return;
+    if (!supabase) return;
 
-    const handleEmailActivity = (payload: RealtimePostgresChangesPayload<{ [key: string]: any }>) => {
+    interface RealtimePayload<T> {
+      commit_timestamp: string;
+      errors: any[] | null;
+      eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+      schema: string;
+      table: string;
+      new: T | null;
+      old: T | null;
+    }
+
+    const handleEmailActivity = (payload: RealtimePayload<EmailEvent>) => {
       const { eventType, new: newData, old: oldData } = payload;
       
       try {
+        // Refresh KPI data when email activities change
+        fetchKpiData().catch(console.error);
+        
+        // Only process real-time updates for the selected campaign or all if none selected
+        if (!newData) return; // Skip if no new data
+        
+        if (selectedCampaignId && newData.campaign_id !== selectedCampaignId) {
+          return;
+        }
+        
         switch (eventType) {
           case 'INSERT':
-            if (newData?.status === 'queued') {
+            if (!newData) break; // Skip if no new data
+            
+            if (newData.status === 'queued') {
               addConsoleLog(`Email queued for lead ${newData.lead_id}`, 'info');
-            } else if (newData?.status === 'sending') {
+            } else if (newData.status === 'sending') {
               addConsoleLog(`Sending email to ${newData.recipient_email}`, 'info');
-            } else if (newData?.status === 'sent') {
+            } else if (newData.status === 'sent') {
               addConsoleLog(`Email sent to ${newData.recipient_email}`, 'success');
+              // Update KPI stats when email is sent
+              fetchKpiData().catch(console.error);
             } else if (newData?.status === 'failed') {
-              addConsoleLog(`Failed to send email to ${newData.recipient_email}`, 'error');
+              const errorMsg = newData.error_message ? `: ${newData.error_message}` : '';
+              addConsoleLog(`Failed to send email to ${newData.recipient_email}${errorMsg}`, 'error');
             }
             break;
             
           case 'UPDATE':
-            if (newData?.status === 'sent' && oldData?.status !== 'sent') {
+            if (!newData) break; // Skip if no new data
+            
+            if (newData.status === 'sent' && (!oldData || oldData.status !== 'sent')) {
               addConsoleLog(`Email delivered to ${newData.recipient_email}`, 'success');
-            } else if (newData?.status === 'failed' && oldData?.status !== 'failed') {
+              // Update KPI stats when email is delivered
+              fetchKpiData().catch(console.error);
+            } else if (newData.status === 'failed' && (!oldData || oldData.status !== 'failed')) {
               const errorMsg = newData.error_message ? `: ${newData.error_message}` : '';
               addConsoleLog(`Email failed for ${newData.recipient_email}${errorMsg}`, 'error');
-            } else if (newData?.status === 'opened' && oldData?.status !== 'opened') {
+            } else if (newData.status === 'opened' && (!oldData || oldData.status !== 'opened')) {
               addConsoleLog(`Email opened by ${newData.recipient_email}`, 'success');
-            } else if (newData?.status === 'clicked' && oldData?.status !== 'clicked') {
+              // Update KPI stats when email is opened
+              fetchKpiData().catch(console.error);
+            } else if (newData.status === 'clicked' && (!oldData || oldData.status !== 'clicked')) {
               addConsoleLog(`Link clicked by ${newData.recipient_email}`, 'success');
+              // Update KPI stats when link is clicked
+              fetchKpiData().catch(console.error);
+            } else if (newData.status === 'bounced' && (!oldData || oldData.status !== 'bounced')) {
+              addConsoleLog(`Email bounced for ${newData.recipient_email}`, 'error');
+              // Update KPI stats when email bounces
+              fetchKpiData().catch(console.error);
             }
             break;
         }
@@ -240,13 +298,13 @@ const DashboardView: React.FC = () => {
 
     try {
       emailRealtimeChannel.current = supabase
-        .channel(`email-activity-${selectedCampaignId}`)
+        .channel(`email-events-${selectedCampaignId}`)
         .on(
           'postgres_changes',
           {
             event: '*',
             schema: 'public',
-            table: 'email_activities',
+            table: 'email_events',
             filter: `campaign_id=eq.${selectedCampaignId}`
           },
           handleEmailActivity
@@ -278,7 +336,8 @@ const DashboardView: React.FC = () => {
     setError(null);
     try {
       // Fetch raw data from kpi_stats and join with senders to get sender_name
-      const { data: rawKpiData, error: dbError } = await supabase
+      // Also get campaign-specific stats if a campaign is selected
+      const query = supabase
         .from('kpi_stats')
         .select(`
           sender_id,
@@ -287,8 +346,18 @@ const DashboardView: React.FC = () => {
           emails_bounced,
           emails_opened,
           links_clicked,
-          senders (name)
-        `); // Assumes 'senders' table has 'id' and 'name', and RLS allows this join.
+          senders (name),
+          campaign_id,
+          timestamp
+        `)
+        .order('timestamp', { ascending: false });
+
+      // Filter by campaign if one is selected
+      if (selectedCampaignId) {
+        query.eq('campaign_id', selectedCampaignId);
+      }
+
+      const { data: rawKpiData, error: dbError } = await query;
 
       if (dbError) throw dbError;
 
@@ -418,16 +487,38 @@ const DashboardView: React.FC = () => {
     }
   }, [user, isUserLoading, supabase, fetchKpiData, fetchCampaignEngineStatus, fetchManageableCampaigns]);
 
-  // Placeholder for backend pre-flight check simulation
+  // Real pre-flight check implementation
   const triggerPreFlightCheck = async (campaignId: string): Promise<{ success: boolean; error?: string }> => {
     if (!supabase) return { success: false, error: 'Supabase client not available' };
-    console.log(`SIMULATING PRE-FLIGHT: For campaign ${campaignId}. Triggering test emails...`);
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate network delay
-    // In a real backend function, actual emails would be sent here.
-    // This function's responsibility is just to *trigger* the pre-flight.
-    // The status update to AWAITING_CONFIRMATION happens in handleToggleCampaignEngine.
-    console.log(`SIMULATING PRE-FLIGHT: Test email trigger completed for campaign ${campaignId}.`);
-    return { success: true };
+    
+    try {
+      addConsoleLog(`Initiating pre-flight check for campaign ${campaignId}...`, 'info');
+      
+      // Call the pre-flight API endpoint
+      const response = await fetch('/api/campaigns/preflight', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ campaignId })
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        const errorMsg = result.error || 'Failed to initiate pre-flight check';
+        addConsoleLog(`Pre-flight check failed: ${errorMsg}`, 'error');
+        return { success: false, error: errorMsg };
+      }
+      
+      addConsoleLog('Pre-flight check initiated successfully. Test emails will be sent shortly.', 'success');
+      return { success: true };
+      
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error during pre-flight check';
+      addConsoleLog(`Error during pre-flight check: ${errorMsg}`, 'error');
+      return { success: false, error: errorMsg };
+    }
   };
 
   const getButtonProps = () => {

@@ -76,8 +76,12 @@ type EmailTask = TablesInsert<'email_tasks'> & {
 
 const supabase = getAdminSupabaseClient();
 
-const SAFETY_EMAIL = 'chrisphillips@truesoulpartners.com';
 const SAFETY_MODE = process.env.SAFETY_MODE === 'true';
+const SAFETY_EMAIL = process.env.TEST_RECIPIENT_EMAIL;
+
+if (SAFETY_MODE && !SAFETY_EMAIL) {
+  throw new Error('TEST_RECIPIENT_EMAIL environment variable is required when SAFETY_MODE is enabled');
+}
 
 /**
  * Main loop to process a campaign.
@@ -192,8 +196,10 @@ export async function processCampaign(campaignId: string) {
 
     // Build recipient list: up to 3 contacts + MLS agent
     type ValidRecipient = { name: string; email: string };
-    const recipients = SAFETY_MODE
+    const recipients = SAFETY_MODE && SAFETY_EMAIL
       ? [{ name: 'Test', email: SAFETY_EMAIL } as ValidRecipient]
+      : SAFETY_MODE
+      ? [] // Skip if in safety mode but no TEST_RECIPIENT_EMAIL is set
       : [
           { name: lead.contact1_name, email: lead.contact1_email_1 },
           { name: lead.contact2_name, email: lead.contact2_email_1 },

@@ -16,11 +16,11 @@ const supabase = getAdminSupabaseClient();
 const COMPANY_NAME = "True Soul Partners LLC"; // Define company name as a constant
 
 // For other Node.js environments, you might need `require('dotenv').config();` at the entry point.
-const SERVICE_ACCOUNT_KEY_PATH = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH;
+const SERVICE_ACCOUNT_KEY = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
 const TEST_RECIPIENT_EMAIL = process.env.TEST_RECIPIENT_EMAIL;
 
-if (!SERVICE_ACCOUNT_KEY_PATH) {
-  console.error("Error: GOOGLE_SERVICE_ACCOUNT_KEY_PATH environment variable is not set.");
+if (!SERVICE_ACCOUNT_KEY) {
+  console.error("Error: GOOGLE_SERVICE_ACCOUNT_KEY environment variable is not set.");
   // Potentially throw an error or handle this case as per your application's needs
 }
 if (!TEST_RECIPIENT_EMAIL) {
@@ -122,15 +122,15 @@ export async function prepareAndSendOfferEmail(
   console.log(`Property: ${lead.property_address}`);
 
   // Preflight checks
-  const serviceAccountKeyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH;
+  const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   const testRecipientEmail = process.env.TEST_RECIPIENT_EMAIL;
 
-  if (!serviceAccountKeyPath) {
+  if (!serviceAccountKey) {
     console.error(
-      'Error: GOOGLE_SERVICE_ACCOUNT_KEY_PATH environment variable is not set.'
+      'Error: GOOGLE_SERVICE_ACCOUNT_KEY environment variable is not set.'
     );
     // For scripts, it's better to throw or return a failure state clearly
-    return { success: false, message: 'Service account key path not set in environment variables.' };
+    return { success: false, message: 'Service account key not set in environment variables.' };
   }
   if (!testRecipientEmail) {
     // This check is specific to the test script's direct use of prepareAndSendOfferEmail
@@ -141,8 +141,7 @@ export async function prepareAndSendOfferEmail(
     // return { success: false, message: 'Test recipient email not set for testing.' };
   }
 
-  const absoluteServiceAccountKeyPath = path.resolve(serviceAccountKeyPath);
-  console.log('[emailSending.action.ts] Absolute Service Account Key Path:', absoluteServiceAccountKeyPath);
+  console.log('[emailSending.action.ts] Using service account key from environment variable');
 
   // Determine the recipient
   // For testing, we use TEST_RECIPIENT_EMAIL. In production, use lead.contact1_email_1 or other lead emails.
@@ -248,7 +247,7 @@ export async function prepareAndSendOfferEmail(
     try {
       console.log('[emailSending.action.ts] Attempting to authenticate with Google...');
       const auth = new google.auth.GoogleAuth({
-        keyFile: absoluteServiceAccountKeyPath, // Use absolute path
+        credentials: JSON.parse(serviceAccountKey),
         scopes: ['https://www.googleapis.com/auth/gmail.send'],
       });
 
