@@ -323,6 +323,27 @@ const LeadsView: React.FC = () => {
         query = query.eq('market_region', filterMarketRegion);
       }
 
+      // Apply search term filter
+      if (tableSearchTerm && tableSearchTerm.trim() !== '') {
+        const searchTermQuery = `%${tableSearchTerm.trim()}%`;
+        query = query.or(
+          `contact1_name.ilike.${searchTermQuery},` +
+          `contact1_email_1.ilike.${searchTermQuery},` +
+          `contact2_name.ilike.${searchTermQuery},` +
+          `contact2_email_1.ilike.${searchTermQuery},` +
+          `contact3_name.ilike.${searchTermQuery},` +
+          `contact3_email_1.ilike.${searchTermQuery},` +
+          `mls_curr_list_agent_name.ilike.${searchTermQuery},` +
+          `mls_curr_list_agent_email.ilike.${searchTermQuery},` +
+          `property_address.ilike.${searchTermQuery},` +
+          `property_city.ilike.${searchTermQuery},` +
+          `property_state.ilike.${searchTermQuery},` +
+          `property_postal_code.ilike.${searchTermQuery},` +
+          `notes.ilike.${searchTermQuery},` +
+          `status.ilike.${searchTermQuery}`
+        );
+      }
+
       // Apply sorting
       if (sortField) {
         query = query.order(sortField as string, { ascending: sortDirection === 'asc' });
@@ -364,7 +385,7 @@ const LeadsView: React.FC = () => {
       setError(err.message || 'Failed to fetch leads.');
     }
     setIsLoading(false);
-  }, [supabase, filterMarketRegion, sortField, sortDirection, currentPage, rowsPerPage]);
+  }, [supabase, filterMarketRegion, sortField, sortDirection, currentPage, rowsPerPage, tableSearchTerm]);
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -385,6 +406,13 @@ const LeadsView: React.FC = () => {
       // setError('Failed to load initial page data.'); 
     });
   }, [fetchMarketRegions, fetchNormalizedLeads]); // Initial fetch
+
+  // Effect to reset page to 1 when search term or region filter changes
+  useEffect(() => {
+    if (tableSearchTerm || (filterMarketRegion && filterMarketRegion !== 'All')) {
+      setCurrentPage(1);
+    }
+  }, [tableSearchTerm, filterMarketRegion]);
 
   // Handlers
   const handleSort = (field: keyof NormalizedLead | '') => {
