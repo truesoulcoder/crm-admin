@@ -199,7 +199,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
                 {email && <span className="text-xs opacity-70">{email}</span>}
               </div>
             </li>
-            <div className="divider my-0"></div>
+            <li className="divider my-0"></li>
             <li>
               <a
                 onClick={async (e) => {

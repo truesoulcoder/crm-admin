@@ -1,10 +1,12 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { Session, User } from '@supabase/supabase-js';
-import { getSupabaseSession } from '@/lib/auth';
-import supabase from '@/lib/supabaseClient'; // Import supabase client (default import)
 import { useRouter, usePathname } from 'next/navigation';
+
+import { Session, User } from '@supabase/supabase-js';
+
+import { getSupabaseSession } from '@/lib/auth';
+import supabase from '@/lib/supabaseClient';
 
 interface UserContextType {
   user: User | null;
@@ -73,8 +75,8 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
           setUser(null);
           setRole('guest');
           setIsLoading(false);
-          if (pathname !== '/login') {
-            router.replace('/login'); // Redirect to login on sign out
+          if (pathname !== '/') {
+            router.replace('/'); // Redirect to login page (root) on sign out
           }
         }
       } else if (event === 'USER_UPDATED') {
@@ -87,10 +89,13 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     });
 
     const fetchUserSessionAndRole = async () => {
+      console.log('[UserProvider] fetchUserSessionAndRole: CALLED. isMounted:', isMounted);
       if (!isMounted) return;
       setIsLoading(true);
+      console.log('[UserProvider] fetchUserSessionAndRole: About to call getSupabaseSession. isMounted:', isMounted);
       try {
         const currentSession = await getSupabaseSession();
+        console.log('[UserProvider] fetchUserSessionAndRole: getSupabaseSession call COMPLETE. Session:', currentSession, 'isMounted:', isMounted);
         if (isMounted) {
           if (currentSession) {
             console.log("[UserProvider] Session found. User ID:", currentSession.user.id);
@@ -102,14 +107,14 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
             // Role-based redirection for users already authenticated and navigating directly
             // The login.tsx and index.tsx pages will handle their own redirects if user lands there.
-            if (pathname !== '/login' && pathname !== '/') { // Don't interfere with login/index redirects
+            if (pathname !== '/') { // Don't interfere with login page redirects
               if (userRole === 'crmuser' && !pathname.startsWith('/crm')) {
                 console.log(`[UserProvider] Authenticated crmuser ('${userRole}') on restricted path '${pathname}'. Redirecting to /crm.`);
                 router.replace('/crm');
               } else if (userRole === 'guest' || (userRole !== 'superadmin' && userRole !== 'crmuser')) {
                 // If user is guest or unknown role on a protected path (not login/index), send to login
-                console.log(`[UserProvider] Authenticated user with role ('${userRole}') on protected path '${pathname}'. Redirecting to /login.`);
-                router.replace('/login');
+                console.log(`[UserProvider] User with role ('${userRole}') on path '${pathname}' needs redirection. Redirecting to login page ('/').`);
+                router.replace('/');
               }
               // SuperAdmins are generally allowed on any authenticated path.
             }
@@ -119,16 +124,19 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
             setUser(null);
             setRole('guest');
             console.log("[UserProvider] No active session. isLoading:", isLoading, "Path:", pathname);
-            if (pathname !== '/login' && pathname !== '/') {
+            if (pathname !== '/') {
               console.log("[UserProvider] No session and not on login/index page. UserProvider sees no session, RequireAuth should handle redirect.");
               // No direct redirect from here to avoid conflicts with RequireAuth
-              // RequireAuth should catch this state and redirect to /login.
+              // RequireAuth should catch this state and redirect to login page ('/').
             }
           }
           setError(null);
         }
       } catch (e: any) {
-        console.error("[UserProvider] Error fetching session or role:", e);
+        console.error("[UserProvider] Error fetching session or role: RAW ERROR:", e);
+        if (e instanceof Error) {
+          console.error("[UserProvider] Error fetching session or role: NAME:", e.name, "MESSAGE:", e.message, "STACK:", e.stack);
+        }
         if (isMounted) {
             setError("Error loading user data. Please try logging in again.");
         }
@@ -138,14 +146,17 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    fetchUserSessionAndRole();
+    (async () => {
+      await fetchUserSessionAndRole();
+    })();
 
     return () => {
       isMounted = false;
       authListener?.subscription?.unsubscribe(); // Clean up the auth listener
       console.log("[UserProvider] Unmounted, auth listener unsubscribed.");
     };
-  }, [pathname, router]); // Added router to dependencies as it's used for redirection
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, router]);
 
   if (isLoading && !session) {
       console.log("[UserProvider] Render: Initial load, no session yet. Displaying loader.");

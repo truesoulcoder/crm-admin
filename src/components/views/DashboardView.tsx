@@ -9,6 +9,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line
 } from 'recharts';
 
+import { useUser } from '@/contexts/UserContext'; // Added import
+
 // Interfaces
 interface SenderKpi {
   sender_id: string;
@@ -47,7 +49,8 @@ const StatCardItem: React.FC<StatCardItemProps> = ({ title, value, icon, descrip
 );
 
 const DashboardView: React.FC = () => {
-  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const { user, isLoading: isUserLoading, role } = useUser(); // Added useUser hook
+  const [supabase] = useState(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!));
   const [kpiData, setKpiData] = useState<SenderKpi[]>([]);
   const [campaignEngineStatus, setCampaignEngineStatus] = useState<CampaignEngineStatus | null>(null);
   const [isLoadingKpis, setIsLoadingKpis] = useState<boolean>(true);
@@ -106,7 +109,7 @@ const DashboardView: React.FC = () => {
         setKpiData([]);
       }
     } catch (err: any) {
-      console.error('Error fetching KPI data:', err);
+      // console.error('Error fetching KPI data:', err);
       setError('Failed to load KPI data. ' + err.message);
       setKpiData([]);
     } finally {
@@ -128,7 +131,7 @@ const DashboardView: React.FC = () => {
         if (dbError.code === 'PGRST116') { // No rows found
           // If the setting doesn't exist, assume engine is off. Consider creating it here if appropriate.
           setCampaignEngineStatus({ is_running: false, last_status_change: new Date().toISOString() });
-          console.warn('Campaign engine status setting not found in application_settings. Defaulting to OFF.');
+          // console.warn('Campaign engine status setting not found in application_settings. Defaulting to OFF.');
         } else {
           throw dbError;
         }
@@ -142,7 +145,7 @@ const DashboardView: React.FC = () => {
         setCampaignEngineStatus({ is_running: false, last_status_change: new Date().toISOString() });
       }
     } catch (err: any) {
-      console.error('Error fetching campaign engine status:', err);
+      // console.error('Error fetching campaign engine status:', err);
       setError((prev) => prev ? prev + '\nFailed to load campaign status.' : 'Failed to load campaign status. ' + err.message);
     } finally {
       setIsLoadingStatus(false);
@@ -157,12 +160,12 @@ const DashboardView: React.FC = () => {
       await fetchKpiData();
     };
 
-    if (user) { // Only attempt to load data if the user object is available
+    // Only attempt to load data if the user is loaded and present
+    if (!isUserLoading && user) {
       void loadDashboardData();
     }
-    // Adding user to the dependency array ensures this effect re-runs if the user changes,
-    // which is often desired for data fetching dependent on user identity.
-  }, [fetchCampaignEngineStatus, fetchKpiData, user]);
+    // Adding user and isUserLoading to the dependency array ensures this effect re-runs appropriately.
+  }, [fetchCampaignEngineStatus, fetchKpiData, user, isUserLoading]);
 
   // --- Campaign Engine Control --- 
   const handleToggleCampaignEngine = async () => {
@@ -176,7 +179,7 @@ const DashboardView: React.FC = () => {
       if (!confirmStart) return;
 
       // TODO: Implement actual pre-flight check logic (e.g., RPC call)
-      console.log('Pre-flight check: Initiating test emails...');
+      // console.log('Pre-flight check: Initiating test emails...');
       // Example: await supabase.rpc('run_campaign_preflight_check');
       // alert('Pre-flight check initiated. Engine will start upon success.');
     }
@@ -193,7 +196,7 @@ const DashboardView: React.FC = () => {
       setCampaignEngineStatus({ is_running: newStatus, last_status_change: new Date().toISOString() });
       alert(`Campaign engine ${newStatus ? 'started' : 'stopped'} successfully.`);
     } catch (err: any) {
-      console.error('Error toggling campaign engine:', err);
+      // console.error('Error toggling campaign engine:', err);
       alert('Failed to toggle campaign engine: ' + err.message);
     } finally {
       setIsLoadingStatus(false);
@@ -218,7 +221,8 @@ const DashboardView: React.FC = () => {
   };
 
   // --- Render Logic --- 
-  if (isLoadingKpis || isLoadingStatus) {
+  // --- Render Logic --- 
+  if (isUserLoading || isLoadingKpis || isLoadingStatus) { // Added isUserLoading to the condition
     return (
       <div className="flex min-h-[calc(100vh-10rem)] flex-col items-center justify-center bg-base-100 p-4">
         <span className="loading loading-spinner loading-lg text-primary"></span>

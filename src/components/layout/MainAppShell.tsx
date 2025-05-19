@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+
 import RequireAuth from '@/components/RequireAuth'; // Assuming RequireAuth is in src/components
 
 import Navbar from './Navbar';
