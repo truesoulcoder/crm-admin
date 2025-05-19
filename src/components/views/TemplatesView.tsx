@@ -250,6 +250,33 @@ const TemplatesView: React.FC = () => {
     [isClient] // Removed newTemplateBody from deps to prevent re-initialization
   );
 
+  // --- PDF Preview Modal State and Handler ---
+  const handlePreviewPdf = async (template: DocumentTemplate) => {
+    setPdfLoading(true);
+    setPdfError(null);
+    setPdfModalOpen(true);
+    try {
+      // Only support document templates for now
+      if (template.template_type !== 'document') {
+        setPdfError('PDF preview is only available for document templates.');
+        setPdfLoading(false);
+        return;
+      }
+      const res = await fetch(`/api/document-templates/${template.id}-sample-pdf`);
+      if (!res.ok) throw new Error('Failed to generate PDF preview');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setPdfUrl(url);
+    } catch (e) {
+      const err = e instanceof Error ? e.message : 'An unknown error occurred';
+      console.error('PDF preview error:', e);
+      setPdfError(`Failed to load PDF preview: ${err}`);
+      setPdfUrl(null);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   // Update editor content when newTemplateBody changes (only on initial load or when editing a different template)
   useEffect(() => {
     if (editor && newTemplateBody !== lastContent.current) {
@@ -857,66 +884,48 @@ const TemplatesView: React.FC = () => {
           </div>
         </dialog>
       )}
+      {/* PDF Preview Modal JSX */}
+      {pdfModalOpen && (
+        <dialog id="pdf_preview_modal" className="modal modal-open" open>
+          <div className="modal-box w-11/12 max-w-3xl">
+            <form method="dialog">
+              <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onClick={() => { setPdfModalOpen(false); setPdfUrl(null); setPdfError(null); }}>
+                ✕
+              </button>
+            </form>
+            <h3 className="font-bold text-lg mb-4">PDF Preview</h3>
+            {pdfLoading ? (
+              <div className="flex flex-col items-center justify-center min-h-[300px]">
+                <Loader2 className="animate-spin mb-4" size={32} />
+                <span>Generating PDF preview...</span>
+              </div>
+            ) : pdfError ? (
+              <div className="alert alert-error mb-4">
+                <div className="flex-1">
+                  <X size={18} className="mr-2"/>
+                  <label>{pdfError}</label>
+                </div>
+              </div>
+            ) : pdfUrl ? (
+              <iframe
+                src={pdfUrl}
+                title="PDF Preview"
+                className="w-full h-[70vh] border rounded-lg"
+                style={{ minHeight: 400 }}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center min-h-[300px]">
+                <span>No PDF to display or an error occurred.</span>
+              </div>
+            )}
+          </div>
+        </dialog>
+      )}
+
       {/* Toast Notification */}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 };
-
-// --- PDF Preview Modal State and Handler ---
-// (Moved into TemplatesView function)
-
-const handlePreviewPdf = async (template: DocumentTemplate) => {
-  setPdfLoading(true);
-  setPdfError(null);
-  setPdfModalOpen(true);
-  try {
-    // Only support document templates for now
-    if (template.template_type !== 'document') {
-      setPdfError('PDF preview is only available for document templates.');
-      setPdfLoading(false);
-      return;
-    }
-    const res = await fetch(`/api/document-templates/${template.id}-sample-pdf`);
-    if (!res.ok) throw new Error('Failed to generate PDF preview');
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    setPdfUrl(url);
-  } catch (e) {
-    setPdfError('Failed to load PDF preview.');
-    setPdfUrl(null);
-  } finally {
-    setPdfLoading(false);
-  }
-};
-
-// --- PDF Preview Modal JSX ---
-{pdfModalOpen && (
-  <dialog id="pdf_preview_modal" className="modal modal-open">
-    <div className="modal-box w-11/12 max-w-3xl">
-      <form method="dialog">
-        <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onClick={() => { setPdfModalOpen(false); setPdfUrl(null); }}>
-          ✕
-        </button>
-      </form>
-      <h3 className="font-bold text-lg mb-4">PDF Preview</h3>
-      {pdfLoading ? (
-        <div className="flex flex-col items-center justify-center min-h-[300px]">
-          <Loader2 className="animate-spin mb-4" size={32} />
-          <span>Generating PDF preview...</span>
-        </div>
-      ) : pdfError ? (
-        <div className="alert alert-error mb-4">{pdfError}</div>
-      ) : pdfUrl ? (
-        <iframe
-          src={pdfUrl}
-          title="PDF Preview"
-          className="w-full h-[70vh] border rounded-lg"
-          style={{ minHeight: 400 }}
-        />
-      ) : null}
-    </div>
-  </dialog>
-)}
 
 export default TemplatesView;

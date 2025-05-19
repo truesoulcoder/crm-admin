@@ -66,10 +66,16 @@
             -   [x] Multi-recipient handling (contacts 1-3 + agent)
 
 ### 5. Dashboard & Monitoring
-    -   [x] Core `DashboardView.tsx` component implemented and integrated into `dashboard/page.tsx`.
-        -   [x] Displays various metrics and charts (currently using mock data, as per `DashboardView.tsx` initial review).
-        -   [ ] Real-time data integration and specific KPI tracking for live operations to be verified/completed.
-        -   [ ] Pre-flight check for campaign engine (email test send) needs implementation/verification.
+    -   [x] A dashboard to control the entire operation and monitor the progress in real time, including graphs/charts and statistics for each email sender account.  We're tracking KPI data for emails (sent, delivered, bounced) and the control for starting and stopping the engine that assigns leads to email senders has to be wired to do a pre-flight check to test send one email from each sender to the single user who is logged in to control the app (in this case, me and my address chrisphillips@truesoulpartners.com).
+    *   **Status: Significantly Implemented.**
+    *   **Details:** `DashboardView.tsx` has been rewritten to `DashboardView_temp.tsx` to resolve persistent parsing and structural issues. The new version includes:
+        *   Real-time KPI monitoring (Supabase realtime & polling).
+        *   Bar charts for sender performance (Recharts).
+        *   Display of key email statistics (sent, delivered, opened, clicked, bounced).
+        *   Controls for starting/stopping the campaign engine.
+        *   Pre-flight check functionality before campaign start.
+        *   Robust error handling and a live activity console.
+    *   **Next Steps:** Review `DashboardView_temp.tsx`, integrate if satisfactory, and perform thorough testing.
 
 ### 6. Settings Management
     -   [x] UI for settings implemented (`SettingsView.tsx`) with tabs for:
