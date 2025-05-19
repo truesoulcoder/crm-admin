@@ -377,6 +377,30 @@ const LeadsView: React.FC = () => {
           _primaryContact: getPrimaryContact(lead)
         }));
 
+      // Client-side re-sorting if tableSearchTerm looks like a name and is not an email
+      if (tableSearchTerm && tableSearchTerm.trim() !== '' && !tableSearchTerm.includes('@') && isNaN(Number(tableSearchTerm))) {
+        const searchLower = tableSearchTerm.toLowerCase();
+        validLeads.sort((a, b) => {
+          const aName = a._primaryContact?.name?.toLowerCase() || '';
+          const bName = b._primaryContact?.name?.toLowerCase() || '';
+
+          // Prioritize exact matches first, then partial matches
+          const aExactMatch = aName === searchLower;
+          const bExactMatch = bName === searchLower;
+          const aPartialMatch = aName.includes(searchLower);
+          const bPartialMatch = bName.includes(searchLower);
+
+          if (aExactMatch && !bExactMatch) return -1;
+          if (!aExactMatch && bExactMatch) return 1;
+          if (aPartialMatch && !bPartialMatch) return -1;
+          if (!aPartialMatch && bPartialMatch) return 1;
+          
+          // Optional: if names are similar, sort by created_at or other field as secondary
+          // For now, keep original relative order if both or neither match partially
+          return 0; 
+        });
+      }
+
       setLeads(validLeads);
       setTotalLeads(count || 0);
 

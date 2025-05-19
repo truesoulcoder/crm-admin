@@ -67,6 +67,8 @@ const CampaignsView: React.FC = () => {
   const [documentTemplates, setDocumentTemplates] = useState<{id: string, name: string}[]>([]);
   const [selectedEmailTemplate, setSelectedEmailTemplate] = useState('');
   const [selectedDocumentTemplate, setSelectedDocumentTemplate] = useState('');
+  const [availableMarketRegions, setAvailableMarketRegions] = useState<string[]>([]);
+  const [selectedMarketRegion, setSelectedMarketRegion] = useState('');
   const [availableSenders, setAvailableSenders] = useState<Sender[]>([]);
   const [selectedSenders, setSelectedSenders] = useState<Sender[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -153,20 +155,39 @@ const CampaignsView: React.FC = () => {
       if (!documentTemplatesRes.ok) {
         throw new Error(`Failed to fetch document templates: ${documentTemplatesRes.statusText}`);
       }
-      const fetchedDocumentTemplates = await documentTemplatesRes.json();
-      if (Array.isArray(fetchedDocumentTemplates)) {
-        setDocumentTemplates(fetchedDocumentTemplates);
-        if (fetchedDocumentTemplates.length > 0 && fetchedDocumentTemplates[0]?.id) {
-          setSelectedDocumentTemplate(fetchedDocumentTemplates[0].id);
+      const responseJson = await documentTemplatesRes.json();
+      const actualTemplatesArray = responseJson.data; 
+
+      if (Array.isArray(actualTemplatesArray)) {
+        setDocumentTemplates(actualTemplatesArray);
+        if (actualTemplatesArray.length > 0 && actualTemplatesArray[0]?.id) {
+          setSelectedDocumentTemplate(actualTemplatesArray[0].id);
         } else {
-          setSelectedDocumentTemplate(''); // Or handle no templates available
+          setSelectedDocumentTemplate('');
         }
       } else {
-        console.error('Fetched document templates is not an array:', fetchedDocumentTemplates);
+        console.error('Fetched document templates .data property is not an array or is missing:', responseJson);
         setDocumentTemplates([]);
-        setSelectedDocumentTemplate(''); // Reset if data is invalid
-        // Consider setting a user-facing error if this is critical
-        // setError(prevError => (prevError ? prevError + " " : "") + 'Error parsing document templates.');
+        setSelectedDocumentTemplate('');
+        // setError(prevError => (prevError ? prevError + " " : "") + 'Error parsing document templates data.');
+      }
+
+      // Fetch distinct market regions from normalized_leads
+      const { data: regionsData, error: regionsError } = await supabase
+        .from('normalized_leads')
+        .select('market_region', { distinct: true });
+
+      if (regionsError) throw regionsError;
+
+      const markets = regionsData
+        ?.map(item => item.market_region)
+        .filter((value, index, self) => value !== null && value !== '' && self.indexOf(value) === index) // Filter out null/empty and get unique
+        .sort() || []; // Sort alphabetically
+      setAvailableMarketRegions(markets);
+      if (markets.length > 0) {
+        setSelectedMarketRegion(markets[0]); // Default to the first market region
+      } else {
+        setSelectedMarketRegion('');
       }
 
     } catch (err) {
@@ -235,8 +256,8 @@ const CampaignsView: React.FC = () => {
     // Find the selected email template object
     const selectedTemplate = emailTemplates.find(t => t.id === selectedEmailTemplate);
 
-    if (!campaignName || !selectedEmailTemplate || selectedSenders.length === 0) {
-      setError('Please fill in all required fields and select at least one sender.');
+    if (!campaignName || !selectedEmailTemplate || selectedSenders.length === 0 || !selectedMarketRegion) {
+      setError('Please fill in all required fields, select at least one sender, and choose a market region.');
       return;
     }
 
@@ -253,9 +274,9 @@ const CampaignsView: React.FC = () => {
         .from('campaigns')
         .insert([{
           name: campaignName,
-          subject: subjectToSave, // Use the subject from the template
           email_template_id: selectedEmailTemplate, // This is the ID, which is correct
-          document_template_id: selectedDocumentTemplate || null, // Ensure null if empty
+          pdf_template_id: selectedDocumentTemplate || null, // Ensure null if empty, and aligns with DB schema
+          target_market_region: selectedMarketRegion, // Add selected market region
           assigned_sender_ids: selectedSenders.map(s => s.id),
           status: 'Draft',
           // created_at: new Date().toISOString(), // Supabase can handle created_at with default now()
@@ -270,6 +291,7 @@ const CampaignsView: React.FC = () => {
       // setCampaignSubject(''); // Remove this line
       setSelectedEmailTemplate(emailTemplates.length > 0 && emailTemplates[0]?.id ? emailTemplates[0].id : ''); // Reset to default or empty
       setSelectedDocumentTemplate('');
+      setSelectedMarketRegion(availableMarketRegions.length > 0 ? availableMarketRegions[0] : ''); // Reset to default or empty
       setSelectedSenders([]);
       setIsModalOpen(false);
       setError(null);
@@ -475,6 +497,30 @@ const CampaignsView: React.FC = () => {
                   Give your campaign a descriptive name for internal reference
                 </div>
               </div>
+
+              {/* Market Region Selection - Full Width */}
+              <div className="form-control w-full mb-4">
+                <label className="label">
+                  <span className="label-text font-medium">Target Market Region</span>
+                  {selectedMarketRegion && (
+                    <span className="label-text-alt bg-success/10 px-2 py-0.5 rounded-full text-success">Selected</span>
+                  )}
+                </label>
+                <select 
+                  className="select select-bordered w-full"
+                  value={selectedMarketRegion}
+                  onChange={(e) => setSelectedMarketRegion(e.target.value)}
+                  required
+                >
+                  <option value="" disabled={availableMarketRegions.length > 0}>Select a market region</option>
+                  {availableMarketRegions.map(region => (
+                    <option key={region} value={region}>{region}</option>
+                  ))}
+                </select>
+                <div className="text-xs mt-2 text-base-content/70">
+                  Required: Select the market this campaign will target.
+                </div>
+              </div>
               
               
 
@@ -514,6 +560,7 @@ const CampaignsView: React.FC = () => {
                   )}
                 </div>
 
+                {/* Market Region Selection */}
                 <div className="form-control">
                   <label className="label">
                     <span className="label-text font-medium">Choose Document Template</span>
