@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+
 import { useUser } from '@/contexts/UserContext';
-import supabase from '@/lib/supabaseClient'; // For Google OAuth
+import { supabase } from '@/lib/supabase/client'; // For Google OAuth
 
 export default function LoginPage() {
   const { user, role, isLoading, error: userContextError } = useUser();
@@ -64,10 +65,10 @@ export default function LoginPage() {
               Please log in with your Google account to access the dashboard.
             </p>
             {userContextError && (
-                <p className="text-error mb-4">Error initializing user: {userContextError}</p>
+                <p className="text-error mb-4">Error initializing user: {typeof userContextError === 'string' ? userContextError : (userContextError as Error)?.message || 'Unknown error'}</p>
             )}
             <button
-              onClick={handleGoogleLogin}
+              onClick={() => { handleGoogleLogin().catch(err => console.error("Google login onClick handler error:", err)); }}
               className="btn btn-primary btn-lg"
               disabled={isLoading} // Though isLoading is handled above, good practice
             >

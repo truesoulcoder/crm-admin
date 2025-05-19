@@ -1,12 +1,11 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
-
 import { Session, User } from '@supabase/supabase-js';
+import { useRouter, usePathname } from 'next/navigation';
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
 import { getSupabaseSession } from '@/lib/auth';
-import supabase from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabase/client';
 
 interface UserContextType {
   user: User | null;
@@ -148,7 +147,11 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
     (async () => {
       await fetchUserSessionAndRole();
-    })();
+    })().catch(err => {
+      // Handle or log any errors from fetchUserSessionAndRole if needed
+      // This prevents an unhandled promise rejection if fetchUserSessionAndRole itself throws
+      console.error("[UserProvider] Error during initial fetchUserSessionAndRole call:", err);
+    });
 
     return () => {
       isMounted = false;

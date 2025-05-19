@@ -1,5 +1,13 @@
 'use client';
 
+import { Menu, UserCircle, Search } from 'lucide-react';
+import Image from 'next/image';
+import { useEffect, useState } from 'react';
+
+import { updateUserProfile } from '@/actions/update-user-profile';
+import ThemeSelector from '@/components/ThemeSelector';
+import { supabase } from '@/lib/supabase/client';
+
 // Helper function to generate initials from a name
 function getInitials(name?: string): string {
   if (!name || name.trim() === '') return '??';
@@ -12,14 +20,6 @@ function getInitials(name?: string): string {
   }
   return '??';
 }
-
-import { Menu, UserCircle, Search } from 'lucide-react';
-import Image from 'next/image';
-import { useEffect, useState } from 'react';
-
-import ThemeSelector from '@/components/ThemeSelector';
-import { createClient } from '@/lib/supabase/client';
-import { updateUserProfile } from '@/actions/update-user-profile';
 
 interface NavbarProps {
   onMenuClick: () => void; // For mobile sidebar toggle
@@ -36,7 +36,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
     const loadProfile = async () => {
       try {
         setIsLoading(true);
-        const supabase = createClient();
+
         // Check for session before fetching user
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
@@ -99,7 +99,6 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
     void loadProfile();
     
     // Set up auth state change listener
-    const supabase = createClient();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         try {
@@ -137,7 +136,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
           setFullName(fullName);
           setEmail(user.email || null);
         } catch (error) {
-          console.error('Error in auth state change:', error);
+          console.error('Error in auth state change:', error instanceof Error ? error.message : String(error));
         }
       } else if (event === 'SIGNED_OUT') {
         setFullName(null);
@@ -202,16 +201,19 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
             <li className="divider my-0"></li>
             <li>
               <a
-                onClick={async (e) => {
+                onClick={(e) => {
                   e.preventDefault();
-                  try {
-                    const { logout } = await import('@/lib/auth');
-                    await logout();
-                    window.location.href = '/';
-                  } catch (error) {
-                    console.error('Logout failed:', error);
-                    alert('Logout failed. Please try again.');
-                  }
+                  const handleLogout = async () => {
+                    try {
+                      const { logout } = await import('@/lib/auth');
+                      await logout();
+                      window.location.href = '/'; // Consider using Next.js router.replace('/') for client-side navigation
+                    } catch (error) {
+                      console.error('Logout failed:', error instanceof Error ? error.message : String(error));
+                      alert('Logout failed. Please try again.');
+                    }
+                  };
+                  handleLogout().catch(err => console.error("handleLogout outer catch:", err));
                 }}
                 className="text-error hover:bg-error hover:text-error-content"
               >
