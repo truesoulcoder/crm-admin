@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {
-      console.error('Error getting user:', userError);
+
       return NextResponse.json({ 
         name: null, 
         picture: null,

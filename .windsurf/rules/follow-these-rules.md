@@ -2,7 +2,7 @@
 trigger: always_on
 ---
 
-RULE 0:   EVERY TIME I ASK TO EXPLAIN A PIECE OF CODE, I WANT YOU TO FIX IT FOR ME.  DO NOT ASK, JUST FIX IT.
+RULE 0:  WRITE THE CODE FOR ME EVERY TIME
 
 OUR DEV PLAN
 we need to focus on the core features only.  they are:

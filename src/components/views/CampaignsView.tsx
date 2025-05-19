@@ -30,7 +30,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Define TypeScript interfaces
-interface User {
+interface Sender {
   id: string;
   email: string;
   name: string;
@@ -55,8 +55,8 @@ const CampaignsView: React.FC = () => {
   const [documentTemplates, setDocumentTemplates] = useState<{id: string, name: string}[]>([]);
   const [selectedEmailTemplate, setSelectedEmailTemplate] = useState('');
   const [selectedDocumentTemplate, setSelectedDocumentTemplate] = useState('');
-  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+  const [availableSenders, setAvailableSenders] = useState<Sender[]>([]);
+  const [selectedSenders, setSelectedSenders] = useState<Sender[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -97,24 +97,24 @@ const CampaignsView: React.FC = () => {
     }
   }, [supabase]);
 
-  // Fetch supporting data (users, templates)
+  // Fetch supporting data (senders, templates)
   const fetchSupportingData = useCallback(async () => {
     try {
-      // Fetch available users (email_senders)
-      const { data: usersData, error: usersError } = await supabase
-        .from('email_senders')
+      // Fetch available senders
+      const { data: sendersData, error: sendersError } = await supabase
+        .from('senders')
         .select('*')
         .eq('is_active', true);
       
-      if (usersError) throw usersError;
+      if (sendersError) throw sendersError;
       
-      const users = usersData.map(user => ({
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        avatarUrl: user.avatar_url
+      const senders = sendersData.map(sender => ({
+        id: sender.id,
+        email: sender.email,
+        name: sender.name,
+        avatarUrl: sender.avatar_url
       }));
-      setAvailableUsers(users);
+      setAvailableSenders(senders);
       
       // Fetch email templates from API route
       const emailTemplatesRes = await fetch('/api/email-templates');
@@ -147,19 +147,19 @@ const CampaignsView: React.FC = () => {
     }
   }, [supabase]);
 
-  // Toggle user selection
-  const toggleUserSelection = (user: User) => {
-    setSelectedUsers(prev => {
-      const isAlreadySelected = prev.some(u => u.id === user.id);
+  // Toggle sender selection
+  const toggleSenderSelection = (sender: Sender) => {
+    setSelectedSenders(prev => {
+      const isAlreadySelected = prev.some(s => s.id === sender.id);
       return isAlreadySelected 
-        ? prev.filter(u => u.id !== user.id) 
-        : [...prev, user];
+        ? prev.filter(s => s.id !== sender.id) 
+        : [...prev, sender];
     });
   };
 
   // Load data on component mount
   useEffect(() => {
-    void void fetchCampaigns();
+    void fetchCampaigns();
     void fetchSupportingData();
   }, [fetchCampaigns, fetchSupportingData]);
 
@@ -203,7 +203,7 @@ const CampaignsView: React.FC = () => {
     setError(null);
     setSuccess(null);
     
-    if (!campaignName || !selectedEmailTemplate || selectedUsers.length === 0) {
+    if (!campaignName || !selectedEmailTemplate || selectedSenders.length === 0) {
       setError('Please fill in all required fields and select at least one sender.');
       return;
     }
@@ -217,7 +217,7 @@ const CampaignsView: React.FC = () => {
           subject: campaignSubject,
           email_template_id: selectedEmailTemplate,
           document_template_id: selectedDocumentTemplate,
-          assigned_user_ids: selectedUsers.map(u => u.id),
+          assigned_sender_ids: selectedSenders.map(s => s.id),
           status: 'Draft',
           created_at: new Date().toISOString(),
           is_active: true
@@ -229,7 +229,7 @@ const CampaignsView: React.FC = () => {
       // Reset form
       setCampaignName('');
       setCampaignSubject('');
-      setSelectedUsers([]);
+      setSelectedSenders([]);
       setIsModalOpen(false);
       setError(null);
       
@@ -275,7 +275,7 @@ const CampaignsView: React.FC = () => {
                 <th>Campaign</th>
                 <th>Status</th>
                 <th>Created</th>
-                <th>Assigned To</th>
+                <th>Assigned Senders</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -291,20 +291,23 @@ const CampaignsView: React.FC = () => {
                   <td>{getStatusBadge(campaign.status)}</td>
                   <td>{new Date(campaign.created_at).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
-                    {campaign.assigned_user_ids && campaign.assigned_user_ids.length > 0 ? (
+                    {campaign.assigned_sender_ids && campaign.assigned_sender_ids.length > 0 ? (
                       <div className="flex items-center relative h-6"> 
-                        <AvatarGroup 
-                          avatars={campaign.assigned_user_ids?.map((userId: string) => {
-                            const user = availableUsers.find(u => u.id === userId);
-                            return user ? {
-                              src: user.avatarUrl ? user.avatarUrl : undefined,
-                              value: user.avatarUrl ? undefined : (user.name ? user.name.split(' ').map(n => n[0]).join('') : ''),
-                              title: user.name || 'Unknown User'
-                            } as AvatarProps : null;
-                          }).filter(Boolean) || []}
-                          size="s"
-                          limit={3}
-                        />
+                        <div className="flex -space-x-2">
+  {campaign.assigned_sender_ids?.slice(0, 3).map((senderId: string) => {
+    const sender = availableSenders.find(s => s.id === senderId);
+    return sender ? (
+      <div key={sender.id} className="w-7 h-7 flex items-center justify-center rounded-full bg-primary text-primary-content text-xs font-bold border-2 border-base-100 shadow" title={sender.name}>
+        {getInitials(sender.name)}
+      </div>
+    ) : null;
+  })}
+  {campaign.assigned_sender_ids && campaign.assigned_sender_ids.length > 3 && (
+    <div className="w-7 h-7 flex items-center justify-center rounded-full bg-base-300 text-xs font-bold border-2 border-base-100 shadow" title={`+${campaign.assigned_sender_ids.length - 3} more`}>
+      +{campaign.assigned_sender_ids.length - 3}
+    </div>
+  )}
+</div>
                       </div>
                     ) : (
                       <div className="text-sm text-base-content/70">No senders assigned</div>
@@ -517,27 +520,24 @@ const CampaignsView: React.FC = () => {
               <div className="form-control mb-6">
                 <label className="label">
                   <span className="label-text font-medium">Select Email Senders</span>
-                  <span className="label-text-alt bg-primary/10 px-2 py-0.5 rounded-full text-primary-content">{selectedUsers.length} selected</span>
+                  <span className="label-text-alt bg-primary/10 px-2 py-0.5 rounded-full text-primary-content">{selectedSenders.length} selected</span>
                 </label>
                 
-                {/* Show selected users as individual Avatars */}
-                {selectedUsers.length > 0 && (
+                {/* Show selected senders as individual Avatars */}
+                {selectedSenders.length > 0 && (
                   <div className="mb-4 bg-base-100 p-3 rounded-lg border border-base-300">
-                    <div className="text-sm mb-2 text-base-content/70">Selected senders: ({selectedUsers.length})</div>
+                    <div className="text-sm mb-2 text-base-content/70">Selected senders: ({selectedSenders.length})</div>
                     <div className="flex flex-wrap gap-3">
-                      {selectedUsers.map(user => (
-                        <div key={user.id} className="relative group"> 
-                          <Avatar
-                            src={user.avatarUrl || undefined}
-                            alt={user.name || 'User avatar'}
-                            value={user.avatarUrl ? undefined : getInitials(user.name)}
-                            size="m"
-                          />
+                      {selectedSenders.map(sender => (
+                        <div key={sender.id} className="relative group"> 
+                          <div className="w-10 h-10 flex items-center justify-center rounded-full bg-primary text-primary-content text-lg font-bold border-2 border-base-100 shadow" title={sender.name}>
+  {getInitials(sender.name)}
+</div>
                           <button
-                            onClick={() => toggleUserSelection(user)} 
+                            onClick={() => toggleSenderSelection(sender)} 
                             className="absolute -top-1.5 -right-1.5 bg-error text-error-content rounded-full p-0.5 w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-error-focus focus:outline-none focus:ring-2 focus:ring-error-focus transition-opacity duration-150 ease-in-out"
-                            aria-label={`Remove ${user.name || 'sender'}`}
-                            title={`Remove ${user.name || 'sender'}`}
+                            aria-label={`Remove ${sender.name || 'sender'}`}
+                            title={`Remove ${sender.name || 'sender'}`}
                           >
                             <X size={12} strokeWidth={3}/>
                           </button>
@@ -547,28 +547,25 @@ const CampaignsView: React.FC = () => {
                   </div>
                 )}
                 
-                {/* Available users selection */}
-                <div className="text-sm mb-2 font-medium">Available Senders ({availableUsers.filter(au => !selectedUsers.some(su => su.id === au.id)).length})</div>
+                {/* Available senders selection */}
+                <div className="text-sm mb-2 font-medium">Available Senders ({availableSenders.filter(as => !selectedSenders.some(ss => ss.id === as.id)).length})</div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6 overflow-y-auto max-h-60 pr-2">
-                  {availableUsers
-                    .filter(au => !selectedUsers.some(su => su.id === au.id)) // Filter out already selected users
-                    .map(user => {
+                  {availableSenders
+                    .filter(as => !selectedSenders.some(ss => ss.id === as.id)) // Filter out already selected senders
+                    .map(sender => {
                     return (
                       <div 
-                        key={user.id} 
-                        className={`p-2 border rounded-lg cursor-pointer flex flex-col items-center text-center relative hover:border-primary transition-colors duration-150 ease-in-out ${selectedUsers.some(u => u.id === user.id) ? 'border-primary ring-2 ring-primary bg-primary/10' : 'border-base-300 bg-base-200/30 hover:bg-base-300/30'}`}
-                        onClick={() => toggleUserSelection(user)} // This should correctly call the function
+                        key={sender.id} 
+                        className={`p-2 border rounded-lg cursor-pointer flex flex-col items-center text-center relative hover:border-primary transition-colors duration-150 ease-in-out ${selectedSenders.some(s => s.id === sender.id) ? 'border-primary ring-2 ring-primary bg-primary/10' : 'border-base-300 bg-base-200/30 hover:bg-base-300/30'}`}
+                        onClick={() => toggleSenderSelection(sender)}
                       >
                         <div className="relative w-10 h-10 mb-1"> 
-                          <Avatar 
-                            src={user.avatarUrl || undefined} 
-                            alt={user.name || 'User avatar'} 
-                            value={user.avatarUrl ? undefined : getInitials(user.name)} 
-                            size="md"
-                          />
+                          <div className="w-10 h-10 flex items-center justify-center rounded-full bg-primary text-primary-content text-lg font-bold border-2 border-base-100 shadow" title={sender.name}>
+  {getInitials(sender.name)}
+</div>
                         </div>
-                        <span className="text-xs mt-1 truncate w-full font-medium" title={user.name}>{user.name || 'Unnamed User'}</span>
-                        <span className="text-xs text-gray-500 truncate w-full" title={user.email}>{user.email || 'No email'}</span>
+                        <span className="text-xs mt-1 truncate w-full font-medium" title={sender.name}>{sender.name || 'Unnamed Sender'}</span>
+                        <span className="text-xs text-gray-500 truncate w-full" title={sender.email}>{sender.email || 'No email'}</span>
                       </div>
                     );
                   })}

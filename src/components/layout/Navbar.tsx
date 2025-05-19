@@ -1,5 +1,18 @@
 'use client';
 
+// Helper function to generate initials from a name
+function getInitials(name?: string): string {
+  if (!name || name.trim() === '') return '??';
+  const parts = name.trim().split(' ').filter(p => p !== '');
+  if (parts.length === 1 && parts[0].length > 0) return parts[0].substring(0, 2).toUpperCase();
+  if (parts.length > 1) {
+    const firstInitial = parts[0].substring(0, 1);
+    const lastInitial = parts[parts.length - 1].substring(0, 1);
+    return `${firstInitial}${lastInitial}`.toUpperCase();
+  }
+  return '??';
+}
+
 import { Menu, UserCircle, Search } from 'lucide-react';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
@@ -24,12 +37,21 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
       try {
         setIsLoading(true);
         const supabase = createClient();
-        
-        // Get the current user session
+        // Check for session before fetching user
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setFullName(null);
+          setEmail(null);
+          setIsLoading(false);
+          return;
+        }
         const { data: { user }, error } = await supabase.auth.getUser();
-        
-        if (error) throw error;
-        if (!user) throw new Error('No user logged in');
+        if (error || !user) {
+          setFullName(null);
+          setEmail(null);
+          setIsLoading(false);
+          return;
+        }
         
         // Try multiple possible locations for the avatar URL
         let avatarUrl = user.user_metadata?.avatar_url || 
@@ -118,7 +140,6 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
           console.error('Error in auth state change:', error);
         }
       } else if (event === 'SIGNED_OUT') {
-        setAvatarUrl(null);
         setFullName(null);
         setEmail(null);
       }
@@ -160,26 +181,10 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
               <div className="w-10 h-10 rounded-full ring ring-primary ring-offset-base-100 ring-offset-1 flex items-center justify-center bg-base-200 overflow-hidden">
                 {isLoading ? (
                   <div className="w-10 h-10 rounded-full bg-base-300 animate-pulse" />
-                ) : avatarUrl ? (
-                  <img 
-                    src={avatarUrl} 
-                    alt={fullName || 'User avatar'} 
-                    width={40} 
-                    height={40}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      // Fallback to UserCircle if image fails to load
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = 'none';
-                      // Show the fallback icon
-                      const parent = target.parentNode as HTMLElement;
-                      const fallback = document.createElement('div');
-                      fallback.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user text-primary"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
-                      parent.appendChild(fallback);
-                    }}
-                  />
                 ) : (
-                  <UserCircle size={32} className="text-primary" />
+                  <div className="w-10 h-10 flex items-center justify-center rounded-full bg-primary text-primary-content text-lg font-bold border-2 border-base-100 shadow" title={fullName || ''}>
+                    {getInitials(fullName ?? undefined)}
+                  </div>
                 )}
               </div>
             </button>
@@ -194,8 +199,6 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
                 {email && <span className="text-xs opacity-70">{email}</span>}
               </div>
             </li>
-            <li><a>Profile Settings</a></li>
-            <li><a>Account</a></li>
             <div className="divider my-0"></div>
             <li>
               <a

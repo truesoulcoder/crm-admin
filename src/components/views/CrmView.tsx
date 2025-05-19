@@ -236,6 +236,7 @@ const CrmView: React.FC = () => {
           .from('crm_leads')
           .select('*');
 
+        console.log('Fetched leads:', data, 'Error:', error);
         if (error) throw error;
 
         setLeads(data || []);
@@ -313,11 +314,15 @@ const CrmView: React.FC = () => {
     return 'badge-neutral';
   };
 
-  // ... (rest of the code remains the same)
-
   return (
     <div className="p-4 md:p-6 bg-base-200 min-h-screen">
       <h1 className="text-3xl font-bold mb-6 text-base-content">CRM Leads</h1>
+      {/* Debug Panel */}
+      <div className="mb-4 p-2 bg-base-300 rounded text-xs">
+        <div>Leads fetched: {leads.length}</div>
+        <div>Leads after filter: {filteredLeads.length}</div>
+        {isLoading && <div>Loading leads...</div>}
+      </div>
       
       {/* Search and Filters */}
       <div className="mb-6 p-4 bg-base-100 rounded-lg shadow">

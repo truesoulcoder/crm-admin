@@ -1,35 +1,20 @@
-'use client';
-
-import { useEffect } from 'react';
-
-import MainAppShell from '@/components/layout/MainAppShell';
-import { useTheme } from '@/hooks/useTheme';
+export const metadata = {
+  icons: {
+    icon: 'https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media//favicon.ico',
+  },
+};
 
 import './globals.css';
 
+import ClientLayout from './layout-client';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const { theme } = useTheme();
-
-  // Set theme class on html element
-  useEffect(() => {
-    const root = document.documentElement;
-    // Remove any existing theme classes first
-    root.removeAttribute('class');
-    // Add the current theme class
-    if (theme && theme !== 'system') {
-      root.setAttribute('data-theme', theme);
-    } else if (typeof window !== 'undefined') {
-      // For system theme, set the current system theme
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      root.setAttribute('data-theme', systemTheme);
-    }
-  }, [theme]);
-
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-base-100">
-        <MainAppShell>{children}</MainAppShell>
+        <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
   );
 }
+

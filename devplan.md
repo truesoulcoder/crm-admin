@@ -19,12 +19,14 @@
     -   **Task 1.5: CSV Upload & Processing**
         -   [/] Implement functionality to upload raw CSV files. (New component implements CSV upload UI and logic)
         -   [/] Process uploaded CSVs into the `normalized_leads` table. (New component calls `/api/leads/upload` for processing)
-    -   **Task 1.6: Refactor `CrmView.tsx` for DaisyUI and Error Resolution**
-        -   [x] Corrected JSX structural errors (e.g., mismatched/extra closing tags).
-        -   [x] Replaced custom UI components (Input, Select, Button, Badge, Table, etc.) with standard HTML elements styled with DaisyUI.
-        -   [x] Addressed ESLint 'Promise-returning function' error.
-        -   [x] Added explicit types for improved type safety.
-        -   [x] Ensured component is free of critical parsing/type errors related to UI elements.
+    -   **Task 1.6: General Refinements, Bug Fixes, and Authentication**
+        -   [x] Corrected JSX structural errors (e.g., mismatched/extra closing tags) in `CrmView.tsx`.
+        -   [x] Replaced custom UI components (Input, Select, Button, Badge, Table, etc.) with standard HTML elements styled with DaisyUI in `CrmView.tsx`.
+        -   [x] Addressed ESLint 'Promise-returning function' error in `CrmView.tsx`.
+        -   [x] Added explicit types for improved type safety in `CrmView.tsx`.
+        -   [x] Resolve "Auth session missing!" errors and redirect loops (Implemented robust session handling in `auth.ts`, `page.tsx`, and `RequireAuth.tsx` including `onAuthStateChange`).
+        -   [x] Implement robust OAuth login flow on the home page (`page.tsx` updated with loading states, error handling, and correct use of new auth library functions).
+        -   [x] Enhance `RequireAuth` component for reliable session checking and redirection (Updated `RequireAuth.tsx` to use `getSupabaseSession` and added `onAuthStateChange` listener for dynamic updates).
 
 ### 2. Email Sender Management
     -   [ ] To be defined.

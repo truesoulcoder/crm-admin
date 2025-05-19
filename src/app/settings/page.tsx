@@ -3,7 +3,12 @@ import dynamic from 'next/dynamic';
 import React from 'react';
 
 const SettingsView = dynamic(() => import('@/components/views/SettingsView'), { ssr: false });
+import RequireAuth from '@/components/RequireAuth';
 
 export default function SettingsPage() {
-  return <SettingsView />;
+  return (
+    <RequireAuth>
+      <SettingsView />
+    </RequireAuth>
+  );
 }
