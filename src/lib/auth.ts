@@ -2,7 +2,7 @@
 "use client";
 
 // import { createBrowserClient } from '@supabase/ssr'; // Replaced by shared client
-import supabase from '@/lib/supabaseClient'; // Use the shared Supabase client
+import { supabase } from '@/lib/supabase/client'; // Use the official singleton Supabase client
 
 // window.__CRM_TOKEN__ declaration removed as it's no longer used.
 

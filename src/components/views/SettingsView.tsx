@@ -1,8 +1,8 @@
 'use client';
 
-import { createClient } from '@supabase/supabase-js';
 import { Shield, Key, Palette, BarChart2, Building2, Mail, Phone, Image as ImageIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase/client';
 
 type SettingsTab = 'access' | 'delegation' | 'branding' | 'analytics';
 
@@ -37,10 +37,7 @@ interface AnalyticsSettings {
   trackEvents: boolean;
 }
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+
 
 const SettingsView = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('access');
