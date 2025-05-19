@@ -1,15 +1,78 @@
+// External dependencies
+import { Lead, prepareAndSendOfferEmail, SenderInfo } from '@/actions/emailSending.action';
+// Internal dependencies
 import { getAdminSupabaseClient } from '@/services/supabaseAdminService';
-import { Tables, TablesInsert } from '@/types/supabase';
+import { Tables, TablesInsert, Database } from '@/types/supabase';
 
-import { sendEmail } from './gmailService';
+// Local services
 import { logSystemEvent } from './logService';
 import { generatePdfFromHtml } from './pdfService';
-import { renderTemplate } from './templateService';
 
-type CampaignJob = Tables<'campaign_jobs'>;
-type NormalizedLead = Tables<'normalized_leads'>;
-type CampaignSenderAllocation = Tables<'campaign_sender_allocations'>;
-type EmailTask = TablesInsert<'email_tasks'>;
+// Simple template rendering function with proper type safety
+const renderTemplate = (template: string, data: Record<string, unknown>): string => {
+  return template.replace(/\{\{\s*(.*?)\s*\}\}/g, (_, key: string) => {
+    const value = data[key.trim()];
+    return value !== undefined && value !== null ? String(value) : '';
+  });
+};
+
+// Type for the lead data used in email sending
+interface EmailLead extends Omit<Lead, 'id'> {
+  id: number;
+  contact1_name: string;
+  contact1_email_1: string;
+  contact2_name?: string | null;
+  contact2_email_1?: string | null;
+  contact3_name?: string | null;
+  contact3_email_1?: string | null;
+  property_address: string;
+  assessed_total: number;
+  mls_curr_list_agent_name?: string | null;
+  mls_curr_list_agent_email?: string | null;
+  [key: string]: any; // Allow additional properties for template rendering
+}
+
+// Database types
+type GeneratedDocument = Database['public']['Tables']['generated_documents']['Row'];
+type CampaignJob = Tables<'campaign_jobs'> & {
+  normalized_lead_id: number;
+};
+
+type NormalizedLead = Tables<'normalized_leads'> & {
+  contact1_email_1?: string | null;
+  contact2_email_1?: string | null;
+  contact3_email_1?: string | null;
+  wholesale_value?: number | null;
+  property_address?: string | null;
+  contact1_name?: string | null;
+  mls_curr_list_agent_name?: string | null;
+  mls_curr_list_agent_email?: string | null;
+};
+
+type CampaignSenderAllocation = Tables<'campaign_sender_allocations'> & {
+  sender_id: string;
+  sent_today: number;
+  total_sent: number;
+  next_available_at?: string | null; // Ensure this property is recognized
+};
+
+type EmailTask = TablesInsert<'email_tasks'> & {
+  id: string;
+  campaign_job_id: string;
+  assigned_sender_id: string;
+  contact_email: string;
+  status: string;
+  attachments?: Array<{
+    name: string;
+    path: string;
+    type: string;
+    document_id?: string;
+  }> | null;
+  pdf_generated?: boolean;
+  sent_at?: string | null;
+  updated_at?: string;
+  created_at?: string;
+};
 
 const supabase = getAdminSupabaseClient();
 
@@ -36,42 +99,43 @@ export async function processCampaign(campaignId: string) {
     throw new Error('Campaign not found');
   }
   const campaign = campaignData;
-
-  // Safety mode: send one email per user allocation, then exit
-  if (SAFETY_MODE) {
-    // Safety test: send one email per contact (task) for each user allocation
-    const { data: leads } = await supabase.from('normalized_leads').select('*').limit(1) as { data: NormalizedLead[] };
-    const lead = leads?.[0];
-    const effectiveLead = { ...lead, contact1_email_1: SAFETY_EMAIL, contact2_email_1: SAFETY_EMAIL, contact3_email_1: SAFETY_EMAIL };
-    // Determine contacts to test
-    const contacts = [effectiveLead.contact1_email_1, effectiveLead.contact2_email_1, effectiveLead.contact3_email_1].filter((e): e is string => !!e);
-    // Fetch allocations
-    const { data: allocs } = await supabase.from('campaign_sender_allocations').select('*').eq('campaign_id', campaignId) as { data: CampaignSenderAllocation[] };
-    for (const alloc of allocs || []) {
-      for (const _email of contacts) {
-        const subject = renderTemplate(campaign.template.subject || '', effectiveLead);
-        const body = renderTemplate(campaign.template.content || '', effectiveLead);
-        // Send to safety email to inspect
-        await sendEmail(alloc.sender_id, SAFETY_EMAIL, subject, body);
-      }
-    }
-    return;
+  
+  // Preflight checks are now handled by the dashboard
+  // The campaign engine will only process leads when status is ACTIVE
+  
+  // Ensure we have required templates
+  if (!campaign.template?.subject || !campaign.template?.content) {
+    await logSystemEvent({
+      event_type: 'ERROR',
+      message: 'Missing email template',
+      details: { campaignId },
+      campaign_id: campaignId
+    });
+    throw new Error('Missing required email template');
   }
 
   // Main processing loop
   while (true) {
     // Check campaign status
     const { data: statusRow } = await supabase.from('campaigns').select('status').eq('id', campaignId).single();
-    if (statusRow?.status === 'STOPPING') {
-      await supabase.from('campaigns').update({ status: 'STOPPED' }).eq('id', campaignId);
-      await import('./logService').then(({ logSystemEvent }) =>
-        logSystemEvent({
-          event_type: 'CAMPAIGN_STATUS',
-          message: 'Campaign stopped',
-          campaign_id: campaignId
-        })
-      );
-      break;
+    
+    // If campaign is not active, wait and check again
+    if (statusRow?.status !== 'ACTIVE') {
+      if (statusRow?.status === 'STOPPING') {
+        await supabase.from('campaigns').update({ status: 'STOPPED' }).eq('id', campaignId);
+        await import('./logService').then(({ logSystemEvent }) =>
+          logSystemEvent({
+            event_type: 'CAMPAIGN_STATUS',
+            message: 'Campaign stopped',
+            campaign_id: campaignId
+          })
+        );
+        break;
+      }
+      
+      // Wait longer before checking status again (pre-flight/awaiting confirmation)
+      await new Promise(resolve => setTimeout(resolve, 60000));
+      continue;
     }
 
     // Quota enforcement
@@ -126,26 +190,148 @@ export async function processCampaign(campaignId: string) {
     const jobId = jobData!.id;
     let jobErrors = false;
 
-    // Determine recipients: real contacts or safety override
-    const contacts = SAFETY_MODE
-      ? [SAFETY_EMAIL]
-      : [lead.contact1_email_1, lead.contact2_email_1, lead.contact3_email_1].filter((e): e is string => !!e);
-    for (const email of contacts) {
+    // Build recipient list: up to 3 contacts + MLS agent
+    type ValidRecipient = { name: string; email: string };
+    const recipients = SAFETY_MODE
+      ? [{ name: 'Test', email: SAFETY_EMAIL } as ValidRecipient]
+      : [
+          { name: lead.contact1_name, email: lead.contact1_email_1 },
+          { name: lead.contact2_name, email: lead.contact2_email_1 },
+          { name: lead.contact3_name, email: lead.contact3_email_1 },
+          { name: lead.mls_curr_list_agent_name, email: lead.mls_curr_list_agent_email },
+        ].filter((r): r is ValidRecipient => !!r.email && !!r.name);
+
+    for (const recipient of recipients) {
       // Pick user allocation
+      const now = new Date().toISOString();
       const { data: allocs } = await supabase
         .from('campaign_sender_allocations')
-        .select('*')
+        .select(`
+          *,
+          senders (id, full_name, title, email_address)
+        `)
         .eq('campaign_id', campaignId)
         .lt('sent_today', 'daily_quota')
+        .or(`next_available_at.is.null,next_available_at.lt.${now}`)
         .order('total_sent', { ascending: true })
         .limit(1);
-      const alloc = allocs?.[0];
-      if (!alloc) break;
+
+      const allocData = allocs?.[0] as (CampaignSenderAllocation & { senders: { id: string; full_name: string; title: string; email_address: string } | null }) | undefined;
+
+      if (!allocData || !allocData.senders) {
+        await logSystemEvent({
+          event_type: 'WARNING',
+          message: 'No available senders or sender details missing for campaign',
+          details: { campaignId, senderId: allocData?.sender_id },
+          campaign_id: campaignId
+        });
+        jobErrors = true;
+        break; // No senders available or details missing, stop processing this job's recipients
+      }
+
+      // This is the sender for email sending (impersonation details)
+      const senderForEmail: SenderInfo = {
+        fullName: allocData.senders.full_name,
+        title: allocData.senders.title,
+        email: allocData.senders.email_address,
+      };
+
+      // This is the allocation record for counter updates and interval logic
+      const alloc = { 
+        id: allocData.id, 
+        sender_id: allocData.sender_id, 
+        daily_quota: allocData.daily_quota,
+        sent_today: allocData.sent_today,
+        total_sent: allocData.total_sent,
+        campaign_id: allocData.campaign_id,
+        next_available_at: allocData.next_available_at,
+        created_at: allocData.created_at,
+        updated_at: allocData.updated_at
+      } as CampaignSenderAllocation;
+
+      // Create a lead data object for this specific recipient
+      let leadData: EmailLead;
+      if (recipient.name === lead.contact1_name) {
+        leadData = {
+          id: Number(effectiveLead.id) || 0,
+          contact1_name: recipient.name,
+          contact1_email_1: recipient.email,
+          contact2_name: '',
+          contact2_email_1: '',
+          contact3_name: '',
+          contact3_email_1: '',
+          property_address: effectiveLead.property_address || '',
+          assessed_total: effectiveLead.assessed_total || 0,
+          mls_curr_list_agent_name: lead.mls_curr_list_agent_name || '',
+          mls_curr_list_agent_email: lead.mls_curr_list_agent_email || '',
+        };
+      } else if (recipient.name === lead.contact2_name) {
+        leadData = {
+          id: Number(effectiveLead.id) || 0,
+          contact1_name: '',
+          contact1_email_1: '',
+          contact2_name: recipient.name,
+          contact2_email_1: recipient.email,
+          contact3_name: '',
+          contact3_email_1: '',
+          property_address: effectiveLead.property_address || '',
+          assessed_total: effectiveLead.assessed_total || 0,
+          mls_curr_list_agent_name: lead.mls_curr_list_agent_name || '',
+          mls_curr_list_agent_email: lead.mls_curr_list_agent_email || '',
+        };
+      } else if (recipient.name === lead.contact3_name) {
+        leadData = {
+          id: Number(effectiveLead.id) || 0,
+          contact1_name: '',
+          contact1_email_1: '',
+          contact2_name: '',
+          contact2_email_1: '',
+          contact3_name: recipient.name,
+          contact3_email_1: recipient.email,
+          property_address: effectiveLead.property_address || '',
+          assessed_total: effectiveLead.assessed_total || 0,
+          mls_curr_list_agent_name: lead.mls_curr_list_agent_name || '',
+          mls_curr_list_agent_email: lead.mls_curr_list_agent_email || '',
+        };
+      } else {
+        leadData = {
+          id: Number(effectiveLead.id) || 0,
+          contact1_name: '',
+          contact1_email_1: '',
+          contact2_name: '',
+          contact2_email_1: '',
+          contact3_name: '',
+          contact3_email_1: '',
+          property_address: effectiveLead.property_address || '',
+          assessed_total: effectiveLead.assessed_total || 0,
+          mls_curr_list_agent_name: recipient.name,
+          mls_curr_list_agent_email: recipient.email,
+        };
+      }
 
       // Draft email task
-      const subject = renderTemplate(campaign.template.subject || '', effectiveLead);
-      const body = renderTemplate(campaign.template.content || '', effectiveLead);
-      const { data: task } = await supabase.from('email_tasks').insert({ campaign_job_id: jobId, assigned_sender_id: alloc.sender_id, contact_email: email, subject, body, status: 'SENDING' }).single() as { data: EmailTask };
+      const subject = renderTemplate(campaign.template?.subject || '', effectiveLead as Record<string, unknown>);
+      const body = renderTemplate(campaign.template?.content || '', effectiveLead as Record<string, unknown>);
+      
+      // Create email task in database
+      const taskInsert = await supabase
+        .from('email_tasks')
+        .insert({ 
+          campaign_job_id: jobId, 
+          assigned_sender_id: alloc.sender_id, 
+          contact_email: recipient.email, 
+          subject, 
+          body, 
+          status: 'SENDING' 
+        })
+        .select()
+        .single();
+      
+      if (!taskInsert.data) {
+        throw new Error('Failed to create email task');
+      }
+      
+      const task = taskInsert.data as EmailTask;
 
       try {
         // Generate PDF if needed
@@ -153,47 +339,157 @@ export async function processCampaign(campaignId: string) {
         if (campaign.pdf_template && campaign.pdf_template.content) {
           const pdfHtml = renderTemplate(campaign.pdf_template.content, effectiveLead);
           const pdfBuf = await generatePdfFromHtml(pdfHtml);
-          attachments = [{ filename: 'attachment.pdf', content: pdfBuf }];
+          const propertyAddress = effectiveLead.property_address || 'property';
+          const safeFilename = propertyAddress
+            .replace(/[^a-z0-9]/gi, '_')
+            .replace(/_{2,}/g, '_')
+            .replace(/^_|_$/g, '');
+          attachments = [{ 
+            filename: `Letter of Intent - ${safeFilename}.pdf`, 
+            content: pdfBuf
+          }];
         }
 
-        // Send using safety override if enabled
-        const recipient = SAFETY_MODE ? SAFETY_EMAIL : email;
-        const res = await sendEmail(alloc.sender_id, recipient, subject, body, attachments);
-
-        // Update task
-        await supabase.from('email_tasks').update({ status: res.success ? 'SENT' : 'FAILED_TO_SEND', gmail_message_id: res.messageId, error: res.error }).eq('id', task!.id);
-
-        // Update allocation counts
-        await supabase.from('campaign_sender_allocations').update({ sent_today: alloc.sent_today + 1, total_sent: alloc.total_sent + 1 }).eq('id', alloc.id);
-
-        if (!res.success) jobErrors = true;
+        let retries = 0;
+        let sent = false;
+        while (retries < 3 && !sent) {
+          try {
+            const result = await prepareAndSendOfferEmail(
+              leadData,
+              senderForEmail, // Use the correctly typed SenderInfo
+              {
+                subject,
+                body,
+                attachments,
+                pdfBuffer: attachments?.[0]?.content, // Pass buffer if available
+                templateId: campaign.pdf_template?.id, // Pass template ID if available
+                leadData: effectiveLead, // Pass full lead data for template rendering in action
+              }
+            );
+            await supabase
+              .from('email_tasks')
+              .update({ 
+                status: 'SENT',
+                sent_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                gmail_message_id: result.messageId || null,
+                contact_email: recipient.email
+              })
+              .eq('id', task.id)
+              .eq('contact_email', recipient.email);
+            await supabase.rpc('increment_sender_counters', {
+              p_sender_id: alloc.sender_id,
+              p_campaign_id: campaign.id,
+              p_increment_sent: 1
+            });
+            sent = true;
+          } catch (error) {
+            retries++;
+            if (retries < 3) {
+              await new Promise(resolve => setTimeout(resolve, 30000));
+            } else {
+              await supabase
+                .from('email_tasks')
+                .update({ status: 'FAILED', updated_at: new Date().toISOString() })
+                .eq('id', task.id)
+                .eq('contact_email', recipient.email);
+              console.error(`Failed to send email to ${recipient.email} after 3 retries:`, error);
+            }
+          }
+        }
       } catch (err) {
+        console.error('Error processing email:', err);
         jobErrors = true;
-        console.error('Email send error:', err);
-        await import('./logService').then(({ logSystemEvent }) =>
-          logSystemEvent({
-            event_type: 'ERROR',
-            message: 'Email send error',
-            details: { jobId, error: err },
-            campaign_id: campaignId
-          })
-        );
+        
+        // Log the error
+        await logSystemEvent({
+          event_type: 'ERROR',
+          message: 'Failed to send email',
+          details: { 
+            error: err instanceof Error ? err.message : String(err),
+            campaignId,
+            recipient: recipient.email,
+            senderId: alloc?.sender_id
+          },
+          campaign_id: campaignId
+        });
+        
+        // Update task as failed
+        if (task?.id) {
+          await supabase
+            .from('email_tasks')
+            .update({ 
+              status: 'FAILED',
+              error: err instanceof Error ? err.message : String(err),
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', task.id);
+        }
       }
     }
 
-    // Complete job
-    await supabase.from('campaign_jobs').update({ status: jobErrors ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED_SUCCESS', completed_at: new Date().toISOString() }).eq('id', jobId);
+    // Update job status
+    const finalStatus = jobErrors ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED_SUCCESS';
+    await supabase
+      .from('campaign_jobs')
+      .update({ 
+        status: finalStatus, 
+        completed_at: new Date().toISOString() 
+      })
+      .eq('id', jobId);
+      
+    // Update lead status based on job result
+    await supabase
+      .from('normalized_leads')
+      .update({ 
+        status: finalStatus === 'COMPLETED_SUCCESS' ? 'WORKED' : 'FAILED',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', lead.id);
+      
+    // Add delay between jobs if configured
+    if (campaign.job_delay_seconds && campaign.job_delay_seconds > 0) {
+      await new Promise(resolve => setTimeout(resolve, campaign.job_delay_seconds * 1000));
+    }
   }
 }
 
 /**
  * Starts a campaign: marks active and triggers processing asynchronously.
+ * Only starts if campaign is in AWAITING_CONFIRMATION status.
  */
 export async function startCampaign(campaignId: string) {
-  await supabase
+  // First, verify the campaign is in AWAITING_CONFIRMATION status
+  const { data: campaign, error: fetchError } = await supabase
     .from('campaigns')
-    .update({ status: 'ACTIVE' })
+    .select('status')
+    .eq('id', campaignId)
+    .single();
+
+  if (fetchError) {
+    console.error('Error fetching campaign status:', fetchError);
+    throw new Error('Failed to verify campaign status');
+  }
+
+  if (campaign.status !== 'AWAITING_CONFIRMATION') {
+    throw new Error(`Campaign must be in AWAITING_CONFIRMATION status to start. Current status: ${campaign.status}`);
+  }
+
+  // Update status to ACTIVE
+  const { error: updateError } = await supabase
+    .from('campaigns')
+    .update({ 
+      status: 'ACTIVE',
+      updated_at: new Date().toISOString()
+    })
     .eq('id', campaignId);
+
+  if (updateError) {
+    console.error('Error updating campaign status:', updateError);
+    throw new Error('Failed to start campaign');
+  }
+
+  // Log the status change
   await import('./logService').then(({ logSystemEvent }) =>
     logSystemEvent({
       event_type: 'CAMPAIGN_STATUS',
@@ -201,6 +497,8 @@ export async function startCampaign(campaignId: string) {
       campaign_id: campaignId
     })
   );
+
+  // Start processing the campaign
   processCampaign(campaignId).catch(async error => {
     console.error('Campaign processing error:', error);
     await import('./logService').then(({ logSystemEvent }) =>

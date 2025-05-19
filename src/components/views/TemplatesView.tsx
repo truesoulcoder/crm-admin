@@ -193,6 +193,10 @@ const TemplatesView: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<DocumentTemplate | null>(null);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   // Set client-side flag on mount
   useEffect(() => {
@@ -622,7 +626,7 @@ const TemplatesView: React.FC = () => {
         <X size={48} className="text-error mb-4" />
         <h2 className="text-2xl font-semibold text-error mb-2">Error Loading Templates</h2>
         <p className="text-base-content/70 mb-4">{error}</p>
-        <button className="btn btn-primary" onClick={() => void fetchTemplates()}>Try Again</button>
+        <button className="btn btn-primary" onClick={() => void handleSubmitTemplate()}>Try Again</button>
       </div>
     );
   }
@@ -689,6 +693,13 @@ const TemplatesView: React.FC = () => {
                 <div className="card-actions justify-end mt-4">
                   <button className="btn btn-ghost btn-sm btn-circle" title="View/Edit" onClick={() => openEditModal(template)}>
                     <Edit3 size={16} /> 
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm btn-circle"
+                    title="Preview PDF"
+                    onClick={() => handlePreviewPdf(template)}
+                  >
+                    <FileText size={16} />
                   </button>
                   <button 
                     className="btn btn-ghost btn-sm btn-circle text-error" 
@@ -825,7 +836,7 @@ const TemplatesView: React.FC = () => {
                   console.log('Current state:', {
                     isSubmitting,
                     newTemplateName,
-                    newTemplateBody: newTemplateBody.substring(0, 50) + '...',
+                    newTemplateBody: `${newTemplateBody.substring(0, 50)  }...`,
                     newTemplateType,
                     newTemplateSubject,
                     disabled: isSubmitting || !newTemplateName.trim() || !newTemplateBody.trim() || (newTemplateType === 'email' && !newTemplateSubject.trim())
@@ -851,5 +862,61 @@ const TemplatesView: React.FC = () => {
     </div>
   );
 };
+
+// --- PDF Preview Modal State and Handler ---
+// (Moved into TemplatesView function)
+
+const handlePreviewPdf = async (template: DocumentTemplate) => {
+  setPdfLoading(true);
+  setPdfError(null);
+  setPdfModalOpen(true);
+  try {
+    // Only support document templates for now
+    if (template.template_type !== 'document') {
+      setPdfError('PDF preview is only available for document templates.');
+      setPdfLoading(false);
+      return;
+    }
+    const res = await fetch(`/api/document-templates/${template.id}-sample-pdf`);
+    if (!res.ok) throw new Error('Failed to generate PDF preview');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    setPdfUrl(url);
+  } catch (e) {
+    setPdfError('Failed to load PDF preview.');
+    setPdfUrl(null);
+  } finally {
+    setPdfLoading(false);
+  }
+};
+
+// --- PDF Preview Modal JSX ---
+{pdfModalOpen && (
+  <dialog id="pdf_preview_modal" className="modal modal-open">
+    <div className="modal-box w-11/12 max-w-3xl">
+      <form method="dialog">
+        <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onClick={() => { setPdfModalOpen(false); setPdfUrl(null); }}>
+          ✕
+        </button>
+      </form>
+      <h3 className="font-bold text-lg mb-4">PDF Preview</h3>
+      {pdfLoading ? (
+        <div className="flex flex-col items-center justify-center min-h-[300px]">
+          <Loader2 className="animate-spin mb-4" size={32} />
+          <span>Generating PDF preview...</span>
+        </div>
+      ) : pdfError ? (
+        <div className="alert alert-error mb-4">{pdfError}</div>
+      ) : pdfUrl ? (
+        <iframe
+          src={pdfUrl}
+          title="PDF Preview"
+          className="w-full h-[70vh] border rounded-lg"
+          style={{ minHeight: 400 }}
+        />
+      ) : null}
+    </div>
+  </dialog>
+)}
 
 export default TemplatesView;

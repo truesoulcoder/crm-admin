@@ -1,9 +1,17 @@
 // src/emailSending.action.ts
 "use server"; // If using Next.js App Router with Server Actions
 
-import { google, gmail_v1 } from 'googleapis';
 import path from 'path'; // Import path module
+
+import { google, gmail_v1 } from 'googleapis';
+
+import { generatePdfFromHtml } from '@/services/pdfService';
+import { getAdminSupabaseClient } from '@/services/supabaseAdminService';
+import { renderTemplate } from '@/services/templateService';
+
 import { generateOfferDetails, OfferDetails } from './offerCalculations'; // Adjusted import path
+
+const supabase = getAdminSupabaseClient();
 
 const COMPANY_NAME = "True Soul Partners LLC"; // Define company name as a constant
 
@@ -21,16 +29,18 @@ if (!TEST_RECIPIENT_EMAIL) {
 }
 
 export interface Lead {
-  id: string; 
+  id: number;  // Changed to number to match database type
   contact1_name?: string | null;
   contact1_email_1?: string | null;
+  contact2_email_1?: string | null;
+  contact3_email_1?: string | null;
   property_address?: string | null;
-  wholesale_value?: number | null; 
-  // ... other lead properties
-  // Add any other fields your LOIData needs from Lead, e.g.:
-  // property_city?: string;
-  // property_state?: string;
-  // property_postal_code?: string;
+  wholesale_value?: number | null;
+  assessed_total?: number | null;
+  mls_curr_list_agent_name?: string | null;
+  mls_curr_list_agent_email?: string | null;
+  // Other lead properties that might be used in templates
+  [key: string]: any;  // Allow additional properties for template rendering
 }
 
 export interface SenderInfo {
@@ -56,10 +66,56 @@ export interface EmailSendingResult {
  * @param sender - An object containing the sender's fullName and title.
  * @returns A result object indicating success or failure and the offer details.
  */
+export interface EmailOptions {
+  subject: string;
+  body: string;
+  templateId?: string; // ID of the PDF template to use
+  leadData?: Record<string, any>; // Lead data for template rendering
+  pdfBuffer?: Buffer; // Optional pre-generated PDF buffer
+  attachments?: { filename: string; content: Buffer }[]; // Optional attachments (PDFs, etc)
+}
+
 export async function prepareAndSendOfferEmail(
   lead: Lead,
-  sender: SenderInfo 
+  sender: SenderInfo,
+  options: EmailOptions
 ): Promise<EmailSendingResult> {
+  // Generate LOI HTML if no PDF buffer is provided
+  let pdfBuffer = options.pdfBuffer;
+  
+  if (!pdfBuffer) {
+    try {
+      // Generate basic LOI if no template ID is provided
+      if (!options.templateId) {
+        const loiHtml = `
+          <h1>Letter of Intent</h1>
+          <p>For property at: ${lead.property_address || 'Unknown Address'}</p>
+          <p>Prepared for: ${lead.contact1_name || 'Valued Client'}</p>
+          <p>Offer Amount: $${(lead.wholesale_value || 0).toLocaleString()}</p>
+        `;
+        pdfBuffer = await generatePdfFromHtml(loiHtml);
+      } else {
+        // Generate PDF from template if template ID is provided
+        const { data: template } = await supabase
+          .from('templates')
+          .select('content')
+          .eq('id', options.templateId)
+          .single();
+          
+        if (template?.content) {
+          const renderedContent = renderTemplate(template.content, options.leadData || lead);
+          pdfBuffer = await generatePdfFromHtml(renderedContent);
+        }
+      }
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      return {
+        success: false,
+        message: 'Failed to generate PDF',
+        error
+      };
+    }
+  }
   console.log(
     `Preparing email for: ${lead.contact1_email_1} from ${sender.fullName}`
   );
@@ -96,17 +152,17 @@ export async function prepareAndSendOfferEmail(
   }
 
   // Offer calculations
-  if (!lead.wholesale_value || lead.wholesale_value <= 0) {
+  if (!lead.assessed_total || lead.assessed_total <= 0) {
     return {
       success: false,
-      message: "Invalid or missing wholesale value for lead ID: " + lead.id,
+      message: `Invalid or missing assessed total for lead ID: ${lead.id}`,
     };
   }
 
   if (!lead.contact1_email_1) {
     return {
       success: false,
-      message: "Missing contact email for lead ID: " + lead.id,
+      message: `Missing contact email for lead ID: ${lead.id}`,
     };
   }
 
@@ -119,7 +175,7 @@ export async function prepareAndSendOfferEmail(
   }
 
   try {
-    const offerDetails = generateOfferDetails(lead.wholesale_value);
+    const offerDetails = generateOfferDetails(lead.assessed_total);
 
     console.log(`Preparing email for: ${lead.contact1_email_1} from ${sender.fullName}`);
     console.log(`Property: ${lead.property_address || 'N/A'}`);
@@ -127,37 +183,63 @@ export async function prepareAndSendOfferEmail(
     console.log(`EMD: $${offerDetails.emdAmount.toFixed(2)}`);
     console.log(`Proposed Closing Date: ${offerDetails.closingDateFormatted}`);
 
-    const subject = `An Offer for Your Property at ${lead.property_address}`;
-    const emailBody = `
-      Dear ${lead.contact1_name || 'Property Owner'},
+    // Render the email body with the template and offer details
+  const emailBody = renderTemplate(options.body, {
+    ...lead,
+    offerAmount: offerDetails.offerAmount.toFixed(2),
+    emdAmount: offerDetails.emdAmount.toFixed(2),
+    closingDate: offerDetails.closingDateFormatted,
+    senderName: sender.fullName,
+    senderTitle: sender.title,
+    companyName: COMPANY_NAME
+  });
 
-      We are interested in purchasing your property at ${lead.property_address}.
-      Based on our assessment, we would like to make an offer of $${offerDetails.offerAmount.toFixed(2)}.
+  // Render the subject with the template
+  const subject = renderTemplate(options.subject, {
+    ...lead,
+    offerAmount: offerDetails.offerAmount.toFixed(2),
+    property_address: lead.property_address || 'Your Property'
+  });
 
-      Our offer includes an Earnest Money Deposit (EMD) of $${offerDetails.emdAmount.toFixed(2)}.
-      We propose a closing date of ${offerDetails.closingDateFormatted} (approximately 14 business days from today).
+  const boundary = `boundary_${Date.now()}`;
+  const messageParts = [
+    `From: ${sender.fullName} <${sender.email}>`,
+    `To: ${recipient}`,
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    emailBody.replace(/\n/g, '\r\n'),
+    ''
+  ];
 
-      Please let us know if you wish to discuss this further.
-
-      Sincerely,
-      ${sender.fullName}
-      ${sender.title}
-      ${COMPANY_NAME}
-  `;
-
-    const messageParts = [
-      `From: ${sender.fullName} <${sender.email}>`,
-      `To: ${recipient}`,
-      'Content-Type: text/plain; charset=utf-f8',
-      'MIME-Version: 1.0',
-      `Subject: ${subject}`,
+  // Add PDF attachment if provided
+  if (options.pdfBuffer) {
+    const filename = `offer_${lead.id || 'document'}.pdf`;
+    const content = options.pdfBuffer.toString('base64');
+    
+    messageParts.push(
+      `--${boundary}`,
+      'Content-Type: application/pdf',
+      `Content-Disposition: attachment; filename="${filename}"`,
+      'Content-Transfer-Encoding: base64',
       '',
-      emailBody,
-    ];
-    const message = messageParts.join('\n');
+      content,
+      ''
+    );
+  }
+  
+  // Close the message
+  messageParts.push(`--${boundary}--`);
+  
+  const email = messageParts.join('\r\n');
 
     // Encode message for Gmail API (Base64Url)
-    const encodedMessage = Buffer.from(message)
+    const encodedMessage = Buffer.from(email)
       .toString('base64')
       .replace(/\+/g, '-')
       .replace(/\//g, '_')

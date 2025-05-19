@@ -22,8 +22,6 @@ import {
 } from '@/once-ui/components';
 import { Campaign } from '@/types/index';
 
-import CampaignMonitorView from './CampaignMonitorView';
-
 // Helper function to generate initials
 const getInitials = (name?: string): string => {
   if (!name || name.trim() === '') return '??';
@@ -51,13 +49,12 @@ interface Sender {
 
 // Main component
 const CampaignsView: React.FC = () => {
-  // ...existing state
-  const [monitorModalOpen, setMonitorModalOpen] = useState(false);
-  const [monitorCampaignId, setMonitorCampaignId] = useState<string | null>(null);
+  // Monitoring has been moved to the Dashboard
+  const handleMonitorCampaign = (campaignId: string) => {
+    // Optional: Add navigation to dashboard with campaign filter
+    console.log('Monitoring has been moved to the Dashboard');
+  };
 
-  // Initialize Supabase client with the modern SSR package
-  
-  
   // State management
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -109,7 +106,7 @@ const CampaignsView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
   // Fetch supporting data (senders, templates)
   const fetchSupportingData = useCallback(async () => {
@@ -147,7 +144,7 @@ const CampaignsView: React.FC = () => {
         console.error('Fetched email templates is not an array:', fetchedEmailTemplates);
         setEmailTemplates([]);
         setSelectedEmailTemplate('');
-        // Optionally set an error: setError(prev => (prev ? prev + " " : "") + 'Error parsing email templates.');
+        // Optionally set an error: setError((prev: string | null): string | null => (prev ? prev + " " : "") + 'Error parsing email templates.');
       }
       
       // Fetch document templates from API route
@@ -169,7 +166,7 @@ const CampaignsView: React.FC = () => {
         console.error('Fetched document templates .data property is not an array or is missing:', responseJson);
         setDocumentTemplates([]);
         setSelectedDocumentTemplate('');
-        // setError(prevError => (prevError ? prevError + " " : "") + 'Error parsing document templates data.');
+        // setError((prevError: string | null): string | null => (prevError ? prevError + " " : "") + 'Error parsing document templates data.');
       }
 
       // Fetch distinct market regions from normalized_leads
@@ -180,8 +177,9 @@ const CampaignsView: React.FC = () => {
       if (regionsError) throw regionsError;
 
       const markets = regionsData
-        ?.map(item => item.market_region)
-        .filter((value, index, self) => value !== null && value !== '' && self.indexOf(value) === index) // Filter out null/empty and get unique
+        ?.map((item: { market_region: string | null }) => item.market_region)
+        .filter((value): value is string => typeof value === 'string' && value !== '') // Ensure it's a non-empty string
+        .filter((value, index, self) => self.indexOf(value) === index) // Then get unique
         .sort() || []; // Sort alphabetically
       setAvailableMarketRegions(markets);
       if (markets.length > 0) {
@@ -193,9 +191,14 @@ const CampaignsView: React.FC = () => {
     } catch (err) {
       console.error('Error fetching supporting data:', err);
       // Keep specific error for campaigns, but maybe a general one for supporting data
-      setError(prevError => prevError || 'Failed to load some selection options.');
+      setError((prevError: string | null): string | null => {
+        const defaultMessage = 'Failed to load some selection options.';
+        // If there's an existing error, keep it; otherwise, use the default message.
+        // This handles preserving a more specific error if one was already set.
+        return prevError || defaultMessage;
+      });
     }
-  }, [supabase]);
+  }, []);
 
   // Toggle sender selection
   const toggleSenderSelection = (sender: Sender) => {
@@ -218,7 +221,7 @@ const CampaignsView: React.FC = () => {
     try {
       const { error } = await supabase
         .from('campaigns')
-        .update({ status: 'Active' })
+        .update({ status: 'ACTIVE' })
         .eq('id', id);
       
       if (error) throw error;
@@ -235,7 +238,7 @@ const CampaignsView: React.FC = () => {
     try {
       const { error } = await supabase
         .from('campaigns')
-        .update({ status: 'Paused' })
+        .update({ status: 'PAUSED' })
         .eq('id', id);
       
       if (error) throw error;
@@ -249,6 +252,7 @@ const CampaignsView: React.FC = () => {
 
   // Form submission handler
   const handleCreateCampaign = async (e: React.FormEvent) => {
+    console.log('--- RUNNING handleCreateCampaign (Version with detailed pre-sanity check logs) ---');
     e.preventDefault();
     setError(null);
     setSuccess(null);
@@ -270,15 +274,51 @@ const CampaignsView: React.FC = () => {
 
     setIsLoading(true);
     try {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error('Error fetching user:', userError.message);
+        setError('Could not verify your session. Please try logging in again.');
+        setIsLoading(false);
+        return;
+      }
+      const user = userData.user;
+
+      if (!user) {
+        setError('You must be logged in to create a campaign. Please log in and try again.');
+        setIsLoading(false);
+        console.warn('Attempted to create campaign without a valid user session.');
+        return;
+      }
+
+      console.log('--- PRE-SANITY CHECK ---');
+      console.log('Current emailTemplates state:', JSON.stringify(emailTemplates.map(t => ({ id: t.id, name: t.name }))));
+      console.log('Current selectedEmailTemplate state:', selectedEmailTemplate);
+
+      // Sanity check: Ensure the selected email template ID is still in the known list
+      const sanityCheckTemplate = emailTemplates.find(t => t.id === selectedEmailTemplate);
+      if (!sanityCheckTemplate) {
+        const errorMsg = 'Sanity Check Failed: The selected email template is no longer valid or available. Please refresh the page or re-select a template.';
+        console.error(errorMsg, { 
+          selectedId: selectedEmailTemplate, 
+          availableIds: emailTemplates.map(t => t.id) 
+        });
+        setError('The selected email template is no longer valid or available. Please refresh the page or re-select a template.');
+        setIsLoading(false);
+        return;
+      }
+
+      console.log('[Campaign Creation] Attempting to use email_template_id:', selectedEmailTemplate);
+
       const { data, error } = await supabase
         .from('campaigns')
         .insert([{
+          user_id: user.id,
           name: campaignName,
           email_template_id: selectedEmailTemplate, // This is the ID, which is correct
           pdf_template_id: selectedDocumentTemplate || null, // Ensure null if empty, and aligns with DB schema
           target_market_region: selectedMarketRegion, // Add selected market region
           assigned_sender_ids: selectedSenders.map(s => s.id),
-          status: 'Draft',
+          status: 'DRAFT',
           // created_at: new Date().toISOString(), // Supabase can handle created_at with default now()
           // is_active: true // is_active might be better handled by status or a separate field if needed
         }])
@@ -306,9 +346,36 @@ const CampaignsView: React.FC = () => {
 
       // Refresh campaigns list
       void fetchCampaigns();
-    } catch (err) {
-      console.error('Error creating campaign:', err);
-      setError('Failed to create campaign. Please try again later.');
+    } catch (err: any) {
+      let uiErrorMessage = 'Failed to create campaign. An unexpected error occurred.';
+      let rawErrorForConsole: any = err;
+
+      if (err && typeof err === 'object') {
+        const supabaseError = err as { message?: string; code?: string; details?: string; hint?: string; [key: string]: any };
+        if (supabaseError.message) {
+          uiErrorMessage = `Failed to create campaign: ${supabaseError.message}`;
+          if (supabaseError.code) uiErrorMessage += ` (Code: ${supabaseError.code})`;
+          if (supabaseError.details) uiErrorMessage += ` Details: ${supabaseError.details}`;
+          if (supabaseError.hint) uiErrorMessage += ` Hint: ${supabaseError.hint}`;
+        } else {
+          // If no standard message, try to stringify the object
+          try {
+            const errString = JSON.stringify(err);
+            uiErrorMessage = `Failed to create campaign. Error: ${errString}`;
+            // If original err was an object but stringified to '{}', keep err for console, otherwise use string.
+            if (errString !== '{}') rawErrorForConsole = errString; 
+          } catch (e) {
+            uiErrorMessage = 'Failed to create campaign. An unreadable error object was received.';
+          }
+        }
+      } else if (err) {
+        uiErrorMessage = `Failed to create campaign: ${String(err)}`;
+        rawErrorForConsole = String(err);
+      }
+
+      console.error('Error creating campaign (raw data for console):', rawErrorForConsole);
+      console.error('Original error object for inspection (expand in dev tools):', err);
+      setError(uiErrorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -378,39 +445,7 @@ const CampaignsView: React.FC = () => {
                       <div className="text-sm text-base-content/70">No senders assigned</div>
                     )}
                   </td>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      {campaign.status === 'Draft' || campaign.status === 'Paused' ? (
-                        <button 
-                          className="btn btn-xs btn-success"
-                          onClick={() => { void handleStart(campaign.id); }}
-                          title="Start Campaign"
-                        >
-                          <PlayCircle size={14} />
-                        </button>
-                      ) : (
-                        <button 
-                          className="btn btn-xs btn-warning"
-                          onClick={() => { void handleStop(campaign.id); }}
-                          title="Pause Campaign"
-                        >
-                          <PauseCircle size={14} />
-                        </button>
-                      )}
-                      <button 
-                        className="btn btn-xs btn-ghost"
-                        title="Edit Campaign"
-                      >
-                        <Edit3 size={14} />
-                      </button>
-                      <button 
-                        className="btn btn-xs btn-ghost text-error"
-                        title="Delete Campaign"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
+
                 </tr>
               ))}
             </tbody>
@@ -672,20 +707,6 @@ const CampaignsView: React.FC = () => {
           </div>
         </div>
       )}
-    {/* Monitor Modal */}
-    {monitorModalOpen && monitorCampaignId && (
-      <div className="modal modal-open">
-        <div className="modal-box w-11/12 max-w-4xl">
-          <button
-            className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
-            onClick={() => setMonitorModalOpen(false)}
-          >
-            <X size={20} />
-          </button>
-          <CampaignMonitorView campaignId={monitorCampaignId} />
-        </div>
-      </div>
-    )}
   </div>
   );
 };
