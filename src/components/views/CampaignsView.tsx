@@ -1,16 +1,28 @@
 'use client';
 
-import { createBrowserClient } from '@supabase/ssr';
-import { Mail, BarChart2, Edit3, Trash2, PlayCircle, PauseCircle, AlertTriangle, X, Check, List } from 'lucide-react';
-import dynamic from 'next/dynamic';
+import {
+  Mail,
+  BarChart2,
+  Edit3,
+  Trash2,
+  PlayCircle,
+  PauseCircle,
+  AlertTriangle,
+  X,
+  Check,
+} from 'lucide-react';
 import React, { useState, useEffect, useCallback } from 'react';
-import CampaignMonitorView from './CampaignMonitorView';
 
-import { LetterFx, Avatar, AvatarGroup, AvatarProps } from '@/once-ui/components';
-// eslint-disable-next-line import/no-unresolved
+import { supabase } from '@/lib/supabase/client'; // Use the official singleton
+import { 
+  LetterFx, 
+  Avatar, 
+  AvatarGroup, 
+  AvatarProps, 
+} from '@/once-ui/components';
 import { Campaign } from '@/types/index';
 
-// const CampaignMonitorView = dynamic(() => import('./CampaignMonitorView'), { ssr: false });
+import CampaignMonitorView from './CampaignMonitorView';
 
 // Helper function to generate initials
 const getInitials = (name?: string): string => {
@@ -26,8 +38,8 @@ const getInitials = (name?: string): string => {
 };
 
 // Environment variables are automatically loaded in Next.js
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+
 
 // Define TypeScript interfaces
 interface Sender {
@@ -44,14 +56,14 @@ const CampaignsView: React.FC = () => {
   const [monitorCampaignId, setMonitorCampaignId] = useState<string | null>(null);
 
   // Initialize Supabase client with the modern SSR package
-  const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+  
   
   // State management
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [campaignName, setCampaignName] = useState('');
   const [campaignSubject, setCampaignSubject] = useState('');
-  const [emailTemplates, setEmailTemplates] = useState<{id: string, name: string}[]>([]);
+  const [emailTemplates, setEmailTemplates] = useState<{id: string, name: string, subject: string}[]>([]);
   const [documentTemplates, setDocumentTemplates] = useState<{id: string, name: string}[]>([]);
   const [selectedEmailTemplate, setSelectedEmailTemplate] = useState('');
   const [selectedDocumentTemplate, setSelectedDocumentTemplate] = useState('');
@@ -122,10 +134,18 @@ const CampaignsView: React.FC = () => {
         throw new Error(`Failed to fetch email templates: ${emailTemplatesRes.statusText}`);
       }
       const fetchedEmailTemplates = await emailTemplatesRes.json();
-      setEmailTemplates(fetchedEmailTemplates || []);
-      // Optionally set a default selected email template (e.g., the first one)
-      if (fetchedEmailTemplates && fetchedEmailTemplates.length > 0) {
-        setSelectedEmailTemplate(fetchedEmailTemplates[0].id);
+      if (Array.isArray(fetchedEmailTemplates)) {
+        setEmailTemplates(fetchedEmailTemplates);
+        if (fetchedEmailTemplates.length > 0 && fetchedEmailTemplates[0]?.id) {
+          setSelectedEmailTemplate(fetchedEmailTemplates[0].id);
+        } else {
+          setSelectedEmailTemplate(''); 
+        }
+      } else {
+        console.error('Fetched email templates is not an array:', fetchedEmailTemplates);
+        setEmailTemplates([]);
+        setSelectedEmailTemplate('');
+        // Optionally set an error: setError(prev => (prev ? prev + " " : "") + 'Error parsing email templates.');
       }
       
       // Fetch document templates from API route
@@ -134,10 +154,19 @@ const CampaignsView: React.FC = () => {
         throw new Error(`Failed to fetch document templates: ${documentTemplatesRes.statusText}`);
       }
       const fetchedDocumentTemplates = await documentTemplatesRes.json();
-      setDocumentTemplates(fetchedDocumentTemplates || []);
-      // Optionally set a default selected document template (e.g., the first one)
-      if (fetchedDocumentTemplates && fetchedDocumentTemplates.length > 0) {
-        setSelectedDocumentTemplate(fetchedDocumentTemplates[0].id);
+      if (Array.isArray(fetchedDocumentTemplates)) {
+        setDocumentTemplates(fetchedDocumentTemplates);
+        if (fetchedDocumentTemplates.length > 0 && fetchedDocumentTemplates[0]?.id) {
+          setSelectedDocumentTemplate(fetchedDocumentTemplates[0].id);
+        } else {
+          setSelectedDocumentTemplate(''); // Or handle no templates available
+        }
+      } else {
+        console.error('Fetched document templates is not an array:', fetchedDocumentTemplates);
+        setDocumentTemplates([]);
+        setSelectedDocumentTemplate(''); // Reset if data is invalid
+        // Consider setting a user-facing error if this is critical
+        // setError(prevError => (prevError ? prevError + " " : "") + 'Error parsing document templates.');
       }
 
     } catch (err) {
@@ -202,43 +231,57 @@ const CampaignsView: React.FC = () => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    
+
+    // Find the selected email template object
+    const selectedTemplate = emailTemplates.find(t => t.id === selectedEmailTemplate);
+
     if (!campaignName || !selectedEmailTemplate || selectedSenders.length === 0) {
       setError('Please fill in all required fields and select at least one sender.');
       return;
     }
-    
+
+    if (!selectedTemplate) { // Should ideally not happen if templates are loaded and selection is required
+      setError('Selected email template not found. Please try again.');
+      return;
+    }
+
+    const subjectToSave = selectedTemplate.subject; // Get subject from the template
+
     setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('campaigns')
         .insert([{
           name: campaignName,
-          subject: campaignSubject,
-          email_template_id: selectedEmailTemplate,
-          document_template_id: selectedDocumentTemplate,
+          subject: subjectToSave, // Use the subject from the template
+          email_template_id: selectedEmailTemplate, // This is the ID, which is correct
+          document_template_id: selectedDocumentTemplate || null, // Ensure null if empty
           assigned_sender_ids: selectedSenders.map(s => s.id),
           status: 'Draft',
-          created_at: new Date().toISOString(),
-          is_active: true
+          // created_at: new Date().toISOString(), // Supabase can handle created_at with default now()
+          // is_active: true // is_active might be better handled by status or a separate field if needed
         }])
-        .select();
-      
+        .select(); // .select() is good for getting back the created record
+
       if (error) throw error;
-      
+
       // Reset form
       setCampaignName('');
-      setCampaignSubject('');
+      // setCampaignSubject(''); // Remove this line
+      setSelectedEmailTemplate(emailTemplates.length > 0 && emailTemplates[0]?.id ? emailTemplates[0].id : ''); // Reset to default or empty
+      setSelectedDocumentTemplate('');
       setSelectedSenders([]);
       setIsModalOpen(false);
       setError(null);
-      
+
       // Set success message
-      setSuccess(`Campaign "${campaignName}" created successfully.`);
-      
+      // Use data[0].name if you want the name from the DB, or campaignName if you prefer the input value
+      const createdCampaignName = data?.[0]?.name || campaignName;
+      setSuccess(`Campaign "${createdCampaignName}" created successfully.`);
+
       // Clear success message after 5 seconds
       setTimeout(() => setSuccess(null), 5000);
-      
+
       // Refresh campaigns list
       void fetchCampaigns();
     } catch (err) {
@@ -433,28 +476,7 @@ const CampaignsView: React.FC = () => {
                 </div>
               </div>
               
-              <div className="form-control mb-4">
-                <label className="label">
-                  <span className="label-text font-medium">Email Subject</span>
-                  <span className="label-text-alt text-error">Required</span>
-                </label>
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    placeholder="Enter email subject line" 
-                    className="input input-bordered w-full pl-9" 
-                    value={campaignSubject}
-                    onChange={(e) => setCampaignSubject(e.target.value)}
-                    required
-                  />
-                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                    <Mail size={16} className="text-base-content/50" />
-                  </div>
-                </div>
-                <div className="text-xs mt-1 text-base-content/70">
-                  This will be the subject line recipients see in their inbox
-                </div>
-              </div>
+              
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div className="form-control">
@@ -485,6 +507,11 @@ const CampaignsView: React.FC = () => {
                   <div className="text-xs mt-2 text-base-content/70">
                     Required: This template will be used for the email body
                   </div>
+                  {selectedEmailTemplate && emailTemplates.find(t => t.id === selectedEmailTemplate)?.subject && (
+                    <div className="text-xs mt-1 text-info bg-info/10 p-2 rounded">
+                      Subject: <strong>{emailTemplates.find(t => t.id === selectedEmailTemplate)?.subject}</strong>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-control">

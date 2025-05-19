@@ -610,6 +610,15 @@ const LeadsView: React.FC = () => {
   // Helper to get displayable value
   const displayValue = (value: any) => value === null || value === undefined ? '-' : String(value);
 
+  const getCleanEmailDisplay = (emailString?: string | null): string => {
+    if (!emailString) return 'No Email';
+    const emailParts = emailString.split(';').map(part => part.trim()).filter(part => part.length > 0);
+    if (emailParts.length === 0) {
+      return 'No Email';
+    }
+    return emailParts[0]; 
+  };
+
   return (
     <div className="p-4 md:p-6 bg-base-200 min-h-screen">
       <h1 className="text-3xl font-bold mb-6 text-base-content">Lead Management</h1>
@@ -779,8 +788,8 @@ const LeadsView: React.FC = () => {
                             </div>
                             <div className="text-sm opacity-70 flex items-center mt-1">
                               <Mail className="w-3 h-3 mr-1 flex-shrink-0" />
-                              <span className="truncate max-w-xs" title={contact.email}>
-                                {contact.email}
+                              <span className="truncate max-w-xs" title={getCleanEmailDisplay(contact.email)}>
+                                {getCleanEmailDisplay(contact.email)}
                               </span>
                             </div>
                           </div>
