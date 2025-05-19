@@ -16,8 +16,8 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // redirectTo: window.location.origin, // Optional: specify redirect URL if needed
-                                              // Ensure this URL is in your Supabase project's allow list
+        redirectTo: window.location.origin, // Dynamically sets redirect to current host
+                                              // Ensure this URL (e.g., http://localhost:3000) is in your Supabase project's allow list
       },
     });
     if (error) {
