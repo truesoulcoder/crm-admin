@@ -1,123 +1,74 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState, ReactNode } from "react";
-import { getSupabaseSession, logout } from "@/lib/auth"; 
-import { createBrowserClient } from "@supabase/ssr"; 
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import { useRouter, usePathname } from "next/navigation";
+import { useEffect, ReactNode } from "react";
+import { useUser } from "@/contexts/UserContext";
+import Head from 'next/head'; // For setting page title
 
 export default function RequireAuth({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
+  const pathname = usePathname();
+  const { user, isLoading, role, error: userContextError } = useUser();
 
   useEffect(() => {
-    let isMounted = true;
-    console.log("[RequireAuth] useEffect: Initializing auth check.");
-
-    const checkCurrentSession = async () => {
-      if (!isMounted) return;
-      console.log("[RequireAuth] checkCurrentSession: Checking...");
-      try {
-        const session = await getSupabaseSession();
-        if (session) {
-          console.log("[RequireAuth] checkCurrentSession: Session found. User authenticated.");
-          if (isMounted) {
-            setIsAuthenticated(true);
-            setAuthError(null);
-          }
-        } else {
-          console.log("[RequireAuth] checkCurrentSession: No active session. Redirecting to login.");
-          if (isMounted) {
-            setIsAuthenticated(false);
-            if (window.location.pathname !== "/") {
-              router.replace("/");
-            }
-          }
+    console.log("[RequireAuth] Status update - isLoading:", isLoading, "user present:", !!user, "current role:", role, "current path:", pathname);
+    if (!isLoading) {
+      if (!user) {
+        console.log("[RequireAuth] Not loading and no user found. Redirecting to /login from path:", pathname);
+        if (pathname !== '/login') { // Prevent redirect loop if somehow RequireAuth is used on /login
+          router.replace("/login");
         }
-      } catch (e: any) {
-        console.error("[RequireAuth] checkCurrentSession: Error checking session:", e);
-        if (isMounted) setAuthError("Error verifying authentication. Please try logging in again.");
-        await logout(); 
-      } finally {
-        if (isMounted) setLoading(false);
+      } else {
+        // User is authenticated. Optional: Add further role-based checks if needed for specific pages,
+        // though UserContext and individual page logic often handle this.
+        console.log("[RequireAuth] Authenticated user found. Role:", role, "Accessing path:", pathname);
       }
-    };
+    }
+  }, [user, isLoading, role, router, pathname]);
 
-    checkCurrentSession();
-
-    const supabaseForListener = createBrowserClient(supabaseUrl, supabaseAnonKey);
-    const { data: authListener } = supabaseForListener.auth.onAuthStateChange((event, session) => {
-      if (!isMounted) return;
-      console.log("[RequireAuth] onAuthStateChange: Event:", event, "Session:", session ? 'exists' : 'null');
-      if (event === "SIGNED_IN" && session) {
-        console.log("[RequireAuth] onAuthStateChange: SIGNED_IN. User authenticated.");
-        setIsAuthenticated(true);
-        setAuthError(null);
-        setLoading(false); 
-      } else if (event === "SIGNED_OUT") {
-        console.log("[RequireAuth] onAuthStateChange: SIGNED_OUT. User not authenticated. Redirecting.");
-        setIsAuthenticated(false);
-        setLoading(false); 
-        if (window.location.pathname !== "/") {
-          router.replace("/");
-        }
-      } else if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
-         if (session) {
-            console.log("[RequireAuth] onAuthStateChange: Token refreshed or user updated. User remains authenticated.");
-            setIsAuthenticated(true);
-         } else {
-            console.log("[RequireAuth] onAuthStateChange: Token refresh resulted in no session. User not authenticated. Redirecting.");
-            setIsAuthenticated(false);
-            setLoading(false);
-            if (window.location.pathname !== "/") {
-              router.replace("/");
-            }
-         }
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      if (authListener?.subscription) {
-        console.log("[RequireAuth] useEffect: Cleaning up auth listener.");
-        authListener.subscription.unsubscribe();
-      }
-    };
-  }, [router]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-base-100">
+        <Head>
+          <title>Loading Access... | CRM Admin</title>
+        </Head>
         <span className="loading loading-spinner loading-lg text-primary"></span>
-        <p className="mt-4 text-lg">Checking authentication...</p>
+        <p className="mt-4 text-lg">Verifying access...</p>
       </div>
     );
   }
 
-  if (authError) {
+  if (userContextError) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-base-100 p-4">
+        <Head>
+          <title>Auth Error | CRM Admin</title>
+        </Head>
         <div role="alert" className="alert alert-error shadow-lg max-w-md">
           <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2 2m2-2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           <div>
-            <h3 className="font-bold">Authentication Error</h3>
-            <div className="text-xs">{authError}</div>
+            <h3 className="font-bold">Authentication Context Error</h3>
+            <div className="text-xs">{userContextError}</div>
           </div>
-          <button className="btn btn-sm btn-primary" onClick={() => router.replace('/')}>Go to Login</button>
+          <button className="btn btn-sm btn-primary" onClick={() => router.replace('/login')}>Go to Login</button>
         </div>
       </div>
     );
   }
 
-  if (!isAuthenticated) {
-    console.log("[RequireAuth] Render: Not authenticated, returning null (should have redirected).");
+  // If still loading, the above block handles it.
+  // If error, that's handled.
+  // If not loading, no error, but no user, redirect in useEffect should have fired.
+  // This is a final check before rendering children.
+  if (!user) {
+    // This state should ideally not be reached if useEffect redirect works, 
+    // as router.replace should prevent rendering this path further.
+    // However, if it is reached (e.g. during fast refresh or edge cases), returning null is safest.
+    console.log("[RequireAuth] Render: No user and not loading. Expecting redirect. Path:", pathname);
     return null; 
   }
 
-  console.log("[RequireAuth] Render: Authenticated, rendering children.");
+  // If we reach here, user is authenticated and there's no loading/error from context.
+  console.log("[RequireAuth] Render: User authenticated. Rendering children for path:", pathname);
   return <>{children}</>;
 }

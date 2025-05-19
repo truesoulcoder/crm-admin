@@ -1,16 +1,12 @@
 // Extend Window interface for// src/lib/auth.ts
 "use client";
 
-import { createBrowserClient } from '@supabase/ssr';
+// import { createBrowserClient } from '@supabase/ssr'; // Replaced by shared client
+import supabase from '@/lib/supabaseClient'; // Use the shared Supabase client
 
-// This declares a global type augmentation for the Window interface
-declare global {
-  interface Window {
-    __CRM_TOKEN__?: string;
-  }
-}
+// window.__CRM_TOKEN__ declaration removed as it's no longer used.
 
-// Environment variables and Supabase client initialization (outside declare global)
+// Environment variables (checks remain for early failure, but client is imported)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -21,57 +17,11 @@ if (!supabaseAnonKey) {
   throw new Error("Missing env.NEXT_PUBLIC_SUPABASE_ANON_KEY");
 }
 
-const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+// const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey); // Removed: Using imported shared client
 
 // Auth functions follow
-export function parseOAuthHash(hash: string): { access_token: string; refresh_token: string; } | null {
-  if (!hash.startsWith('#')) {
-    console.warn('[auth.ts] parseOAuthHash: Hash does not start with #');
-    return null;
-  }
-  const params = new URLSearchParams(hash.substring(1)); // Remove '#' and parse
-  const access_token = params.get('access_token');
-  const refresh_token = params.get('refresh_token');
-
-  if (access_token && refresh_token) {
-    console.log('[auth.ts] parseOAuthHash: Successfully parsed tokens.');
-    return { access_token, refresh_token };
-  } else {
-    console.warn('[auth.ts] parseOAuthHash: Could not extract access_token or refresh_token from hash:', hash);
-    return null;
-  }
-}
-
-export async function setLoginState(access_token: string, refresh_token: string | null | undefined): Promise<boolean> {
-  console.log('[auth.ts] setLoginState: Attempting to set session.');
-  if (!access_token || !refresh_token) {
-    console.error('[auth.ts] setLoginState: Missing access_token or refresh_token. Aborting and logging out.');
-    await logout(); // Ensure clean state if tokens are missing
-    return false; // Indicate failure
-  }
-
-  const { data, error } = await supabase.auth.setSession({
-    access_token,
-    refresh_token,
-  });
-
-  if (error) {
-    console.error('[auth.ts] setLoginState: Error from supabase.auth.setSession:', error.message);
-    await logout(); // Ensure clean state on error
-    return false; // Indicate failure
-  }
-
-  if (data?.session) {
-    console.log('[auth.ts] setLoginState: Session successfully set. User ID:', data.session.user.id);
-    localStorage.setItem('isLoggedIn', 'true'); // Legacy flag, prefer Supabase session check
-    if (typeof window !== 'undefined') window.__CRM_TOKEN__ = access_token;
-    return true; // Indicate success
-  } else {
-    console.warn('[auth.ts] setLoginState: setSession call succeeded but no session data returned. Treating as failure.');
-    await logout(); // Ensure clean state if no session data
-    return false; // Indicate failure
-  }
-}
+// parseOAuthHash function removed as it's no longer used.
+// setLoginState function removed as it's no longer used.
 
 export async function logout() {
   console.log('[auth.ts] logout: Initiating sign out and clearing local state.');
@@ -86,8 +36,8 @@ export async function logout() {
   console.log("[auth.ts] logout: Removed 'isLoggedIn' from localStorage.");
 
   if (typeof window !== 'undefined') {
-    window.__CRM_TOKEN__ = undefined;
-    console.log("[auth.ts] logout: Cleared window.__CRM_TOKEN__.");
+    // window.__CRM_TOKEN__ = undefined; // Removed as token is no longer used
+    // console.log("[auth.ts] logout: Cleared window.__CRM_TOKEN__."); // Removed as token is no longer used
     window.location.hash = ""; // Clear any auth fragments from URL
     console.log("[auth.ts] logout: Cleared window.location.hash.");
 

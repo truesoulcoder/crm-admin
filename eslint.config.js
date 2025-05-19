@@ -111,7 +111,7 @@ export default [
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs['core-web-vitals'].rules,
       // Basic rules (from original)
-      'no-console': 'off'
+      'no-console': 'off',
       'no-var': 'error',
       'prefer-const': 'error',
       'prefer-template': 'error',

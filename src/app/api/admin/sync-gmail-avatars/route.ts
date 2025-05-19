@@ -28,7 +28,7 @@ export async function GET() {
     const serviceAccountCredentials = JSON.parse(googleServiceAccountKeyJson);
 
     const { data: senders, error: fetchError } = await supabaseAdmin
-      .from('email_senders')
+      .from('senders')
       .select('id, email, name, avatar_url');
 
     if (fetchError) {
@@ -68,7 +68,7 @@ export async function GET() {
 
         if (photoUrl && photoUrl !== sender.avatar_url) {
           const { error: updateError } = await supabaseAdmin
-            .from('email_senders')
+            .from('senders')
             .update({ avatar_url: photoUrl })
             .eq('id', sender.id);
 

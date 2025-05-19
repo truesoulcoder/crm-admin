@@ -29,13 +29,40 @@
         -   [x] Enhance `RequireAuth` component for reliable session checking and redirection (Updated `RequireAuth.tsx` to use `getSupabaseSession` and added `onAuthStateChange` listener for dynamic updates).
 
 ### 2. Email Sender Management
-    -   [ ] To be defined.
+    -   [x] Core functionality implemented (`EmailSendersView.tsx`):
+        -   [x] Add, edit, delete individual senders.
+        -   [x] Toggle sender active status.
+        -   [x] Bulk upload senders via CSV.
+        -   [x] API integration with `/api/email-senders`.
 
 ### 3. Template Management
-    -   [ ] To be defined.
+    -   [x] Core functionality implemented (`TemplatesView.tsx`):
+        -   [x] Create, edit, delete email and document templates.
+        -   [x] Rich text editor (Tiptap) for template body.
+        -   [x] Placeholder management.
+        -   [x] Search and filter templates.
+        -   [x] API integration for template operations.
 
 ### 4. Campaign Management
-    -   [ ] To be defined.
+    -   [x] Core functionality implemented (`CampaignsView.tsx`):
+        -   [x] Create, edit, delete campaigns.
+        -   [x] Start and stop campaigns.
+        -   [x] Select senders and templates for campaigns.
+        -   [x] Monitor basic campaign status (view for detailed monitoring exists).
+        -   [x] Supabase and API integration for campaign operations.
+        -   [ ] Advanced features (e.g., quota-based, interval-driven sending) as per `follow-these-rules.md` may still need implementation/verification.
 
 ### 5. Dashboard & Monitoring
-    -   [ ] To be defined.
+    -   [x] Core `DashboardView.tsx` component implemented and integrated into `dashboard/page.tsx`.
+        -   [x] Displays various metrics and charts (currently using mock data, as per `DashboardView.tsx` initial review).
+        -   [ ] Real-time data integration and specific KPI tracking for live operations to be verified/completed.
+        -   [ ] Pre-flight check for campaign engine (email test send) needs implementation/verification.
+
+### 6. Settings Management
+    -   [x] UI for settings implemented (`SettingsView.tsx`) with tabs for:
+        -   [x] Access Control (UI only, persistence scaffolded)
+        -   [x] Delegation (UI only, persistence scaffolded)
+        -   [x] Branding (Logo upload functional, other persistence scaffolded)
+        -   [x] Analytics (UI only, persistence scaffolded)
+    -   [x] Functional logo upload to Supabase Storage.
+    -   [ ] Full data persistence for all settings sections needs implementation/verification.

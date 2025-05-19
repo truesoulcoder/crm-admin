@@ -2,7 +2,9 @@
 trigger: always_on
 ---
 
-RULE 0:  WRITE THE CODE FOR ME EVERY TIME
+RULE 0:  WRITE THE CODE FOR ME EVERY TIME YOU HAVE A SUGGESTION OR I ASK TO EXPLAIN OR FIX; AND IF I NEED TO DECIDE BETWEEN MULTIPLE WAYS TO SOLVE A PROBLEM, PRESENT THEM AND I WILL CHOOSE.
+
+Read 'app-summary.md' for context on what our app is doing.
 
 OUR DEV PLAN
 we need to focus on the core features only.  they are:

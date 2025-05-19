@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { getSupabaseSession } from '@/lib/auth';
+import supabase from '@/lib/supabaseClient'; // Import supabase client (default import)
 import { useRouter, usePathname } from 'next/navigation';
 
 interface UserContextType {
@@ -53,6 +54,38 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     let isMounted = true;
     console.log("[UserProvider] Initializing. Current path:", pathname);
 
+    // Listener for auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange((event: string, newSession: Session | null) => {
+      console.log('[UserProvider] Auth state changed:', event, newSession);
+      if (event === 'SIGNED_IN') {
+        if (isMounted && newSession) {
+          setSession(newSession);
+          setUser(newSession.user);
+          const userRole = getUserRole(newSession.user);
+          setRole(userRole);
+          setIsLoading(false);
+          // Redirection after sign-in will be handled by the page components (login.tsx, index.tsx)
+          // or by the main effect hook if user directly lands on a protected page with a new session.
+        }
+      } else if (event === 'SIGNED_OUT') {
+        if (isMounted) {
+          setSession(null);
+          setUser(null);
+          setRole('guest');
+          setIsLoading(false);
+          if (pathname !== '/login') {
+            router.replace('/login'); // Redirect to login on sign out
+          }
+        }
+      } else if (event === 'USER_UPDATED') {
+        if (isMounted && newSession) {
+            setUser(newSession.user);
+            const userRole = getUserRole(newSession.user);
+            setRole(userRole);
+        }
+      }
+    });
+
     const fetchUserSessionAndRole = async () => {
       if (!isMounted) return;
       setIsLoading(true);
@@ -67,28 +100,30 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
             setRole(userRole);
             console.log("[UserProvider] User role determined as:", userRole);
 
-            // Role-based redirection logic
-            if (userRole === 'crmuser' && !pathname.startsWith('/crm') && pathname !== '/') {
-              console.log(`[UserProvider] crmuser ('${userRole}') on restricted path '${pathname}'. Redirecting to /crm.`);
-              router.replace('/crm');
-            } else if (userRole === 'superadmin' && pathname === '/') {
-              // If a superadmin is logged in and on the login page, redirect to dashboard
-              console.log(`[UserProvider] superadmin on login page with session. Redirecting to /dashboard.`);
-              router.replace('/dashboard');
-            } else if (userRole !== 'superadmin' && userRole !== 'crmuser' && pathname !== '/') {
-              // If user has an unknown role (or 'guest' after login somehow) and isn't on login page, redirect to login
-              console.log(`[UserProvider] User with unrecognized role ('${userRole}') or guest on authenticated path '${pathname}'. Redirecting to login.`);
-              router.replace('/'); // Or a generic 'unauthorized' page
+            // Role-based redirection for users already authenticated and navigating directly
+            // The login.tsx and index.tsx pages will handle their own redirects if user lands there.
+            if (pathname !== '/login' && pathname !== '/') { // Don't interfere with login/index redirects
+              if (userRole === 'crmuser' && !pathname.startsWith('/crm')) {
+                console.log(`[UserProvider] Authenticated crmuser ('${userRole}') on restricted path '${pathname}'. Redirecting to /crm.`);
+                router.replace('/crm');
+              } else if (userRole === 'guest' || (userRole !== 'superadmin' && userRole !== 'crmuser')) {
+                // If user is guest or unknown role on a protected path (not login/index), send to login
+                console.log(`[UserProvider] Authenticated user with role ('${userRole}') on protected path '${pathname}'. Redirecting to /login.`);
+                router.replace('/login');
+              }
+              // SuperAdmins are generally allowed on any authenticated path.
             }
-            // SuperAdmins can access any page (no specific redirect unless they are on '/')
-            // CrmUsers are allowed on /crm paths (and implicitly on '/' if they land there before this logic kicks in)
-
           } else {
-            console.log("[UserProvider] No active session. User should be redirected by RequireAuth.");
+            // No active session found by initial fetch
             setSession(null);
             setUser(null);
             setRole('guest');
-            // No redirect here; RequireAuth is responsible for unauthenticated users.
+            console.log("[UserProvider] No active session. isLoading:", isLoading, "Path:", pathname);
+            if (pathname !== '/login' && pathname !== '/') {
+              console.log("[UserProvider] No session and not on login/index page. UserProvider sees no session, RequireAuth should handle redirect.");
+              // No direct redirect from here to avoid conflicts with RequireAuth
+              // RequireAuth should catch this state and redirect to /login.
+            }
           }
           setError(null);
         }
@@ -107,7 +142,8 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
     return () => {
       isMounted = false;
-      console.log("[UserProvider] Unmounted.");
+      authListener?.subscription?.unsubscribe(); // Clean up the auth listener
+      console.log("[UserProvider] Unmounted, auth listener unsubscribed.");
     };
   }, [pathname, router]); // Added router to dependencies as it's used for redirection
 
@@ -121,16 +157,21 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       );
   }
 
-  // Post-load check for redirection for crmuser
-  if (!isLoading && role === 'crmuser' && !pathname.startsWith('/crm') && pathname !== '/') {
-    console.log(`[UserProvider] Render check: crmuser ('${role}') on restricted path '${pathname}'. Displaying redirect message.`);
-    return (
-        <div className="flex min-h-screen flex-col items-center justify-center bg-base-100">
-            <span className="loading loading-spinner loading-lg text-primary"></span>
-            <p className="mt-4 text-lg">Redirecting to your authorized area...</p>
-        </div>
-    );
-  }
+  // This specific render-time redirect might conflict with RequireAuth or page-level redirects.
+  // Let's rely on useEffect and page-level logic for redirects mostly.
+  // if (!isLoading && role === 'crmuser' && !pathname.startsWith('/crm') && pathname !== '/' && pathname !== '/login') {
+  //   console.log(`[UserProvider] Render check: crmuser ('${role}') on restricted path '${pathname}'. Displaying redirect message.`);
+  //   // This can cause hydration errors if router.replace is called during render pass from here.
+  //   // It's better to handle in useEffect or at page level.
+  //   // router.replace('/crm'); 
+  //   return (
+  //       <div className="flex min-h-screen flex-col items-center justify-center bg-base-100">
+  //           <span className="loading loading-spinner loading-lg text-primary"></span>
+  //           <p className="mt-4 text-lg">Redirecting to your authorized area...</p>
+  //       </div>
+  //   );
+  // }
+
   
   console.log(`[UserProvider] Render: isLoading=${isLoading}, role=${role}, path=${pathname}. Rendering children.`);
   return (

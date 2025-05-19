@@ -1,331 +1,361 @@
 'use client';
 
-import Image from 'next/image';
+import { createBrowserClient } from '@supabase/ssr';
 import {
-  Users, Send, FileText, DollarSign, TrendingUp, TrendingDown, AlertCircle, Crown, BarChart3, LineChart as LineChartIcon, Activity, Target, Award, Star, MessageSquare, UserCheck, UserX, UserPlus
+  PlayCircle, PauseCircle, Users, Send, MailCheck, MailWarning, AlertTriangle, Zap, Activity, BarChart3, LineChart as LineChartIcon, CheckCircle, XCircle, Settings, ExternalLink, Info
 } from 'lucide-react';
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line
 } from 'recharts';
 
-// --- Mock Data Structures ---
-interface StatCard {
+// Interfaces
+interface SenderKpi {
+  sender_id: string;
+  sender_name: string; 
+  emails_sent: number;
+  emails_delivered: number;
+  emails_bounced: number;
+  emails_opened: number; 
+  links_clicked: number; 
+}
+
+interface CampaignEngineStatus {
+  is_running: boolean;
+  last_status_change: string;
+}
+
+// StatCardItem component for individual stat cards
+interface StatCardItemProps {
   title: string;
-  value: string;
+  value: string | number;
   icon: React.ReactNode;
-  trend?: string;
-  trendColor?: string;
-  subtext?: string;
+  description?: string;
 }
 
-interface CampaignPerformance {
-  id: string;
-  name: string;
-  sent: number;
-  opened: number;
-  clicked: number;
-  conversionRate: number; // percentage
-  status: 'Active' | 'Completed' | 'Paused';
-}
+const StatCardItem: React.FC<StatCardItemProps> = ({ title, value, icon, description }) => (
+  <div className="card bg-base-200 shadow-md hover:shadow-lg transition-shadow">
+    <div className="card-body items-center text-center">
+      <div className="p-3 bg-primary/10 rounded-full mb-2 text-primary">
+        {icon}
+      </div>
+      <h2 className="card-title text-lg font-semibold text-base-content/80">{title}</h2>
+      <p className="text-3xl font-bold text-primary">{value}</p>
+      {description && <p className="text-xs text-base-content/60 mt-1">{description}</p>}
+    </div>
+  </div>
+);
 
-interface UserKPI {
-  id: string;
-  name: string;
-  avatarUrl: string;
-  leadsGenerated: number;
-  dealsClosed: number;
-  revenueGenerated: number; // in USD
-  activityScore: number; // 0-100
-  role: 'Admin' | 'Manager' | 'Agent';
-}
+const DashboardView: React.FC = () => {
+  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const [kpiData, setKpiData] = useState<SenderKpi[]>([]);
+  const [campaignEngineStatus, setCampaignEngineStatus] = useState<CampaignEngineStatus | null>(null);
+  const [isLoadingKpis, setIsLoadingKpis] = useState<boolean>(true);
+  const [isLoadingStatus, setIsLoadingStatus] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-// --- Mock Data ---
-const generalStats: StatCard[] = [
-  { title: 'Total Leads', value: '2,480', icon: <Users size={24} className="text-info" />, trend: '+120', trendColor: 'text-success', subtext: 'This month' },
-  { title: 'Active Campaigns', value: '5', icon: <Send size={24} className="text-success" />, trend: '-2', trendColor: 'text-warning', subtext: 'vs last month' },
-  { title: 'Avg. Open Rate', value: '28.6%', icon: <MessageSquare size={24} className="text-primary" />, trend: '+1.5%', trendColor: 'text-success', subtext: 'All campaigns' },
-  { title: 'Deals Closed (QTD)', value: '132', icon: <DollarSign size={24} className="text-accent" />, trend: '+18', trendColor: 'text-success', subtext: 'Target: 200' },
-];
+  // --- Data Fetching --- 
+  const fetchKpiData = useCallback(async () => {
+    setIsLoadingKpis(true);
+    setError(null);
+    try {
+      // Fetch raw data from kpi_stats and join with senders to get sender_name
+      const { data: rawKpiData, error: dbError } = await supabase
+        .from('kpi_stats')
+        .select(`
+          sender_id,
+          emails_sent,
+          emails_delivered,
+          emails_bounced,
+          emails_opened,
+          links_clicked,
+          senders (name)
+        `); // Assumes 'senders' table has 'id' and 'name', and RLS allows this join.
 
-const mockCampaignPerformances: CampaignPerformance[] = [
-  { id: 'camp-001', name: 'Q2 Newsletter', sent: 15000, opened: 4200, clicked: 750, conversionRate: 5.0, status: 'Completed' },
-  { id: 'camp-002', name: 'Product Launch X', sent: 9500, opened: 3800, clicked: 950, conversionRate: 10.0, status: 'Active' },
-  { id: 'camp-003', name: 'Summer Sale Early Bird', sent: 22000, opened: 5500, clicked: 1100, conversionRate: 5.0, status: 'Active' },
-  { id: 'camp-004', name: 'Win-Back Initiative', sent: 7000, opened: 1400, clicked: 210, conversionRate: 3.0, status: 'Paused' },
-  { id: 'camp-005', name: 'Holiday Special', sent: 18000, opened: 6300, clicked: 1260, conversionRate: 7.0, status: 'Completed' },
-];
+      if (dbError) throw dbError;
 
-const unsortedMockUserKPIs: UserKPI[] = [
-  {
-    id: 'user-001', name: 'Alice Wonderland',
-    avatarUrl: 'https://i.pravatar.cc/150?u=alice',
-    leadsGenerated: 120, dealsClosed: 15, revenueGenerated: 75000, activityScore: 92, role: 'Admin'
-  },
-  {
-    id: 'user-002', name: 'Bob The Builder',
-    avatarUrl: 'https://i.pravatar.cc/150?u=bob',
-    leadsGenerated: 95, dealsClosed: 12, revenueGenerated: 62000, activityScore: 88, role: 'Manager'
-  },
-  {
-    id: 'user-004', name: 'Diana Prince',
-    avatarUrl: 'https://i.pravatar.cc/150?u=diana',
-    leadsGenerated: 150, dealsClosed: 22, revenueGenerated: 110000, activityScore: 95, role: 'Agent'
-  },
-  {
-    id: 'user-003', name: 'Charlie Brown',
-    avatarUrl: 'https://i.pravatar.cc/150?u=charlie',
-    leadsGenerated: 70, dealsClosed: 8, revenueGenerated: 35000, activityScore: 75, role: 'Agent'
-  },
-  {
-    id: 'user-00X', name: 'Eve Polastri',
-    avatarUrl: 'https://i.pravatar.cc/150?u=eve',
-    leadsGenerated: 88, dealsClosed: 10, revenueGenerated: 52000, activityScore: 81, role: 'Agent'
-  },
-];
+      if (rawKpiData) {
+        // Perform client-side aggregation: sum up all stats for each sender.
+        const aggregatedKpis = rawKpiData.reduce<SenderKpi[]>((acc, currentRow) => {
+          // Supabase returns joined tables as nested objects. Ensure 'senders' is correctly typed or handled if null.
+          const senderTable = currentRow.senders as { name: string }[] | null; 
+          const senderName = senderTable?.[0]?.name || currentRow.sender_id; // Fallback to sender_id if name is not available
 
-const mockUserKPIs: UserKPI[] = [...unsortedMockUserKPIs].sort((a, b) => b.revenueGenerated - a.revenueGenerated); // Sort by revenue for leaderboard
+          const existingEntry = acc.find(item => item.sender_id === currentRow.sender_id);
+          if (existingEntry) {
+            existingEntry.emails_sent += currentRow.emails_sent || 0;
+            existingEntry.emails_delivered += currentRow.emails_delivered || 0;
+            existingEntry.emails_bounced += currentRow.emails_bounced || 0;
+            existingEntry.emails_opened += currentRow.emails_opened || 0;
+            existingEntry.links_clicked += currentRow.links_clicked || 0;
+          } else {
+            acc.push({
+              sender_id: currentRow.sender_id,
+              sender_name: senderName,
+              emails_sent: currentRow.emails_sent || 0,
+              emails_delivered: currentRow.emails_delivered || 0,
+              emails_bounced: currentRow.emails_bounced || 0,
+              emails_opened: currentRow.emails_opened || 0,
+              links_clicked: currentRow.links_clicked || 0,
+            });
+          }
+          return acc;
+        }, []);
+        setKpiData(aggregatedKpis);
+      } else {
+        setKpiData([]);
+      }
+    } catch (err: any) {
+      console.error('Error fetching KPI data:', err);
+      setError('Failed to load KPI data. ' + err.message);
+      setKpiData([]);
+    } finally {
+      setIsLoadingKpis(false);
+    }
+  }, [supabase]);
 
-const recentActivities = [
-  { icon: <UserPlus size={20} className="text-success" />, text: 'New lead "John B. Good" (Website) assigned to Diana Prince.' },
-  { icon: <Send size={20} className="text-info" />, text: 'Campaign "Product Launch X" successfully sent to 9,500 contacts.' },
-  { icon: <DollarSign size={20} className="text-accent" />, text: 'Deal "Gamma Inc. Onboarding" ($12,000) won by Bob The Builder.' },
-  { icon: <AlertCircle size={20} className="text-warning" />, text: 'Campaign "Win-Back Initiative" has low engagement. Consider review.' },
-  { icon: <UserCheck size={20} className="text-primary" />, text: 'Alice Wonderland updated settings for lead scoring.' },
-  { icon: <UserX size={20} className="text-error" />, text: 'Email to "test@invalid-domain-yo.com" bounced (Hard Bounce).' },
-];
+  const fetchCampaignEngineStatus = useCallback(async () => {
+    setIsLoadingStatus(true);
+    try {
+      // TODO: Replace with your actual Supabase query to get campaign engine status
+      const { data, error: dbError } = await supabase
+        .from('application_settings')
+        .select('value, updated_at')
+        .eq('key', 'campaign_engine_status')
+        .single();
 
-// --- Email Metrics Mock Data ---
-const emailMetricsData = [
-  { name: 'May 1', Sent: 1200, Bounced: 45, Delivered: 1155 },
-  { name: 'May 2', Sent: 1100, Bounced: 25, Delivered: 1075 },
-  { name: 'May 3', Sent: 1300, Bounced: 32, Delivered: 1268 },
-  { name: 'May 4', Sent: 900,  Bounced: 18, Delivered: 882 },
-  { name: 'May 5', Sent: 1500, Bounced: 60, Delivered: 1440 },
-  { name: 'May 6', Sent: 1700, Bounced: 55, Delivered: 1645 },
-  { name: 'May 7', Sent: 1600, Bounced: 40, Delivered: 1560 },
-];
+      if (dbError) {
+        if (dbError.code === 'PGRST116') { // No rows found
+          // If the setting doesn't exist, assume engine is off. Consider creating it here if appropriate.
+          setCampaignEngineStatus({ is_running: false, last_status_change: new Date().toISOString() });
+          console.warn('Campaign engine status setting not found in application_settings. Defaulting to OFF.');
+        } else {
+          throw dbError;
+        }
+      } else if (data) {
+        setCampaignEngineStatus({
+          is_running: data.value === 'true',
+          last_status_change: data.updated_at
+        });
+      } else {
+        // Should not happen if PGRST116 is handled, but as a fallback:
+        setCampaignEngineStatus({ is_running: false, last_status_change: new Date().toISOString() });
+      }
+    } catch (err: any) {
+      console.error('Error fetching campaign engine status:', err);
+      setError((prev) => prev ? prev + '\nFailed to load campaign status.' : 'Failed to load campaign status. ' + err.message);
+    } finally {
+      setIsLoadingStatus(false);
+    }
+  }, [supabase]);
 
-// --- Chart Data Preparation ---
-const campaignChartData = mockCampaignPerformances.map(c => ({
-  name: c.name,
-  Sent: c.sent,
-  Opened: c.opened,
-  Clicked: c.clicked,
-}));
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      // It's good practice to ensure dependent data (like user) is available
+      // before making calls that rely on it.
+      await fetchCampaignEngineStatus();
+      await fetchKpiData();
+    };
 
-const leadConversionData = [
-  { stage: 'New Leads', count: 2480, fill: 'hsl(var(--b3))' }, 
-  { stage: 'Contacted', count: 1800, fill: 'hsl(var(--in))' }, 
-  { stage: 'Qualified', count: 750, fill: 'hsl(var(--wa))' }, 
-  { stage: 'Negotiation', count: 300, fill: 'hsl(var(--su))' }, 
-  { stage: 'Won Deals', count: 132, fill: 'hsl(var(--ac))' }, 
-];
+    if (user) { // Only attempt to load data if the user object is available
+      void loadDashboardData();
+    }
+    // Adding user to the dependency array ensures this effect re-runs if the user changes,
+    // which is often desired for data fetching dependent on user identity.
+  }, [fetchCampaignEngineStatus, fetchKpiData, user]);
 
-// --- Components ---
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
+  // --- Campaign Engine Control --- 
+  const handleToggleCampaignEngine = async () => {
+    if (!campaignEngineStatus) return;
+    const newStatus = !campaignEngineStatus.is_running;
+    
+    if (newStatus) {
+      const confirmStart = window.confirm(
+        'This will start the campaign engine. A pre-flight check will be performed, including sending a test email from each active sender to chrisphillips@truesoulpartners.com. Continue?'
+      );
+      if (!confirmStart) return;
+
+      // TODO: Implement actual pre-flight check logic (e.g., RPC call)
+      console.log('Pre-flight check: Initiating test emails...');
+      // Example: await supabase.rpc('run_campaign_preflight_check');
+      // alert('Pre-flight check initiated. Engine will start upon success.');
+    }
+
+    setIsLoadingStatus(true);
+    try {
+      // TODO: Replace with your actual Supabase update logic for campaign engine status
+      const { error: updateError } = await supabase
+        .from('application_settings')
+        .update({ value: newStatus.toString(), updated_at: new Date().toISOString() })
+        .eq('key', 'campaign_engine_status');
+
+      if (updateError) throw updateError;
+      setCampaignEngineStatus({ is_running: newStatus, last_status_change: new Date().toISOString() });
+      alert(`Campaign engine ${newStatus ? 'started' : 'stopped'} successfully.`);
+    } catch (err: any) {
+      console.error('Error toggling campaign engine:', err);
+      alert('Failed to toggle campaign engine: ' + err.message);
+    } finally {
+      setIsLoadingStatus(false);
+    }
+  };
+  
+  // --- Render Helper: Custom Tooltip for Charts ---
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="p-2 bg-base-300 border border-base-content/20 rounded shadow-lg">
+          <p className="label font-bold text-base-content">{label}</p>
+          {payload.map((entry: any, index: number) => (
+            <p key={`item-${index}-${entry.name}`} style={{ color: entry.color }} className="text-sm">
+              {`${entry.name}: ${typeof entry.value === 'number' ? entry.value.toLocaleString() : 'N/A'}`}
+            </p>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // --- Render Logic --- 
+  if (isLoadingKpis || isLoadingStatus) {
     return (
-      <div className="p-2 bg-base-300 border border-base-content/20 rounded shadow-lg">
-        <p className="label font-bold text-base-content">{label}</p>
-        {payload.map((entry: any) => (
-          <p key={`item-${entry.name}`} style={{ color: entry.color }} className="text-sm">
-            {`${entry.name}: ${entry.value.toLocaleString()}`}
-          </p>
-        ))}
+      <div className="flex min-h-[calc(100vh-10rem)] flex-col items-center justify-center bg-base-100 p-4">
+        <span className="loading loading-spinner loading-lg text-primary"></span>
+        <p className="mt-4 text-lg">Loading Dashboard Data...</p>
       </div>
     );
   }
-  return null;
-};
 
-const DashboardView: React.FC = () => {
+  const overallStats = kpiData.reduce((acc, kpi) => {
+    acc.emails_sent += kpi.emails_sent || 0;
+    acc.emails_delivered += kpi.emails_delivered || 0;
+    acc.emails_bounced += kpi.emails_bounced || 0;
+    // You can also sum emails_opened and links_clicked here if you add corresponding stat cards
+    return acc;
+  }, { emails_sent: 0, emails_delivered: 0, emails_bounced: 0 });
+  
+  const overallDeliveryRate = overallStats.emails_sent > 0 ? (overallStats.emails_delivered / overallStats.emails_sent) * 100 : 0;
+
   return (
     <div className="space-y-6 p-4 md:p-6 lg:p-8">
-      <h1 className="text-3xl font-bold text-base-content mb-6">CRM Dashboard</h1>
-      {/* General Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {generalStats.map((stat, index) => (
-          <div key={index} className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
-            <div className="card-body">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-base-content/80 font-medium text-sm uppercase tracking-wider">{stat.title}</p>
-                <div className="tooltip tooltip-left" data-tip={stat.subtext || stat.title}>
-                  {stat.icon}
-                </div>
-              </div>
-              <h2 className="card-title text-4xl font-extrabold mb-1 text-base-content">{stat.value}</h2>
-              {stat.trend && (
-                <div className={`flex items-center text-xs ${stat.trendColor || 'text-base-content/70'}`}>
-                  {stat.trend.startsWith('+') ? <TrendingUp size={14} className="mr-1" /> : <TrendingDown size={14} className="mr-1" />}
-                  <span>{stat.trend} {stat.subtext && !stat.subtext.includes('month') && !stat.subtext.includes('Target') ? ' ' : ''}{stat.subtext && (stat.subtext.includes('month') || stat.subtext.includes('Target')) ? '' : 'vs last period'}</span>
-                </div>
-              )}
-            </div>
+      <header className="mb-8">
+        <h1 className="text-3xl font-bold text-base-content flex items-center">
+          <Activity className="mr-3 text-primary" size={32} /> CRM Dashboard
+        </h1>
+      </header>
+
+      {error && (
+        <div role="alert" className="alert alert-error shadow-lg mb-6">
+          <AlertTriangle size={24} />
+          <div>
+            <h3 className="font-bold">Dashboard Error</h3>
+            <div className="text-xs whitespace-pre-line">{error}</div>
           </div>
-        ))}
-      </div>
-      {/* Email Metrics Chart */}
-      <div className="card bg-base-100 shadow-xl mb-6">
+          <button className="btn btn-sm btn-ghost" onClick={() => { setError(null); fetchKpiData(); fetchCampaignEngineStatus(); }}>Clear & Retry</button>
+        </div>
+      )}
+
+      {/* Campaign Engine Control */}
+      <section className="card bg-base-100 shadow-xl mb-6">
         <div className="card-body">
           <h2 className="card-title text-xl font-semibold text-base-content mb-4 flex items-center">
-            <LineChartIcon className="mr-2 text-info" /> Email Metrics (Sent, Bounced, Delivered)
+            <Zap className="mr-2 text-info" /> Campaign Engine
           </h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={emailMetricsData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.15} />
-              <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'hsl(var(--bc) / 0.7)' }} axisLine={{strokeOpacity: 0.2}} tickLine={{strokeOpacity: 0.2}} />
-              <YAxis tickFormatter={(value) => value.toLocaleString()} tick={{ fontSize: 12, fill: 'hsl(var(--bc) / 0.7)' }} axisLine={{strokeOpacity: 0.2}} tickLine={{strokeOpacity: 0.2}} allowDecimals={false} />
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--b2))' }} />
-              <Legend wrapperStyle={{ fontSize: '13px', paddingTop: '10px' }} />
-              <Line type="monotone" dataKey="Sent" stroke="hsl(var(--in))" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-              <Line type="monotone" dataKey="Bounced" stroke="hsl(var(--er))" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-              <Line type="monotone" dataKey="Delivered" stroke="hsl(var(--su))" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Campaign Performance Chart */}
-        <div className="lg:col-span-2 card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title text-xl font-semibold text-base-content mb-4 flex items-center"><BarChart3 className="mr-2 text-primary"/> Campaign Performance Overview</h2>
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={campaignChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} strokeOpacity={0.2}/>
-                <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'hsl(var(--bc) / 0.7)' }} axisLine={{strokeOpacity: 0.2}} tickLine={{strokeOpacity: 0.2}}/>
-                <YAxis tickFormatter={(value) => value.toLocaleString()} tick={{ fontSize: 12, fill: 'hsl(var(--bc) / 0.7)' }} axisLine={{strokeOpacity: 0.2}} tickLine={{strokeOpacity: 0.2}}/>
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--b2))' }}/>
-                <Legend wrapperStyle={{ fontSize: '13px', paddingTop: '10px' }} />
-                <Bar dataKey="Sent" fill="hsl(var(--in))" radius={[4, 4, 0, 0]} barSize={15}/>
-                <Bar dataKey="Opened" fill="hsl(var(--su))" radius={[4, 4, 0, 0]} barSize={15}/>
-                <Bar dataKey="Clicked" fill="hsl(var(--ac))" radius={[4, 4, 0, 0]} barSize={15}/>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
+            <button 
+              className={`btn ${campaignEngineStatus?.is_running ? 'btn-error' : 'btn-success'} gap-2 w-full sm:w-auto`}
+              onClick={handleToggleCampaignEngine}
+              disabled={isLoadingStatus}
+            >
+              {isLoadingStatus ? <span className="loading loading-spinner loading-xs"></span> :
+                campaignEngineStatus?.is_running ? <PauseCircle size={20} /> : <PlayCircle size={20} />
+              }
+              {campaignEngineStatus?.is_running ? 'Stop Engine' : 'Start Engine'}
+            </button>
+            <div className="text-sm p-3 bg-base-200 rounded-md w-full sm:w-auto">
+              <strong className='block mb-1'>Current Status:</strong> 
+              {campaignEngineStatus?.is_running 
+                ? <span className="badge badge-lg badge-success gap-2"><CheckCircle size={16}/> Running</span> 
+                : <span className="badge badge-lg badge-error gap-2"><XCircle size={16}/> Stopped</span>}
+              <p className='text-xs text-base-content/70 mt-2'>Last change: {campaignEngineStatus?.last_status_change ? new Date(campaignEngineStatus.last_status_change).toLocaleString() : 'N/A'}</p>
+            </div>
           </div>
-
-      
+           <p className="text-xs text-base-content/60 mt-4">Controls the automated processing of email campaigns and lead assignments. Pre-flight checks are performed before starting.</p>
         </div>
+      </section>
 
-      
+      {/* Overall KPI Stats Cards */}
+      <section className="mb-6">
+        <h2 className="text-2xl font-semibold text-base-content mb-4 flex items-center">
+          <BarChart3 className="mr-2 text-secondary" /> Overall Performance
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCardItem title="Total Emails Sent" value={typeof overallStats.emails_sent === 'number' ? overallStats.emails_sent.toLocaleString() : '0'} icon={<Send size={28} />} description="All campaigns, all senders" />
+          <StatCardItem title="Total Delivered" value={typeof overallStats.emails_delivered === 'number' ? overallStats.emails_delivered.toLocaleString() : '0'} icon={<MailCheck size={28} />} description={`${overallDeliveryRate.toFixed(1)}% delivery rate`} />
+          <StatCardItem title="Total Bounced" value={typeof overallStats.emails_bounced === 'number' ? overallStats.emails_bounced.toLocaleString() : '0'} icon={<MailWarning size={28} />} description={`${(overallStats.emails_sent > 0 ? (overallStats.emails_bounced / overallStats.emails_sent) * 100 : 0).toFixed(1)}% bounce rate`} />
+          <StatCardItem title="Active Senders" value={kpiData.length} icon={<Users size={28} />} description="Senders with reported activity" />
+        </div>
+      </section>
 
-        {/* Lead Conversion Funnel (Simplified) */}
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title text-xl font-semibold text-base-content mb-4 flex items-center"><Target className="mr-2 text-info"/> Lead Conversion Funnel</h2>
-            <ResponsiveContainer width="100%" height={350}>
-               <BarChart data={leadConversionData} layout="vertical" margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} strokeOpacity={0.2}/>
-                <XAxis type="number" tickFormatter={(value) => value.toLocaleString()} tick={{ fontSize: 12, fill: 'hsl(var(--bc) / 0.7)' }} axisLine={{strokeOpacity: 0.2}} tickLine={{strokeOpacity: 0.2}}/>
-                <YAxis dataKey="stage" type="category" tick={{ fontSize: 12, fill: 'hsl(var(--bc) / 0.7)' }} width={80} axisLine={{strokeOpacity: 0.2}} tickLine={{strokeOpacity: 0.2}}/>
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--b2))' }}/>
-                <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={20}>
-                  {/* Individual bar colors are set in data */} 
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+      {/* KPI Charts Section */}
+      <section>
+        <h2 className="text-2xl font-semibold text-base-content mb-4 flex items-center">
+          <LineChartIcon className="mr-2 text-accent" /> Sender Performance Breakdown
+        </h2>
+        {isLoadingKpis && !kpiData.length ? (
+          <div className="text-center p-6 bg-base-200 rounded-lg">
+            <span className="loading loading-dots loading-md text-primary"></span>
+            <p>Loading sender KPI data...</p>
           </div>
-
-      
-        </div>
-
-      
-      </div>
-
-      
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* User KPI Leaderboard */}
-        <div className="lg:col-span-2 card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title text-xl font-semibold text-base-content mb-4 flex items-center"><Crown className="mr-2 text-warning" /> Top Performing Users (by Revenue)</h2>
-            <div className="overflow-x-auto">
-              <table className="table w-full table-zebra">
-                <thead>
-                  <tr>
-                    <th>Rank</th>
-                    <th>User</th>
-                    <th className="text-right">Leads</th>
-                    <th className="text-right">Deals Closed</th>
-                    <th className="text-right">Revenue</th>
-                    <th className="text-center">Activity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mockUserKPIs.map((user, index) => (
-                    <tr key={user.id} className="hover">
-                      <td className="font-semibold">
-                        {index < 3 ? <Award size={16} className={`inline mr-1 ${index === 0 ? 'text-warning' : index === 1 ? 'text-neutral-focus' : 'text-orange-400'}`} /> : ''}
-                        {index + 1}
-                      </td>
-                      <td>
-                        <div className="flex items-center space-x-3">
-                          <div className="avatar">
-                            <div className="mask mask-squircle w-10 h-10">
-                              <Image src={user.avatarUrl} alt={`${user.name}'s avatar`} width={40} height={40} className="mask mask-squircle" />
-                            </div>
-
-      
-                          </div>
-
-      
-                          <div>
-                            <div className="font-bold text-base-content">{user.name}</div>
-                            <div className="text-xs text-base-content/70">{user.role}</div>
-                          </div>
-
-      
-                        </div>
-
-      
-                      </td>
-                      <td className="text-right">{user.leadsGenerated.toLocaleString()}</td>
-                      <td className="text-right">{user.dealsClosed.toLocaleString()}</td>
-                      <td className="text-right font-semibold text-success">${user.revenueGenerated.toLocaleString()}</td>
-                      <td className="text-center">
-                        <div className="tooltip" data-tip={`Score: ${user.activityScore}/100`}>
-                           <progress className="progress progress-primary w-20" value={user.activityScore} max="100"></progress>
-                        </div>
-
-      
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        ) : !kpiData.length && !error ? (
+          <div role="alert" className="alert alert-info">
+            <Info size={24}/>
+            <span>No sender KPI data available. Ensure your 'sender_kpis_summary_view' is populated.</span>
+          </div>
+        ) : kpiData.length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="card bg-base-100 shadow-xl">
+              <div className="card-body">
+                <h3 className="card-title text-lg font-medium text-base-content mb-3">Emails by Sender</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={kpiData} margin={{ top: 5, right: 20, left: 0, bottom: 60 }}>
+                    <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} />
+                    <XAxis dataKey="sender_name" tick={{ fontSize: 10 }} interval={0} angle={-35} textAnchor="end" />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend verticalAlign="top" wrapperStyle={{paddingBottom: '15px'}} />
+                    <Bar dataKey="emails_sent" fill="hsl(var(--in))" name="Sent" radius={[4,4,0,0]} barSize={15}/>
+                    <Bar dataKey="emails_delivered" fill="hsl(var(--su))" name="Delivered" radius={[4,4,0,0]} barSize={15}/>
+                    <Bar dataKey="emails_bounced" fill="hsl(var(--er))" name="Bounced" radius={[4,4,0,0]} barSize={15}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-      
+            <div className="card bg-base-100 shadow-xl">
+              <div className="card-body">
+                <h3 className="card-title text-lg font-medium text-base-content mb-3">Delivery & Bounce Rates (%) by Sender</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={kpiData.map(k => ({ 
+                      sender_name: k.sender_name,
+                      delivery_rate: k.emails_sent > 0 ? (k.emails_delivered / k.emails_sent) * 100 : 0,
+                      bounce_rate: k.emails_sent > 0 ? (k.emails_bounced / k.emails_sent) * 100 : 0,
+                    }))} margin={{ top: 5, right: 20, left: 0, bottom: 60 }}>
+                    <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} />
+                    <XAxis dataKey="sender_name" tick={{ fontSize: 10 }} interval={0} angle={-35} textAnchor="end" />
+                    <YAxis unit="%" allowDecimals={false}/>
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend verticalAlign="top" wrapperStyle={{paddingBottom: '15px'}} />
+                    <Line type="monotone" dataKey="delivery_rate" stroke="hsl(var(--su))" strokeWidth={2} name="Delivery Rate" activeDot={{ r: 6 }}/>
+                    <Line type="monotone" dataKey="bounce_rate" stroke="hsl(var(--er))" strokeWidth={2} name="Bounce Rate" activeDot={{ r: 6 }}/>
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
-
-      
-        </div>
-
-      
-
-        {/* Recent Activity */}
-        <div className="card bg-base-100 shadow-xl">
-          <div className="card-body">
-            <h2 className="card-title text-xl font-semibold text-base-content mb-4 flex items-center"><Activity className="mr-2 text-info"/> Recent Activities</h2>
-            <ul className="space-y-3 overflow-y-auto max-h-96 pr-1">
-              {recentActivities.map((activity, index) => (
-                <li key={index} className="flex items-start p-2.5 rounded-lg hover:bg-base-200 transition-colors text-sm">
-                  <div className="mt-0.5 mr-2.5 shrink-0">{activity.icon}</div>
-                  <span className="text-base-content/90">{activity.text}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-      
-        </div>
-
-      
-      </div>
-
-      
-
+        ) : null}
+      </section>
     </div>
   );
 };

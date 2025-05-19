@@ -1,20 +1,36 @@
-export const metadata = {
-  icons: {
-    icon: 'https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media//favicon.ico',
-  },
+// src/app/layout.tsx
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css'; // Uses src/app/globals.css
+import { UserProvider } from '@/contexts/UserContext';
+import ClientLayout from './layout-client'; // Import the client layout
+
+const inter = Inter({ subsets: ['latin'] });
+
+export const metadata: Metadata = {
+  title: 'CRM Admin',
+  description: 'CRM Administration Panel',
 };
 
-import './globals.css';
+export function generateViewport() {
+  return {
+    width: 'device-width',
+    initialScale: 1.0,
+  };
+}
 
-import ClientLayout from './layout-client';
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen bg-base-100">
-        <ClientLayout>{children}</ClientLayout>
+      <body className={inter.className}>
+        <UserProvider>
+          <ClientLayout>{children}</ClientLayout> {/* ClientLayout wraps children and includes MainAppShell */}
+        </UserProvider>
       </body>
     </html>
   );
 }
-

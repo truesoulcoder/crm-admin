@@ -1,14 +1,15 @@
 import { getAdminSupabaseClient } from '@/services/supabaseAdminService';
-import { Tables } from '@/types/supabase';
+import { Tables, TablesInsert } from '@/types/supabase';
+
 import { sendEmail } from './gmailService';
 import { logSystemEvent } from './logService';
 import { generatePdfFromHtml } from './pdfService';
 import { renderTemplate } from './templateService';
 
-type CampaignJob = Tables<'campaign_jobs'>['Row'];
-type NormalizedLead = Tables<'normalized_leads'>['Row'];
-type CampaignUserAllocation = Tables<'campaign_user_allocations'>['Row'];
-type EmailTask = Tables<'email_tasks'>['Insert'];
+type CampaignJob = Tables<'campaign_jobs'>;
+type NormalizedLead = Tables<'normalized_leads'>;
+type CampaignSenderAllocation = Tables<'campaign_sender_allocations'>;
+type EmailTask = TablesInsert<'email_tasks'>;
 
 const supabase = getAdminSupabaseClient();
 
@@ -45,13 +46,13 @@ export async function processCampaign(campaignId: string) {
     // Determine contacts to test
     const contacts = [effectiveLead.contact1_email_1, effectiveLead.contact2_email_1, effectiveLead.contact3_email_1].filter((e): e is string => !!e);
     // Fetch allocations
-    const { data: allocs } = await supabase.from('campaign_user_allocations').select('*').eq('campaign_id', campaignId) as { data: CampaignUserAllocation[] };
+    const { data: allocs } = await supabase.from('campaign_sender_allocations').select('*').eq('campaign_id', campaignId) as { data: CampaignSenderAllocation[] };
     for (const alloc of allocs || []) {
       for (const _email of contacts) {
         const subject = renderTemplate(campaign.template.subject || '', effectiveLead);
         const body = renderTemplate(campaign.template.content || '', effectiveLead);
         // Send to safety email to inspect
-        await sendEmail(alloc.user_id, SAFETY_EMAIL, subject, body);
+        await sendEmail(alloc.sender_id, SAFETY_EMAIL, subject, body);
       }
     }
     return;
@@ -132,7 +133,7 @@ export async function processCampaign(campaignId: string) {
     for (const email of contacts) {
       // Pick user allocation
       const { data: allocs } = await supabase
-        .from('campaign_user_allocations')
+        .from('campaign_sender_allocations')
         .select('*')
         .eq('campaign_id', campaignId)
         .lt('sent_today', 'daily_quota')
@@ -144,7 +145,7 @@ export async function processCampaign(campaignId: string) {
       // Draft email task
       const subject = renderTemplate(campaign.template.subject || '', effectiveLead);
       const body = renderTemplate(campaign.template.content || '', effectiveLead);
-      const { data: task } = await supabase.from('email_tasks').insert({ campaign_job_id: jobId, assigned_user_id: alloc.user_id, contact_email: email, subject, body, status: 'SENDING' }).single() as { data: EmailTask };
+      const { data: task } = await supabase.from('email_tasks').insert({ campaign_job_id: jobId, assigned_sender_id: alloc.sender_id, contact_email: email, subject, body, status: 'SENDING' }).single() as { data: EmailTask };
 
       try {
         // Generate PDF if needed
@@ -157,13 +158,13 @@ export async function processCampaign(campaignId: string) {
 
         // Send using safety override if enabled
         const recipient = SAFETY_MODE ? SAFETY_EMAIL : email;
-        const res = await sendEmail(alloc.user_id, recipient, subject, body, attachments);
+        const res = await sendEmail(alloc.sender_id, recipient, subject, body, attachments);
 
         // Update task
         await supabase.from('email_tasks').update({ status: res.success ? 'SENT' : 'FAILED_TO_SEND', gmail_message_id: res.messageId, error: res.error }).eq('id', task!.id);
 
         // Update allocation counts
-        await supabase.from('campaign_user_allocations').update({ sent_today: alloc.sent_today + 1, total_sent: alloc.total_sent + 1 }).eq('id', alloc.id);
+        await supabase.from('campaign_sender_allocations').update({ sent_today: alloc.sent_today + 1, total_sent: alloc.total_sent + 1 }).eq('id', alloc.id);
 
         if (!res.success) jobErrors = true;
       } catch (err) {

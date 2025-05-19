@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import RequireAuth from '@/components/RequireAuth'; // Assuming RequireAuth is in src/components
-import { UserProvider } from '@/contexts/UserContext';
 
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
@@ -34,9 +33,7 @@ const MainAppShell: React.FC<MainAppShellProps> = ({ children }) => {
         {/* Main content area */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-base-100">
           <RequireAuth>
-            <UserProvider>
-              {children}
-            </UserProvider>
+            {children}
           </RequireAuth>
         </main>
       </div>

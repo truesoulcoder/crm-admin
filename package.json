@@ -13,6 +13,8 @@
     "@eslint/config-array": "^0.20.0",
     "@eslint/object-schema": "^2.1.6",
     "@googleapis/people": "^3.0.9",
+    "@supabase/auth-ui-react": "^0.4.7",
+    "@supabase/auth-ui-shared": "^0.1.8",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.45.4",
     "@tiptap/extension-link": "^2.12.0",
