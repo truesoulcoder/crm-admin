@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { Loader2, AlertCircle, Mail, CheckCircle, MousePointer, AlertTriangle, BarChart2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+
+import { supabase } from '@/lib/supabase/client';
 
 interface CampaignMonitorViewProps {
   campaignId: string;
@@ -20,7 +21,7 @@ const CampaignMonitorView: React.FC<CampaignMonitorViewProps> = ({ campaignId })
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<CampaignStats[]>([]);
   const [campaignName, setCampaignName] = useState<string>('Campaign');
-  const supabase = createClient();
+  
 
   useEffect(() => {
     const fetchCampaignData = async () => {
@@ -35,8 +36,10 @@ const CampaignMonitorView: React.FC<CampaignMonitorViewProps> = ({ campaignId })
           .single();
 
         if (campaignError) throw campaignError;
-        if (campaignData?.name) {
+        if (campaignData && typeof campaignData.name === 'string') {
           setCampaignName(campaignData.name);
+        } else if (campaignData && campaignData.name === null) {
+          setCampaignName('Campaign'); // Or some other default for null names
         }
 
         // Mock data - replace with actual API calls in production
@@ -60,7 +63,7 @@ const CampaignMonitorView: React.FC<CampaignMonitorViewProps> = ({ campaignId })
     };
 
     if (campaignId) {
-      fetchCampaignData();
+      void fetchCampaignData();
     }
   }, [campaignId]);
 

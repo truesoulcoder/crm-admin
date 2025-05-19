@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown } from 'lucide-react';
 
 // Define types
@@ -73,7 +73,7 @@ const CrmView: React.FC = () => {
   });
   
   // Initialize Supabase client
-  const supabase = createClient();
+  
 
   // Sort Indicator Component
   const SortIndicator = ({ field }: { field: keyof Lead | '' }) => {
