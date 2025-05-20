@@ -11,13 +11,15 @@ type UpdateDocumentTemplate = Database['public']['Tables']['document_templates']
 // Zod schema for document templates
 const documentTemplateSchema = z.object({
   name: z.string().min(1, 'Template name is required'),
-  type: z.enum(['email', 'pdf'], { 
+  type: z.enum(['email', 'document'], { // Changed 'pdf' to 'document'
     required_error: 'Template type is required',
-    invalid_type_error: 'Template type must be either "email" or "pdf"' 
+    invalid_type_error: 'Template type must be either "email" or "document"'
   }),
   subject: z.string().nullish(),
   content: z.string().min(1, 'Template content is required'),
-  is_active: z.boolean().optional().default(true)
+  is_active: z.boolean().optional().default(true),
+  file_path: z.string().optional(), // Added for document templates
+  file_type: z.string().optional()  // Added for document templates
 });
 
 // Helper to get Supabase client for Route Handlers
@@ -176,23 +178,35 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare template data for insertion
-    const templateData = {
+    const templateData: any = {
       name: validation.data.name,
       type: validation.data.type,
       subject: validation.data.subject || null,
       content: validation.data.content,
       created_by: user.id,
+      user_id: user.id, // Ensure user_id is set
       is_active: validation.data.is_active ?? true,
-      deleted_at: null
-      // pdf_url: null // If your schema requires, you can set this to null
+      deleted_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
 
+    // Add file-related fields from validated data if present
+    if (validation.data.file_path) {
+      templateData.file_path = validation.data.file_path;
+      templateData.file_type = validation.data.file_type || 'application/pdf';
+    }
 
+
+    console.log('Inserting template data:', JSON.stringify(templateData, null, 2));
+    
     const { data: newTemplate, error: insertError } = await supabase
       .from('document_templates')
       .insert(templateData)
       .select()
       .single();
+      
+    console.log('Insert result:', { newTemplate, insertError });
 
     if (insertError) {
       console.error('Error creating document template:', insertError);

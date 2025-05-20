@@ -607,24 +607,35 @@ const TemplatesView: React.FC = () => {
         templateData = {
           name: templateName,
           content: templateBody,
-          file_path: publicUrl,
+          file_path: filePath, // Use the storage path, not the public URL
           file_type: 'application/pdf',
-          type: 'pdf',
+          type: 'document', // Use 'document' instead of 'pdf' to match the schema
           is_active: true,
           user_id: user.id,
           created_by: user.id,
-          available_placeholders: clickablePlaceholders
+          available_placeholders: clickablePlaceholders,
+          // Add any other required fields based on your schema
+          subject: null, // Required by the schema but not used for document templates
+          deleted_at: null // Explicitly set to null
         };
       }
 
       console.log('Saving template data:', templateData);
 
       // 6. Save template metadata to database
+      console.log('Sending template data to API:', JSON.stringify(templateData, null, 2));
+      
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        credentials: 'include', // Include credentials for auth
         body: JSON.stringify(templateData),
       });
+      
+      console.log('API response status:', response.status);
 
       const responseData = await response.json();
       
