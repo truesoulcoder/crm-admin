@@ -16,11 +16,12 @@ interface LogEntry {
   id: string;
   timestamp: string;
   message: string;
-  type: 'info' | 'error' | 'success' | 'campaign' | 'email';
+  type: 'info' | 'error' | 'success' | 'warning' | 'campaign' | 'email';
 }
 
 interface CampaignWithStatus extends Campaign {
   current_status?: string; // e.g., idle, running, paused, completed, preflight_pending, preflight_awaiting_confirmation
+  settings?: Record<string, any>; // Add this line to include the settings property
 }
 
 const DashboardView: React.FC = () => {
@@ -141,24 +142,60 @@ const DashboardView: React.FC = () => {
       addLog('No campaign selected for pre-flight.', 'error');
       return;
     }
+    
+    const selectedCampaign = campaigns.find(c => c.id === selectedCampaignId);
+    if (!selectedCampaign) {
+      setError('Selected campaign not found.');
+      return;
+    }
+    
     setIsLoading(true);
     setError(null);
     setCampaignStatus('preflight_pending');
-    addLog(`Initiating pre-flight check for campaign ID: ${selectedCampaignId}...`, 'info');
+    addLog(`Starting pre-flight check for campaign: ${selectedCampaign.name}...`, 'info');
+    
     try {
+      // Call the RPC function
       const { data, error: rpcError } = await supabase.rpc('trigger_preflight_check', {
-        campaign_id_param: selectedCampaignId,
+        campaign_id_param: selectedCampaignId
       });
 
       if (rpcError) throw rpcError;
-
-      addLog(`Pre-flight check initiated successfully for campaign ID: ${selectedCampaignId}. Response: ${JSON.stringify(data)}`, 'success');
-      addLog('Please check your email at chrisphillips@truesoulpartners.com for the pre-flight test email.', 'info');
-      setCampaignStatus('preflight_awaiting_confirmation');
+      
+      // Log detailed results
+      if (data) {
+        const result = data as { success: boolean; message?: string; results: Array<any> };
+        
+        // Log overall result
+        const statusMessage = result.success 
+          ? 'Pre-flight check completed successfully!' 
+          : 'Pre-flight check completed with some issues.';
+          
+        addLog(statusMessage, result.success ? 'success' : 'warning');
+        
+        // Log individual test results
+        if (result.results && Array.isArray(result.results)) {
+          result.results.forEach((test: any) => {
+            const testStatus = test.success ? 'SUCCESS' : 'FAILED';
+            addLog(`${testStatus} - Sender: ${test.sender_email} - ${test.message}`, 
+                   test.success ? 'success' : 'error');
+          });
+        }
+        
+        // Update campaign status based on pre-flight result
+        if (result.success) {
+          setCampaignStatus('preflight_awaiting_confirmation');
+          addLog('Please check your email at chrisphillips@truesoulpartners.com for the test email.', 'info');
+        } else {
+          setCampaignStatus('preflight_failed');
+          setError('Pre-flight check failed. Please check the logs for details.');
+        }
+      }
     } catch (err: any) {
-      setError(`Error initiating pre-flight check: ${err.message}`);
-      addLog(`Error initiating pre-flight check: ${err.message}`, 'error');
-      setCampaignStatus('idle'); // Reset status on error
+      const errorMessage = err.message || 'Unknown error during pre-flight check';
+      setError(`Pre-flight check failed: ${errorMessage}`);
+      addLog(`Error during pre-flight: ${errorMessage}`, 'error');
+      setCampaignStatus('preflight_failed');
     } finally {
       setIsLoading(false);
     }
@@ -170,31 +207,67 @@ const DashboardView: React.FC = () => {
       addLog('No campaign selected to start after pre-flight confirmation.', 'error');
       return;
     }
+    
+    const selectedCampaign = campaigns.find(c => c.id === selectedCampaignId);
+    if (!selectedCampaign) {
+      setError('Selected campaign not found.');
+      return;
+    }
+    
     if (campaignStatus !== 'preflight_awaiting_confirmation') {
-        setError('Pre-flight not yet confirmed or in incorrect state.');
-        addLog('Attempted to start campaign without pre-flight confirmation.', 'error');
-        return;
+      setError('Pre-flight not yet confirmed or in incorrect state.');
+      addLog('Attempted to start campaign without pre-flight confirmation.', 'error');
+      return;
     }
 
     setIsLoading(true);
     setError(null);
     setCampaignStatus('starting');
-    addLog(`Pre-flight confirmed. Starting campaign ID: ${selectedCampaignId}...`, 'info');
+    addLog(`Starting campaign: ${selectedCampaign.name}...`, 'info');
+    
     try {
-      // This RPC might update the campaign's status in the DB, which real-time would pick up.
+      // First, update the campaign status to 'ACTIVE' in the database
+      const { error: updateError } = await supabase
+        .from('campaigns')
+        .update({ 
+          status: 'ACTIVE',
+          started_at: new Date().toISOString(),
+          settings: {
+            ...(selectedCampaign.settings || {}),
+            last_started_at: new Date().toISOString()
+          }
+        })
+        .eq('id', selectedCampaignId);
+
+      if (updateError) throw updateError;
+      
+      // Then call the campaign engine to start processing
       const { data, error: rpcError } = await supabase.rpc('start_campaign_engine', { 
         campaign_id_param: selectedCampaignId 
       });
 
       if (rpcError) throw rpcError;
       
-      addLog(`Campaign ID: ${selectedCampaignId} start command issued. Response: ${JSON.stringify(data)}`, 'success');
-      // Status might be updated by real-time, or set explicitly if RPC returns new status
-      // For now, let real-time handle status update based on DB change
+      addLog(`Campaign "${selectedCampaign.name}" started successfully.`, 'success');
+      addLog('Campaign engine is now processing leads...', 'info');
+      
+      // The real-time subscription will update the status when it changes in the DB
     } catch (err: any) {
-      setError(`Error starting campaign: ${err.message}`);
-      addLog(`Error starting campaign: ${err.message}`, 'error');
-      setCampaignStatus('idle'); // Reset status on error
+      const errorMessage = err.message || 'Failed to start campaign';
+      setError(`Error starting campaign: ${errorMessage}`);
+      addLog(`Error starting campaign: ${errorMessage}`, 'error');
+      
+      // Try to set status back to READY on error
+      try {
+        await supabase
+          .from('campaigns')
+          .update({ status: 'READY' })
+          .eq('id', selectedCampaignId);
+      } catch (updateErr) {
+        console.error('Failed to update campaign status after error:', updateErr);
+      }
+      
+      setCampaignStatus('preflight_awaiting_confirmation');
     } finally {
       setIsLoading(false);
     }
