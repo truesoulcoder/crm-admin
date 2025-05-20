@@ -729,7 +729,7 @@ const TemplatesView: React.FC = () => {
   // Static list of template types for filtering
   const templateTypeOptions = [
     { value: 'email', label: 'Email' },
-    { value: 'document', label: 'Document' } // Changed from 'loi_document' to 'document' to match the filter
+    { value: 'document', label: 'Document' } // Changed from 'pdf_document' to 'document' to match the filter
   ];
 
   if (isLoading) {
@@ -853,7 +853,7 @@ const TemplatesView: React.FC = () => {
               <label className="label"><span className="label-text">Template Name*</span></label>
               <input 
                 type="text" 
-                placeholder={newTemplateType === 'loi_document' ? 'e.g. Standard LOI' : 'e.g. Initial Outreach Q1'} 
+                placeholder={newTemplateType === 'pdf_document' ? 'e.g. Standard LOI' : 'e.g. Initial Outreach Q1'} 
                 className="input input-bordered w-full" 
                 value={newTemplateName} 
                 onChange={(e) => setNewTemplateName(e.target.value)} 
@@ -867,10 +867,10 @@ const TemplatesView: React.FC = () => {
                 <input
                   type="checkbox"
                   className="toggle toggle-primary align-middle"
-                  checked={newTemplateType === 'loi_document'}
+                  checked={newTemplateType === 'pdf_document'}
                   onChange={(e) => {
                     const isLOI = e.target.checked;
-                    setNewTemplateType(isLOI ? 'loi_document' : 'email');
+                    setNewTemplateType(isLOI ? 'pdf_document' : 'email');
                     // Clear subject when switching to LOI document
                     if (isLOI) {
                       setNewTemplateSubject('');
@@ -878,7 +878,7 @@ const TemplatesView: React.FC = () => {
                   }}
                   disabled={isSubmitting}
                 />
-                <span className={`text-sm ${newTemplateType === 'loi_document' ? 'font-semibold text-primary' : 'text-base-content/70'}`}>LOI Document</span>
+                <span className={`text-sm ${newTemplateType === 'pdf_document' ? 'font-semibold text-primary' : 'text-base-content/70'}`}>PDF Document</span>
               </div>
             </div>
             {newTemplateType === 'email' && (

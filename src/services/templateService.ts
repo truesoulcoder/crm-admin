@@ -48,7 +48,7 @@ export async function uploadPdfTemplate({
   try {
     const fileExt = file.name.split('.').pop();
     const fileName = `${templateName}-${Date.now()}.${fileExt}`;
-    const filePath = `${userId}/${fileName}`;
+    const filePath = fileName; // Save directly to root of the bucket
 
     const { error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
