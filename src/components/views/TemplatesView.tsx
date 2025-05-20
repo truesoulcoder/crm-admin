@@ -528,6 +528,7 @@ const TemplatesView: React.FC = () => {
             name: templateName,
             content: templateBody, // document-templates table uses 'content'
             type: 'pdf',
+            subject: templateSubject, // Include subject for document templates
             is_active: true,
             available_placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : []
           };

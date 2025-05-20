@@ -51,7 +51,7 @@ export async function GET(_req: NextRequest) {
     const { data, error } = await supabase
       .from('email_templates')
       .select('*')
-      .eq('user_id', user.id);
+      .eq('created_by', user.id);
       
     if (error) {
       console.error('Error listing email templates:', error);
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     const { data: existingTemplate, error: checkError } = await supabase
       .from('email_templates')
       .select('id')
-      .eq('user_id', user.id)
+      .eq('created_by', user.id)
       .eq('name', validation.data.name)
       .maybeSingle();
       
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
     
     // Create the new email template
     const templateData = {
-      user_id: user.id,
+      created_by: user.id,
       name: validation.data.name,
       subject: validation.data.subject,
       body_html: validation.data.body_html,
@@ -174,7 +174,7 @@ export async function DELETE(req: NextRequest) {
       .from('email_templates')
       .select('id')
       .eq('id', id)
-      .eq('user_id', user.id)
+      .eq('created_by', user.id)
       .single();
       
     if (fetchError) {
