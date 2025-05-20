@@ -184,9 +184,10 @@ export async function POST(request: NextRequest) {
       created_by: user.id,
       is_active: validation.data.is_active ?? true,
       deleted_at: null
+      // pdf_url: null // If your schema requires, you can set this to null
     };
 
-    // Insert the new template
+
     const { data: newTemplate, error: insertError } = await supabase
       .from('document_templates')
       .insert(templateData)
