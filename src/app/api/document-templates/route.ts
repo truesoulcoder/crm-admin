@@ -11,15 +11,16 @@ type UpdateDocumentTemplate = Database['public']['Tables']['document_templates']
 // Zod schema for document templates
 const documentTemplateSchema = z.object({
   name: z.string().min(1, 'Template name is required'),
-  type: z.enum(['email', 'document'], { // Changed 'pdf' to 'document'
+  type: z.enum(['email', 'document'], {
     required_error: 'Template type is required',
     invalid_type_error: 'Template type must be either "email" or "document"'
   }),
   subject: z.string().nullish(),
   content: z.string().min(1, 'Template content is required'),
   is_active: z.boolean().optional().default(true),
-  file_path: z.string().optional(), // Added for document templates
-  file_type: z.string().optional()  // Added for document templates
+  file_path: z.string().optional(),
+  file_type: z.string().optional(),
+  available_placeholders: z.array(z.string()).optional().nullable() // Added for available placeholders
 });
 
 // Helper to get Supabase client for Route Handlers
@@ -187,8 +188,8 @@ export async function POST(request: NextRequest) {
       user_id: user.id, // Ensure user_id is set
       is_active: validation.data.is_active ?? true,
       deleted_at: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      available_placeholders: validation.data.available_placeholders || null
+      // created_at and updated_at removed to let DB triggers handle them
     };
 
     // Add file-related fields from validated data if present
@@ -206,12 +207,19 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
       
-    console.log('Insert result:', { newTemplate, insertError });
+    console.log('Insert result:', { newTemplate, insertError: insertError ? JSON.stringify(insertError, null, 2) : null });
 
     if (insertError) {
-      console.error('Error creating document template:', insertError);
+      console.error('Error creating document template (raw):', insertError);
+      console.error('Error creating document template (stringified):', JSON.stringify(insertError, null, 2));
       return NextResponse.json(
-        { error: 'Failed to create document template' },
+        {
+          error: 'Failed to create document template',
+          supabase_error: insertError.message || 'Unknown Supabase error',
+          supabase_code: (insertError as any).code || null,
+          supabase_details: (insertError as any).details || null,
+          supabase_hint: (insertError as any).hint || null,
+        },
         { status: 500 }
       );
     }

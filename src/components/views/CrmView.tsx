@@ -167,7 +167,7 @@ const CrmView: React.FC = () => {
       setIsFormOpen(false);
       setCurrentLead(null);
     } catch (error) {
-      console.error('Error saving lead:', error);
+      console.error('Error saving lead:', error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setIsLoading(false);
     }
@@ -218,7 +218,7 @@ const CrmView: React.FC = () => {
         setCurrentLead(null);
       }
     } catch (error) {
-      console.error('Error deleting lead:', error);
+      console.error('Error deleting lead:', error instanceof Error ? error.message : 'Unknown error');
       alert(`Error deleting lead: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
@@ -237,7 +237,6 @@ const CrmView: React.FC = () => {
           .from('crm_leads')
           .select('*');
 
-        console.log('Fetched leads:', data, 'Error:', error);
         if (error) throw error;
 
         setLeads(data || []);
@@ -318,12 +317,12 @@ const CrmView: React.FC = () => {
   return (
     <div className="p-4 md:p-6 bg-base-200 min-h-screen">
       <h1 className="text-3xl font-bold mb-6 text-base-content">CRM Leads</h1>
-      {/* Debug Panel */}
-      <div className="mb-4 p-2 bg-base-300 rounded text-xs">
-        <div>Leads fetched: {leads.length}</div>
-        <div>Leads after filter: {filteredLeads.length}</div>
-        {isLoading && <div>Loading leads...</div>}
-      </div>
+      {/* Status indicators */}
+      {isLoading && (
+        <div className="mb-4 p-2 bg-base-300 rounded text-sm">
+          Loading leads...
+        </div>
+      )}
       
       {/* Search and Filters */}
       <div className="mb-6 p-4 bg-base-100 rounded-lg shadow">
