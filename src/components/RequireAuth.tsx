@@ -36,16 +36,16 @@ export default function RequireAuth({ children }: { children: ReactNode }) {
     if (!user) {
       // If not logged in and not on a public path, redirect to login
       if (!publicPaths.includes(pathname)) {
-        router.replace('/');
+        window.location.href = '/';
       }
     } else {
       // If logged in, check role-based redirection
       const redirectPath = getRedirectPath(role, pathname);
       if (redirectPath) {
-        router.replace(redirectPath);
+        window.location.href = redirectPath;
       }
     }
-  }, [user, role, isLoading, router, pathname]);
+  }, [user, role, isLoading, pathname]);
 
   if (isLoading) {
     return (

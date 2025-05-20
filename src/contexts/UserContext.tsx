@@ -65,92 +65,92 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     console.log("[UserProvider] Initializing. Current path:", pathname);
 
     // Listener for auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange((event: string, newSession: Session | null) => {
-      console.log('[UserProvider] Auth state changed:', event, newSession);
-      if (event === 'SIGNED_IN') {
-        if (isMounted && newSession) {
-          setSession(newSession);
-          setUser(newSession.user);
-          const userRole = getUserRole(newSession.user);
-          setRole(userRole);
-          setIsLoading(false);
-          // Redirection after sign-in will be handled by the page components (login.tsx, index.tsx)
-          // or by the main effect hook if user directly lands on a protected page with a new session.
-        }
-      } else if (event === 'SIGNED_OUT') {
-        if (isMounted) {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event: string, newSession: Session | null) => {
+      if (!isMounted) return;
+      
+      console.log('[UserProvider] Auth state changed:', event);
+      
+      switch (event) {
+        case 'SIGNED_IN':
+          if (newSession) {
+            const userRole = getUserRole(newSession.user);
+            setSession(newSession);
+            setUser(newSession.user);
+            setRole(userRole);
+            setIsLoading(false);
+          }
+          break;
+          
+        case 'SIGNED_OUT':
           setSession(null);
           setUser(null);
           setRole('guest');
           setIsLoading(false);
           if (pathname !== '/') {
-            router.replace('/'); // Redirect to login page (root) on sign out
+            router.replace('/');
           }
-        }
-      } else if (event === 'USER_UPDATED') {
-        if (isMounted && newSession) {
-            setUser(newSession.user);
+          break;
+          
+        case 'USER_UPDATED':
+          if (newSession) {
             const userRole = getUserRole(newSession.user);
+            setUser(newSession.user);
             setRole(userRole);
-        }
+          }
+          break;
       }
     });
 
     const fetchUserSessionAndRole = async () => {
-      console.log('[UserProvider] fetchUserSessionAndRole: CALLED. isMounted:', isMounted);
       if (!isMounted) return;
+      
       setIsLoading(true);
-      console.log('[UserProvider] fetchUserSessionAndRole: About to call getSupabaseSession. isMounted:', isMounted);
+      
       try {
         const currentSession = await getSupabaseSession();
-        console.log('[UserProvider] fetchUserSessionAndRole: getSupabaseSession call COMPLETE. Session:', currentSession, 'isMounted:', isMounted);
-        if (isMounted) {
-          if (currentSession) {
-            console.log("[UserProvider] Session found. User ID:", currentSession.user.id);
-            setSession(currentSession);
-            setUser(currentSession.user);
-            const userRole = getUserRole(currentSession.user);
-            setRole(userRole);
-            console.log("[UserProvider] User role determined as:", userRole);
-
-            // Role-based redirection for users already authenticated and navigating directly
-            // The login.tsx and index.tsx pages will handle their own redirects if user lands there.
-            if (pathname !== '/') { // Don't interfere with login page redirects
-              if (userRole === 'crmuser' && !pathname.startsWith('/crm')) {
-                console.log(`[UserProvider] Authenticated crmuser ('${userRole}') on restricted path '${pathname}'. Redirecting to /crm.`);
-                router.replace('/crm');
-              } else if (userRole === 'guest' || (userRole !== 'superadmin' && userRole !== 'crmuser')) {
-                // If user is guest or unknown role on a protected path (not login/index), send to login
-                console.log(`[UserProvider] User with role ('${userRole}') on path '${pathname}' needs redirection. Redirecting to login page ('/').`);
-                router.replace('/');
-              }
-              // SuperAdmins are generally allowed on any authenticated path.
-            }
-          } else {
-            // No active session found by initial fetch
-            setSession(null);
-            setUser(null);
-            setRole('guest');
-            console.log("[UserProvider] No active session. isLoading:", isLoading, "Path:", pathname);
-            if (pathname !== '/') {
-              console.log("[UserProvider] No session and not on login/index page. UserProvider sees no session, RequireAuth should handle redirect.");
-              // No direct redirect from here to avoid conflicts with RequireAuth
-              // RequireAuth should catch this state and redirect to login page ('/').
+        
+        if (!isMounted) return;
+        
+        if (currentSession) {
+          const userRole = getUserRole(currentSession.user);
+          
+          // Batch state updates
+          setSession(currentSession);
+          setUser(currentSession.user);
+          setRole(userRole);
+          
+          // Handle redirections
+          if (pathname !== '/') {
+            if (userRole === 'crmuser' && !pathname.startsWith('/crm')) {
+              router.replace('/crm');
+              return;
+            } else if (userRole === 'guest' || (userRole !== 'superadmin' && userRole !== 'crmuser')) {
+              router.replace('/');
+              return;
             }
           }
-          setError(null);
+        } else {
+          // No active session
+          setSession(null);
+          setUser(null);
+          setRole('guest');
+          
+          if (pathname !== '/') {
+            router.replace('/');
+            return;
+          }
         }
-      } catch (e: any) {
-        console.error("[UserProvider] Error fetching session or role: RAW ERROR:", e);
-        if (e instanceof Error) {
-          console.error("[UserProvider] Error fetching session or role: NAME:", e.name, "MESSAGE:", e.message, "STACK:", e.stack);
-        }
+        
+        setError(null);
+      } catch (e) {
         if (isMounted) {
-            setError("Error loading user data. Please try logging in again.");
+          console.error("Error in fetchUserSessionAndRole:", e);
+          setError("Error loading user data. Please refresh the page.");
         }
       } finally {
-        if (isMounted) setIsLoading(false);
-        console.log("[UserProvider] Initialization complete. isLoading:", isLoading, "Role:", role);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
