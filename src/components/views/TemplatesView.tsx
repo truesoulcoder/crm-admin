@@ -1,4 +1,5 @@
 'use client';
+
 import { Link } from '@tiptap/extension-link';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Editor, EditorContent, useEditor } from '@tiptap/react';
@@ -18,9 +19,11 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import Toast from '@/components/ui/Toast';
+import { supabase } from '@/lib/supabase/client';
 
 // --- Helper Functions ---
 
@@ -52,9 +55,11 @@ const DEFAULT_PLACEHOLDERS = [
   '{{company_name}}',
   '{{title_company}}',
   '{{senders_name}}',
+  '{{senders_title}}',
   '{{closing_date}}',
   '{{offer_price}}',
-  '{{emd_amount}}'
+  '{{emd_amount}}',
+  '{{title_company}}'
 ];
 
 interface DocumentTemplate {
@@ -170,6 +175,8 @@ const MenuBar: React.FC<{ editor: Editor | null }> = ({ editor }) => {
 };
 
 const TemplatesView: React.FC = () => {
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
   const [toast, setToast] = useState<{message: string, type?: 'success' | 'error' | 'info'}|null>(null);
   const [isClient, setIsClient] = useState(false);
   
@@ -198,9 +205,29 @@ const TemplatesView: React.FC = () => {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
-  // Set client-side flag on mount
+  // Set client-side flag on mount and get user
   useEffect(() => {
     setIsClient(true);
+    
+    const getUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+      } catch (error) {
+        console.error('Error getting user:', error);
+      }
+    };
+    
+    void getUser();
+    
+    // Set up auth state change listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+    });
+    
+    return () => {
+      subscription?.unsubscribe();
+    };
   }, []);
 
   // Track if this is the initial load
@@ -515,6 +542,13 @@ const TemplatesView: React.FC = () => {
 
     try {
       // Prepare template data based on template type
+      // Ensure user is authenticated before proceeding
+      if (!user) {
+        setModalError('You must be logged in to save templates');
+        setIsSubmitting(false);
+        return;
+      }
+
       const templateData = isEmailTemplate 
         ? {
             name: templateName,
@@ -523,16 +557,16 @@ const TemplatesView: React.FC = () => {
             body_text: templateBody.replace(/<[^>]*>?/gm, ''), // Convert HTML to plain text
             placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : [],
             is_active: true,
-            user_id: user?.id, // Add user_id for the foreign key
-            created_by: user?.id // Add created_by for the foreign key
+            user_id: user.id,
+            created_by: user.id
           }
         : {
             name: templateName,
             content: templateBody,
             type: 'pdf',
             is_active: true,
-            user_id: user?.id, // Add user_id for the foreign key
-            created_by: user?.id // Add created_by for the foreign key
+            user_id: user.id,
+            created_by: user.id
           };
       
       console.log('Saving with data:', { isEmailTemplate, endpoint, templateData });
