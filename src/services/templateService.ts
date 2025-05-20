@@ -5,8 +5,14 @@ export function renderTemplate(
   template: string,
   context: Record<string, unknown>
 ): string {
-  return template.replace(/{{\s*(\w+)\s*}}/g, (_, key) => {
+  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => {
     const value = context[key];
-    return value !== undefined && value !== null ? String(value) : '';
+    if (value === undefined || value === null) {
+      return '';
+    }
+    if (value instanceof Date) {
+      return value.toLocaleDateString();
+    }
+    return String(value);
   });
 }

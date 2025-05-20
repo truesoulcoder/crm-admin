@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    },
+    {
+      "src": "src/app/api/document-templates/**/*.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/",
+      "dest": "/"
+    }
+  ],
+  "functions": {
+    "src/app/api/document-templates/**/*.ts": {
+      "maxDuration": 30,
+      "memory": 2048
+    }
+  }
+}

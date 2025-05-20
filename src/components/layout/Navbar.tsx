@@ -2,10 +2,12 @@
 
 import { Menu, UserCircle, Search } from 'lucide-react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { updateUserProfile } from '@/actions/update-user-profile';
 import ThemeSelector from '@/components/ThemeSelector';
+import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/lib/supabase/client';
 
 // Helper function to generate initials from a name
@@ -26,128 +28,45 @@ interface NavbarProps {
 }
 
 const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
+  const { user, isLoading } = useUser();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [fullName, setFullName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+  const router = useRouter();
 
+  // Update user data when the user object changes
   useEffect(() => {
-    const loadProfile = async () => {
-      try {
-        setIsLoading(true);
+    if (!user) {
+      setFullName(null);
+      setEmail(null);
+      setAvatarUrl(null);
+      return;
+    }
 
-        // Check for session before fetching user
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          setFullName(null);
-          setEmail(null);
-          setIsLoading(false);
-          return;
-        }
-        const { data: { user }, error } = await supabase.auth.getUser();
-        if (error || !user) {
-          setFullName(null);
-          setEmail(null);
-          setIsLoading(false);
-          return;
-        }
-        
-        // Try multiple possible locations for the avatar URL
-        let avatarUrl = user.user_metadata?.avatar_url || 
-                       user.user_metadata?.picture ||
-                       user.identities?.[0]?.identity_data?.avatar_url ||
-                       user.identities?.[0]?.identity_data?.picture ||
-                       null;
-        
-        const fullName = user.user_metadata?.full_name ||
-                        user.user_metadata?.name ||
-                        user.identities?.[0]?.identity_data?.full_name ||
-                        user.identities?.[0]?.identity_data?.name ||
-                        user.email?.split('@')[0] ||
-                        'User';
-        
-        // Only try to update profile if we don't have an avatar URL yet
-        if (!avatarUrl) {
-          const { error: updateError } = await updateUserProfile();
-          if (!updateError) {
-            // If update was successful, refetch user data
-            const { data: { user: updatedUser } } = await supabase.auth.getUser();
-            if (updatedUser) {
-              avatarUrl = updatedUser.user_metadata?.avatar_url || 
-                         updatedUser.identities?.[0]?.identity_data?.avatar_url ||
-                         null;
-            }
-          }
-        }
-        
-        // Force HTTPS if the URL is from Google and using HTTP
-        const processedAvatarUrl = avatarUrl?.startsWith('http://') && avatarUrl.includes('googleusercontent.com')
-          ? avatarUrl.replace('http://', 'https://')
-          : avatarUrl;
-          
-        setAvatarUrl(processedAvatarUrl || null);
-        setFullName(fullName);
-        setEmail(user.email || null);
-      } catch (error: unknown) {
-        console.error('Error loading user profile:', error instanceof Error ? error.message : 'Unknown error');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void loadProfile();
+    // Get user data from the user object
+    const avatarUrl = user.user_metadata?.avatar_url || 
+                     user.user_metadata?.picture ||
+                     user.identities?.[0]?.identity_data?.avatar_url ||
+                     user.identities?.[0]?.identity_data?.picture ||
+                     null;
     
-    // Set up auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        try {
-          const user = session.user;
-          let avatarUrl = user.user_metadata?.avatar_url || 
-                         user.identities?.[0]?.identity_data?.avatar_url ||
-                         null;
-          
-          // Only try to update profile if we don't have an avatar URL yet
-          if (!avatarUrl) {
-            const { error: updateError } = await updateUserProfile();
-            if (!updateError) {
-              // If update was successful, refetch user data
-              const { data: { user: updatedUser } } = await supabase.auth.getUser();
-              if (updatedUser) {
-                avatarUrl = updatedUser.user_metadata?.avatar_url || 
-                           updatedUser.identities?.[0]?.identity_data?.avatar_url ||
-                           null;
-              }
-            }
-          }
-          
-          const fullName = user.user_metadata?.full_name ||
-                          user.identities?.[0]?.identity_data?.full_name ||
-                          user.user_metadata?.name ||
-                          user.email?.split('@')[0] ||
-                          'User';
-          
-          // Force HTTPS if the URL is from Google and using HTTP
-          const processedAvatarUrl = avatarUrl?.startsWith('http://') && avatarUrl.includes('googleusercontent.com')
-            ? avatarUrl.replace('http://', 'https://')
-            : avatarUrl;
-          
-          setAvatarUrl(processedAvatarUrl || null);
-          setFullName(fullName);
-          setEmail(user.email || null);
-        } catch (error) {
-          console.error('Error in auth state change:', error instanceof Error ? error.message : String(error));
-        }
-      } else if (event === 'SIGNED_OUT') {
-        setFullName(null);
-        setEmail(null);
-      }
-    });
+    const fullName = user.user_metadata?.full_name ||
+                    user.user_metadata?.name ||
+                    user.identities?.[0]?.identity_data?.full_name ||
+                    user.identities?.[0]?.identity_data?.name ||
+                    user.email?.split('@')[0] ||
+                    'User';
     
-    return () => {
-      subscription?.unsubscribe();
-    };
-  }, []);
+    // Force HTTPS if the URL is from Google and using HTTP
+    const processedAvatarUrl = avatarUrl?.startsWith('http://') && avatarUrl.includes('googleusercontent.com')
+      ? avatarUrl.replace('http://', 'https://')
+      : avatarUrl;
+    
+    setAvatarUrl(processedAvatarUrl || null);
+    setFullName(fullName);
+    setEmail(user.email || null);
+  }, [user]);
 
   return (
     <nav className="navbar bg-base-100 shadow-sm sticky top-0 z-20">
@@ -198,22 +117,17 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
                 {email && <span className="text-xs opacity-70">{email}</span>}
               </div>
             </li>
-            <li className="divider my-0"></li>
             <li>
               <a
                 onClick={(e) => {
                   e.preventDefault();
-                  const handleLogout = async () => {
-                    try {
-                      const { logout } = await import('@/lib/auth');
-                      await logout();
-                      window.location.href = '/'; // Consider using Next.js router.replace('/') for client-side navigation
-                    } catch (error) {
+                  import('@/lib/auth')
+                    .then(({ logout }) => logout())
+                    .then(() => router.replace('/'))
+                    .catch((error) => {
                       console.error('Logout failed:', error instanceof Error ? error.message : String(error));
                       alert('Logout failed. Please try again.');
-                    }
-                  };
-                  handleLogout().catch(err => console.error("handleLogout outer catch:", err));
+                    });
                 }}
                 className="text-error hover:bg-error hover:text-error-content"
               >
