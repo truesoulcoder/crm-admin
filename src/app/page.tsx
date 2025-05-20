@@ -33,7 +33,7 @@ export default function LoginPage() {
         if (role === 'superadmin') {
           console.log("[LoginPage] Superadmin found, redirecting to /dashboard");
           router.replace('/dashboard');
-        } else if (role === 'crmuser' || (role && role !== 'guest')) { // crmuser or any other authenticated non-guest role
+        } else if (role === 'guest') { // crm user
           console.log(`[LoginPage] Authenticated user (role: ${role}), redirecting to /crm`);
           router.replace('/crm');
         }

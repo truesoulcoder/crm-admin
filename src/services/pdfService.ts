@@ -1,17 +1,33 @@
 import chromium from '@sparticuz/chromium';
-import puppeteer, { Browser } from 'puppeteer-core';
+import puppeteer, { Browser, PDFOptions } from 'puppeteer-core';
+
+import { logSystemEvent } from './logService';
+
+export interface PdfGenerationOptions extends Omit<PDFOptions, 'path'> {
+  format?: 'A4' | 'Letter' | PDFOptions['format'];
+  margin?: {
+    top?: string;
+    right?: string;
+    bottom?: string;
+    left?: string;
+  };
+}
 
 /**
  * Generates a PDF buffer from provided HTML content using Puppeteer.
  * Works in both local development and Vercel environments.
  */
-export async function generatePdfFromHtml(htmlContent: string): Promise<Buffer> {
+export async function generatePdfFromHtml(
+  htmlContent: string,
+  options: PdfGenerationOptions = {}
+): Promise<Buffer> {
   let browser: Browser | null = null;
+  const startTime = Date.now();
   
   try {
     // Configure launch options based on environment
     const isProduction = process.env.NODE_ENV === 'production';
-    const options = isProduction
+    const launchOptions = isProduction
       ? {
           args: chromium.args,
           defaultViewport: chromium.defaultViewport,
@@ -29,10 +45,14 @@ export async function generatePdfFromHtml(htmlContent: string): Promise<Buffer> 
         };
 
     // Launch browser
-    browser = await puppeteer.launch({
-      ...options,
-      headless: 'new',
+    browser = await launch({
+      ...launchOptions,
+      headless: true,
     });
+
+    if (!browser) {
+      throw new Error('Failed to launch browser');
+    }
 
     const page = await browser.newPage();
 
@@ -42,8 +62,8 @@ export async function generatePdfFromHtml(htmlContent: string): Promise<Buffer> 
       timeout: 30000, // 30 seconds timeout
     });
 
-    // Generate PDF with proper page settings
-    const pdf = await page.pdf({
+    // Prepare PDF options
+    const pdfOptions: PDFOptions = {
       format: 'A4',
       printBackground: true,
       margin: {
@@ -52,16 +72,57 @@ export async function generatePdfFromHtml(htmlContent: string): Promise<Buffer> 
         bottom: '1cm',
         left: '1cm',
       },
-      preferCSSPageSize: true,
+      ...options,
+    };
+
+    // Generate PDF
+    const pdfBuffer = await page.pdf(pdfOptions);
+    
+    // Log successful generation
+    await logSystemEvent({
+      event_type: 'PDF_GENERATED',
+      message: `PDF generated successfully (${pdfBuffer.length} bytes)`,
+      details: {
+        contentLength: htmlContent.length,
+        generationTime: Date.now() - startTime,
+      },
     });
 
-    return Buffer.from(pdf);
-  } catch (error) {
-    console.error('Error generating PDF:', error);
-    throw new Error('Failed to generate PDF preview');
+    return pdfBuffer;
+  } catch (err) {
+    const error = err as Error;
+    const errorMessage = error?.message || 'Unknown error';
+    
+    await logSystemEvent({
+      event_type: 'PDF_GENERATION_ERROR',
+      message: 'Failed to generate PDF',
+      details: {
+        error: errorMessage,
+        contentLength: htmlContent?.length || 0,
+      },
+    });
+
+    throw error;
   } finally {
     if (browser) {
-      await browser.close().catch(console.error);
+      try {
+        await browser.close();
+      } catch (error) {
+        console.error('Error closing browser:', error);
+      }
     }
   }
+}
+
+/**
+ * Generates a PDF from a template with data
+ */
+export async function generatePdfFromTemplate(
+  template: string,
+  data: Record<string, unknown>,
+  options: PdfGenerationOptions = {}
+): Promise<Buffer> {
+  const { renderTemplate } = await import('./templateService');
+  const htmlContent = renderTemplate(template, data);
+  return generatePdfFromHtml(htmlContent, options);
 }

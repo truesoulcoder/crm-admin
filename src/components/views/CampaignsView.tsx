@@ -88,21 +88,33 @@ const CampaignsView: React.FC = () => {
     }
   };
 
-  // Fetch campaigns data
+  // Fetch campaigns data with enhanced error handling and logging
   const fetchCampaigns = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      const { data, error } = await supabase
+      console.log('[CampaignsView] Fetching campaigns...');
+      const { data, error, status } = await supabase
         .from('campaigns')
         .select('*')
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error('[CampaignsView] Error fetching campaigns:', error);
+        throw error;
+      }
       
+      console.log(`[CampaignsView] Successfully fetched ${data?.length || 0} campaigns`);
       setCampaigns(data || []);
     } catch (err) {
-      console.error('Error fetching campaigns:', err);
-      setError('Failed to load campaigns. Please refresh and try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      console.error('[CampaignsView] Error in fetchCampaigns:', errorMessage);
+      setError(`Failed to load campaigns: ${errorMessage}`);
+      
+      // Show error toast if available
+      if (typeof window !== 'undefined' && (window as any).toast) {
+        (window as any).toast.error(`Failed to load campaigns: ${errorMessage}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -158,6 +170,7 @@ const CampaignsView: React.FC = () => {
       if (Array.isArray(actualTemplatesArray)) {
         setDocumentTemplates(actualTemplatesArray);
         if (actualTemplatesArray.length > 0 && actualTemplatesArray[0]?.id) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
           setSelectedDocumentTemplate(actualTemplatesArray[0].id);
         } else {
           setSelectedDocumentTemplate('');

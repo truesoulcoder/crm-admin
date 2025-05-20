@@ -6,18 +6,46 @@ import { useEffect, ReactNode } from "react";
 
 import { useUser } from "@/contexts/UserContext";
 
+// Define public paths that don't require authentication
+const publicPaths = ['/'];
+
+// Define role-based redirects
+const getRedirectPath = (role: string | null, currentPath: string): string | null => {
+  // If user is a guest, redirect to CRM page
+  if (role === 'guest') {
+    return currentPath.startsWith('/crm') ? null : '/crm';
+  }
+  
+  // If user is authenticated but not a guest, prevent access to login page
+  if (role !== 'guest' && currentPath === '/') {
+    return '/dashboard';
+  }
+  
+  return null;
+};
+
 export default function RequireAuth({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isLoading, error: userContextError } = useUser();
+  const { user, role, isLoading, error: userContextError } = useUser();
 
   useEffect(() => {
-    if (!isLoading && !user) {
-      if (pathname !== '/') {
-        router.replace("/");
+    if (isLoading) return;
+    
+    // Handle redirection based on authentication status and role
+    if (!user) {
+      // If not logged in and not on a public path, redirect to login
+      if (!publicPaths.includes(pathname)) {
+        router.replace('/');
+      }
+    } else {
+      // If logged in, check role-based redirection
+      const redirectPath = getRedirectPath(role, pathname);
+      if (redirectPath) {
+        router.replace(redirectPath);
       }
     }
-  }, [user, isLoading, router, pathname]);
+  }, [user, role, isLoading, router, pathname]);
 
   if (isLoading) {
     return (
@@ -27,8 +55,7 @@ export default function RequireAuth({ children }: { children: ReactNode }) {
         </Head>
         <div className="flex items-center justify-center h-screen text-center">
           <p className="text-lg">Loading application...</p>
-          {/* You can add a spinner component here if available in your project */}
-          {/* e.g., <span className="loading loading-spinner loading-lg"></span> */}
+          <span className="loading loading-spinner loading-lg ml-2"></span>
         </div>
       </>
     );
@@ -43,7 +70,7 @@ export default function RequireAuth({ children }: { children: ReactNode }) {
         <div className="flex flex-col items-center justify-center h-screen text-center p-4">
           <p className="text-lg text-red-600">Authentication Error</p>
           <p className="text-sm text-gray-700 mt-2">
-            There was an issue loading your user information: {userContextError.message}.
+            There was an issue loading your user information: {userContextError}
           </p>
           <p className="text-sm text-gray-500 mt-1">
             Please try refreshing the page or contact support if the problem persists.

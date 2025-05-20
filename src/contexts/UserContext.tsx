@@ -23,22 +23,31 @@ const getUserRole = (user: User | null): string => {
     return 'guest'; // Role for unauthenticated or missing user
   }
 
-  // Check app_metadata for the 'role' field
+  // Check email domain
+  const userEmail = user.email?.toLowerCase() || '';
+  const allowedDomain = '@truesoulpartners.com';
+  
+  if (!userEmail.endsWith(allowedDomain)) {
+    console.log(`[getUserRole] Unauthorized email domain for user: ${userEmail}`);
+    return 'guest'; // Only allow emails from @truesoulpartners.com
+  }
+
+  // If user has a valid email domain, check their role in app_metadata
   if (user.app_metadata && typeof user.app_metadata.role === 'string') {
     const roleFromMeta = user.app_metadata.role;
     console.log(`[getUserRole] Found role in app_metadata: '${roleFromMeta}'`);
     
     if (roleFromMeta === 'superadmin') {
-      return 'superadmin'; // Match 'superadmin' from app_metadata
-    } else if (roleFromMeta === 'crmuser') {
-      return 'crmuser'; // Assuming 'crmuser' will be used for CrmUser role
+      return 'superadmin';
+    } else if (roleFromMeta === 'guest') {
+      return 'guest';
     } else {
       console.warn(`[getUserRole] Unknown role in app_metadata: '${roleFromMeta}'. Defaulting to 'guest'.`);
-      return 'guest'; // Fallback for unrecognized roles in app_metadata
+      return 'guest'; // Default role for valid domain users
     }
   } else {
-    console.log("[getUserRole] No 'role' string found in app_metadata. Defaulting to 'guest'.");
-    return 'guest'; // Default if no role or role is not a string in app_metadata
+    console.log("[getUserRole] No 'role' found in app_metadata. Defaulting to 'guest'.");
+    return 'guest'; // Default role for valid domain users
   }
 };
 
