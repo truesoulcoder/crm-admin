@@ -518,17 +518,18 @@ const TemplatesView: React.FC = () => {
       const templateData = isEmailTemplate 
         ? {
             name: templateName,
-            body: templateBody, // email-templates table uses 'body'
+            body_html: templateBody, // email-templates table expects 'body_html'
+            body_text: templateBody.replace(/<[^>]*>?/gm, ''), // Convert HTML to plain text
             subject: templateSubject,
             is_active: true,
-            available_placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : null,
+            placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : []
           }
         : {
             name: templateName,
             content: templateBody, // document-templates table uses 'content'
             type: 'pdf',
             is_active: true,
-            available_placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : null,
+            available_placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : []
           };
       
       console.log('Saving with data:', { isEmailTemplate, endpoint, templateData });
