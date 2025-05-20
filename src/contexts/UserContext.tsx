@@ -33,22 +33,28 @@ const getUserRole = (user: User | null): string => {
   }
 
   // If user has a valid email domain, check their role in app_metadata
-  if (user.app_metadata && typeof user.app_metadata.role === 'string') {
-    const roleFromMeta = user.app_metadata.role;
-    console.log(`[getUserRole] Found role in app_metadata: '${roleFromMeta}'`);
-    
-    if (roleFromMeta === 'superadmin') {
-      return 'superadmin';
-    } else if (roleFromMeta === 'guest') {
-      return 'guest';
-    } else {
-      console.warn(`[getUserRole] Unknown role in app_metadata: '${roleFromMeta}'. Defaulting to 'guest'.`);
-      return 'guest'; // Default role for valid domain users
+  if (user.app_metadata) {
+    // If role is explicitly set, use it
+    if (typeof user.app_metadata.role === 'string') {
+      const roleFromMeta = user.app_metadata.role;
+      console.log(`[getUserRole] Found role in app_metadata: '${roleFromMeta}'`);
+      
+      if (roleFromMeta === 'superadmin' || roleFromMeta === 'crmuser' || roleFromMeta === 'guest') {
+        return roleFromMeta;
+      } else {
+        console.warn(`[getUserRole] Unknown role in app_metadata: '${roleFromMeta}'. Defaulting to 'crmuser'.`);
+        return 'crmuser'; // Default to crmuser for valid domain users with unknown role
+      }
     }
-  } else {
-    console.log("[getUserRole] No 'role' found in app_metadata. Defaulting to 'guest'.");
-    return 'guest'; // Default role for valid domain users
+    
+    // If no role is set but user has valid domain, default to 'crmuser'
+    console.log("[getUserRole] No 'role' found in app_metadata for domain user. Defaulting to 'crmuser'.");
+    return 'crmuser';
   }
+  
+  // Default fallback (shouldn't normally reach here)
+  console.log("[getUserRole] No app_metadata found. Defaulting to 'crmuser'.");
+  return 'crmuser';
 };
 
 export const UserProvider = ({ children }: { children: ReactNode }) => {
@@ -77,9 +83,10 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
             // Batch state updates
             void (async () => {
               try {
-                setSession(newSession);
-                setUser(newSession.user);
-                setRole(userRole);
+                // Only update state if it has changed to prevent unnecessary re-renders
+                setSession(prev => prev?.user?.id === newSession.user.id ? prev : newSession);
+                setUser(prev => prev?.id === newSession.user.id ? prev : newSession.user);
+                setRole(prev => prev === userRole ? prev : userRole);
                 setIsLoading(false);
               } catch (error) {
                 console.error('Error in SIGNED_IN handler:', error);

@@ -2,7 +2,7 @@
 
 import Head from 'next/head';
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, ReactNode } from "react";
+import { useEffect, useRef, ReactNode } from "react";
 
 import { useUser } from "@/contexts/UserContext";
 
@@ -13,7 +13,7 @@ const publicPaths = ['/'];
 const getRedirectPath = (role: string | null, currentPath: string): string | null => {
   // If user is a guest, only allow access to /crm path
   if (role === 'guest') {
-    return currentPath.startsWith('/crm') ? null : '/crm';
+    return currentPath === '/crm' ? null : '/crm';
   }
   
   // If user is authenticated (has a role) and is on the login page, redirect to dashboard
@@ -34,22 +34,34 @@ export default function RequireAuth({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { user, role, isLoading, error: userContextError } = useUser();
 
+  // Track if we've already handled the redirect
+  const redirectHandledRef = useRef(false);
+
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || redirectHandledRef.current) return;
     
     // Handle redirection based on authentication status and role
     if (!user) {
       // If not logged in and not on a public path, redirect to login
       if (!publicPaths.includes(pathname)) {
+        redirectHandledRef.current = true;
         window.location.href = '/';
       }
     } else {
       // If logged in, check role-based redirection
       const redirectPath = getRedirectPath(role, pathname);
       if (redirectPath) {
+        redirectHandledRef.current = true;
         window.location.href = redirectPath;
       }
     }
+    
+    // Reset the flag after a short delay to allow future redirects if needed
+    const timer = setTimeout(() => {
+      redirectHandledRef.current = false;
+    }, 1000);
+    
+    return () => clearTimeout(timer);
   }, [user, role, isLoading, pathname]);
 
   if (isLoading) {
