@@ -67,10 +67,10 @@ export interface EmailSendingResult {
  * @returns A result object indicating success or failure and the offer details.
  */
 export interface EmailOptions {
-  subject: string;
-  body: string;
-  templateId?: string; // ID of the PDF template to use
-  leadData?: Record<string, any>; // Lead data for template rendering
+  subject: string; // Raw subject template
+  body: string;    // Raw body template
+  documentHtmlContent?: string; // Raw HTML content for PDF document template
+  leadData?: Record<string, any>; // Lead data for rendering all templates
   pdfBuffer?: Buffer; // Optional pre-generated PDF buffer
   attachments?: { filename: string; content: Buffer }[]; // Optional attachments (PDFs, etc)
 }
@@ -80,41 +80,25 @@ export async function prepareAndSendOfferEmail(
   sender: SenderInfo,
   options: EmailOptions
 ): Promise<EmailSendingResult> {
-  // Generate LOI HTML if no PDF buffer is provided
+  // Generate PDF from documentHtmlContent if no pre-generated pdfBuffer is provided
   let pdfBuffer = options.pdfBuffer;
   
-  if (!pdfBuffer) {
+  if (!pdfBuffer && options.documentHtmlContent) {
     try {
-      // Generate basic LOI if no template ID is provided
-      if (!options.templateId) {
-        const loiHtml = `
-          <h1>Letter of Intent</h1>
-          <p>For property at: ${lead.property_address || 'Unknown Address'}</p>
-          <p>Prepared for: ${lead.contact1_name || 'Valued Client'}</p>
-          <p>Offer Amount: $${(lead.wholesale_value || 0).toLocaleString()}</p>
-        `;
-        pdfBuffer = await generatePdfFromHtml(loiHtml);
-      } else {
-        // Generate PDF from template if template ID is provided
-        const { data: template } = await supabase
-          .from('templates')
-          .select('content')
-          .eq('id', options.templateId)
-          .single();
-          
-        if (template?.content) {
-          const renderedContent = renderTemplate(template.content, options.leadData || lead);
-          pdfBuffer = await generatePdfFromHtml(renderedContent);
-        }
-      }
+      const renderedDocumentHtml = renderTemplate(options.documentHtmlContent, options.leadData || lead);
+      pdfBuffer = await generatePdfFromHtml(renderedDocumentHtml);
+      console.log('PDF generated successfully from documentHtmlContent.');
     } catch (error) {
-      console.error('Error generating PDF:', error);
+      console.error('Error generating PDF from documentHtmlContent:', error);
       return {
         success: false,
-        message: 'Failed to generate PDF',
+        message: 'Failed to generate PDF from document template',
         error
       };
     }
+  } else if (!pdfBuffer) {
+    // Optional: handle case where no PDF buffer and no documentHTMLContent is provided, e.g., send email without PDF or return error
+    console.warn('No PDF buffer or documentHtmlContent provided. Sending email without PDF attachment.');
   }
   console.log(
     `Preparing email for: ${lead.contact1_email_1} from ${sender.fullName}`
@@ -254,7 +238,7 @@ export async function prepareAndSendOfferEmail(
       // const authClient = await auth.getClient(); // This step might not be necessary if passing `auth` instance directly
       // google.options({ auth: authClient }); // This line causes a type error and is not strictly necessary
 
-      const gmail = google.gmail({ version: 'v1', auth: auth }); // Pass the GoogleAuth instance `auth` directly
+      const gmail = google.gmail({ version: 'v1', auth }); // Pass the GoogleAuth instance `auth` directly
 
       console.log(`[emailSending.action.ts] Attempting to send email via Gmail API to: ${recipient}, impersonating: ${sender.email}`);
       const response = await gmail.users.messages.send({

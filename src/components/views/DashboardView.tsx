@@ -1,7 +1,7 @@
 'use client'
 
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
-import { PlayCircle, AlertCircle, CheckCircle, Info, List } from 'lucide-react';
+import { PlayCircle, AlertCircle, CheckCircle, Info, List, XCircle, RefreshCw } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Card, Alert, Select } from 'react-daisyui';
 
@@ -136,6 +136,28 @@ const DashboardView: React.FC = () => {
     }
   };
 
+  const updateCampaignStatus = async (status: string): Promise<boolean> => {
+    if (!selectedCampaignId) return false;
+    
+    try {
+      const { error } = await supabase
+        .from('campaigns')
+        .update({ 
+          status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedCampaignId);
+        
+      if (error) throw error;
+      return true;
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to update campaign status: ${errorMessage}`);
+      addLog(`Error updating campaign status: ${errorMessage}`, 'error');
+      return false;
+    }
+  };
+
   const handleInitiatePreflight = async () => {
     if (!selectedCampaignId) {
       setError('Please select a campaign first.');
@@ -155,47 +177,79 @@ const DashboardView: React.FC = () => {
     addLog(`Starting pre-flight check for campaign: ${selectedCampaign.name}...`, 'info');
     
     try {
-      // Call the RPC function
-      const { data, error: rpcError } = await supabase.rpc('trigger_preflight_check', {
-        campaign_id_param: selectedCampaignId
-      });
-
-      if (rpcError) throw rpcError;
+      // First update status to 'PENDING' (or 'PREFLIGHT_PENDING' if you have that status)
+      await updateCampaignStatus('PENDING');
       
-      // Log detailed results
-      if (data) {
-        const result = data as { success: boolean; message?: string; results: Array<any> };
-        
-        // Log overall result
-        const statusMessage = result.success 
-          ? 'Pre-flight check completed successfully!' 
-          : 'Pre-flight check completed with some issues.';
-          
-        addLog(statusMessage, result.success ? 'success' : 'warning');
-        
-        // Log individual test results
-        if (result.results && Array.isArray(result.results)) {
-          result.results.forEach((test: any) => {
-            const testStatus = test.success ? 'SUCCESS' : 'FAILED';
-            addLog(`${testStatus} - Sender: ${test.sender_email} - ${test.message}`, 
-                   test.success ? 'success' : 'error');
-          });
-        }
-        
-        // Update campaign status based on pre-flight result
-        if (result.success) {
-          setCampaignStatus('preflight_awaiting_confirmation');
-          addLog('Please check your email at chrisphillips@truesoulpartners.com for the test email.', 'info');
-        } else {
-          setCampaignStatus('preflight_failed');
-          setError('Pre-flight check failed. Please check the logs for details.');
-        }
+      // Call the preflight API
+      const response = await fetch('/api/campaigns/preflight', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ campaignId: selectedCampaignId })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to start pre-flight check');
       }
+      
+      // If we get here, preflight was successful
+      setCampaignStatus('AWAITING_CONFIRMATION');
+      await updateCampaignStatus('AWAITING_CONFIRMATION');
+      
+      addLog('Pre-flight check completed successfully!', 'success');
+      addLog('Please check your email for the test message. Review the email and click "Confirm & Launch" if everything looks good.', 'info');
+      
     } catch (err: any) {
       const errorMessage = err.message || 'Unknown error during pre-flight check';
       setError(`Pre-flight check failed: ${errorMessage}`);
       addLog(`Error during pre-flight: ${errorMessage}`, 'error');
-      setCampaignStatus('preflight_failed');
+      setCampaignStatus('PENDING');
+      await updateCampaignStatus('PENDING');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const confirmAndLaunchCampaign = async () => {
+    if (!selectedCampaignId) return;
+    
+    setIsLoading(true);
+    setError(null);
+    addLog('Confirming and launching campaign...', 'info');
+    
+    try {
+      const success = await updateCampaignStatus('ACTIVE');
+      if (success) {
+        setCampaignStatus('ACTIVE');
+        addLog('Campaign launched successfully!', 'success');
+      }
+    } catch (err: any) {
+      setError(`Failed to launch campaign: ${err.message}`);
+      addLog(`Error launching campaign: ${err.message}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const cancelCampaignPreflight = async () => {
+    if (!selectedCampaignId) return;
+    
+    setIsLoading(true);
+    setError(null);
+    addLog('Canceling pre-flight and reverting to pending...', 'info');
+    
+    try {
+      const success = await updateCampaignStatus('PENDING');
+      if (success) {
+        setCampaignStatus('PENDING');
+        addLog('Pre-flight canceled. Campaign status set to PENDING.', 'info');
+      }
+    } catch (err: any) {
+      setError(`Failed to cancel pre-flight: ${err.message}`);
+      addLog(`Error canceling pre-flight: ${err.message}`, 'error');
     } finally {
       setIsLoading(false);
     }
@@ -333,23 +387,38 @@ const DashboardView: React.FC = () => {
           </div>
 
           <div className="mt-4 flex gap-2">
-            <Button
-              color="primary"
-              disabled={
-                isLoading ||
-                !selectedCampaignId ||
-                campaignStatus === 'preflight_pending' ||
-                campaignStatus === 'preflight_awaiting_confirmation' ||
-                campaignStatus === 'running' ||
-                campaignStatus === 'starting'
-              }
-              onClick={(e) => {
-                e.preventDefault();
-                handleInitiatePreflight().catch(console.error);
-              }}
-            >
-              Start Campaign (Preflight)
-            </Button>
+            {campaignStatus === 'AWAITING_CONFIRMATION' ? (
+              <>
+                <Button 
+                  color="success" 
+                  startIcon={<CheckCircle size={16} />}
+                  onClick={() => void confirmAndLaunchCampaign()}
+                  loading={isLoading}
+                  className="mr-2"
+                >
+                  Confirm & Launch
+                </Button>
+                <Button 
+                  color="error" 
+                  variant="outline"
+                  startIcon={<XCircle size={16} />}
+                  onClick={() => void cancelCampaignPreflight()}
+                  disabled={isLoading}
+                >
+                  Cancel Pre-flight
+                </Button>
+              </>
+            ) : (
+              <Button 
+                color="primary" 
+                startIcon={campaignStatus === 'PENDING' ? <PlayCircle size={16} /> : <RefreshCw size={16} />}
+                onClick={() => void handleInitiatePreflight()}
+                loading={isLoading}
+                disabled={!selectedCampaignId || campaignStatus === 'ACTIVE'}
+              >
+                {campaignStatus === 'PENDING' ? 'Start Pre-flight Check' : 'Retry Pre-flight'}
+              </Button>
+            )}
             <Button
               color="success"
               disabled={
