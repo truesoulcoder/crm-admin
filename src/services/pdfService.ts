@@ -1,5 +1,5 @@
 import chromium from '@sparticuz/chromium';
-import puppeteer, { Browser, PDFOptions } from 'puppeteer-core';
+import { Browser, PDFOptions, launch } from 'puppeteer-core';
 
 import { logSystemEvent } from './logService';
 
@@ -76,7 +76,10 @@ export async function generatePdfFromHtml(
     };
 
     // Generate PDF
-    const pdfBuffer = await page.pdf(pdfOptions);
+    const pdfData = await page.pdf(pdfOptions);
+    
+    // Convert Uint8Array to Buffer if needed
+    const pdfBuffer = Buffer.isBuffer(pdfData) ? pdfData : Buffer.from(pdfData.buffer);
     
     // Log successful generation
     await logSystemEvent({

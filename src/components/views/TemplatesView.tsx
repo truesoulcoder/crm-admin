@@ -24,6 +24,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 
 import Toast from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase/client';
+import { generatePdfFromHtml } from '@/services/pdfService';
 
 // --- Helper Functions ---
 
@@ -549,35 +550,72 @@ const TemplatesView: React.FC = () => {
         return;
       }
 
-      const templateData = isEmailTemplate 
-        ? {
-            name: templateName,
-            subject: templateSubject,
-            body_html: templateBody,
-            body_text: templateBody.replace(/<[^>]*>?/gm, ''), // Convert HTML to plain text
-            placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : [],
-            is_active: true,
-            user_id: user.id,
-            created_by: user.id
-          }
-        : {
-            name: templateName,
-            content: templateBody,
-            type: 'pdf',
-            is_active: true,
-            user_id: user.id,
-            created_by: user.id
-          };
-      
-      console.log('Saving with data:', { isEmailTemplate, endpoint, templateData });
+      let templateData;
+      let filePath = '';
 
-      console.log('Sending template data:', templateData);
+      if (isEmailTemplate) {
+        // Handle email template
+        templateData = {
+          name: templateName,
+          subject: templateSubject,
+          body_html: templateBody,
+          body_text: templateBody.replace(/<[^>]*>?/gm, ''), // Convert HTML to plain text
+          placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : [],
+          is_active: true,
+          user_id: user.id,
+          created_by: user.id
+        };
+      } else {
+        // Handle document template (PDF)
+        // 1. Generate PDF buffer
+        const pdfBuffer = await generatePdfFromHtml(templateBody, {
+          format: 'A4',
+          margin: { top: '1cm', right: '1cm', bottom: '1cm', left: '1cm' },
+          printBackground: true
+        });
 
+        // 2. Create a unique file path
+        const fileName = `${templateName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${Date.now()}.pdf`;
+        filePath = `templates/${user.id}/${fileName}`;
+
+        // 3. Upload to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+          .from('pdf-templates')
+          .upload(filePath, pdfBuffer, {
+            contentType: 'application/pdf',
+            upsert: true
+          });
+
+        if (uploadError) {
+          console.error('Error uploading PDF to storage:', uploadError);
+          throw new Error('Failed to upload template to storage');
+        }
+
+        // 4. Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('pdf-templates')
+          .getPublicUrl(filePath);
+
+        // 5. Prepare template data with file path and URL
+        templateData = {
+          name: templateName,
+          content: templateBody,
+          file_path: publicUrl,
+          file_type: 'application/pdf',
+          type: 'pdf',
+          is_active: true,
+          user_id: user.id,
+          created_by: user.id,
+          available_placeholders: clickablePlaceholders
+        };
+      }
+
+      console.log('Saving template data:', templateData);
+
+      // 6. Save template metadata to database
       const response = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(templateData),
       });
 
