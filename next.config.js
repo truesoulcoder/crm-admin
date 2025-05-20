@@ -7,9 +7,10 @@ const __dirname = path.dirname(__filename);
 
 const nextConfig = {
   reactStrictMode: true,
-  // Disable server-side rendering for the app directory
+  // External packages for server components
+  serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
   experimental: {
-    serverComponentsExternalPackages: ['puppeteer-core', '@sparticuz/chromium']
+    // Add any experimental features here
   },
   // Configure webpack to handle Node.js modules
   webpack: (config, { isServer }) => {
