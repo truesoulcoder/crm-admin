@@ -3,10 +3,10 @@
 import clsx from 'clsx';
 import { LayoutDashboard, Users, FileText, Send, UserCog, Settings, Briefcase, Contact } from 'lucide-react';
 import Link from 'next/link';
-import React, { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
-import { useUser } from '@/contexts/UserContext'; // Added UserContext import
+import React, { useState } from 'react';
 
+import { useUser } from '@/contexts/UserContext'; // Added UserContext import
 import { LetterFx } from '@/once-ui/components';
 
 import type { CrmView } from '@/types/index';

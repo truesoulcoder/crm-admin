@@ -4,6 +4,7 @@ import { Sun, Moon, Monitor } from 'lucide-react';
 import { useState } from 'react';
 
 import { useTheme } from '@/hooks/useTheme';
+
 import type { Theme, ThemeName } from '@/hooks/useTheme';
 
 interface ThemeGroupProps {

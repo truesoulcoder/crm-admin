@@ -1,7 +1,8 @@
 'use client';
 
 import { Shield, Key, Palette, BarChart2, Building2, Mail, Phone, Image as ImageIcon } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+
 import { supabase } from '@/lib/supabase/client';
 
 type SettingsTab = 'access' | 'delegation' | 'branding' | 'analytics';
@@ -118,35 +119,36 @@ const SettingsView = () => {
     trackEvents: false,
   });
   
+  // Load settings function
+  const loadSettings = useCallback(async (): Promise<void> => {
+    try {
+      setIsLoading(true);
+      
+      // In a real implementation, you would fetch these from your database
+      // const { data } = await supabase.from('settings').select('*').single();
+      // if (data) {
+      //   setAccessControl(data.access_control);
+      //   setDelegation(data.delegation);
+      //   setBranding(data.branding);
+      //   setAnalytics(data.analytics);
+      // }
+      
+    } catch (error: unknown) {
+      console.error('Error loading settings:', error);
+      setError(
+        error instanceof Error 
+          ? `Failed to load settings: ${error.message}`
+          : 'Failed to load settings. Please try again.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+  
   // Load settings on mount
   useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        setIsLoading(true);
-        
-        // In a real implementation, you would fetch these from your database
-        // const { data } = await supabase.from('settings').select('*').single();
-        // if (data) {
-        //   setAccessControl(data.access_control);
-        //   setDelegation(data.delegation);
-        //   setBranding(data.branding);
-        //   setAnalytics(data.analytics);
-        // }
-        
-      } catch (error) {
-        console.error('Error loading settings:', error);
-        setError(
-          error instanceof Error 
-            ? `Failed to load settings: ${error.message}`
-            : 'Failed to load settings. Please try again.'
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    loadSettings();
-  }, [supabase]);
+    void loadSettings();
+  }, [loadSettings]);
   
   const saveSettings = async (section: SettingsTab) => {
     try {
@@ -169,9 +171,13 @@ const SettingsView = () => {
       //   });
       
       setSuccess(`${section.charAt(0).toUpperCase() + section.slice(1)} settings saved successfully!`);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`Error saving ${section} settings:`, error);
-      setError(`Failed to save ${section} settings. Please try again.`);
+      setError(
+        error instanceof Error 
+          ? `Failed to save ${section} settings: ${error.message}`
+          : `Failed to save ${section} settings. Please try again.`
+      );
     } finally {
       setIsSaving(false);
     }
@@ -270,7 +276,9 @@ const SettingsView = () => {
               <div className="mt-8">
                 <button 
                   className="btn btn-primary"
-                  onClick={() => saveSettings('access')}
+                  onClick={() => {
+                    void saveSettings('access');
+                  }}
                   disabled={isSaving}
                 >
                   {isSaving ? 'Saving...' : 'Save Access Settings'}
@@ -396,7 +404,9 @@ const SettingsView = () => {
                 <div className="mt-6">
                   <button 
                     className="btn btn-primary"
-                    onClick={() => saveSettings('delegation')}
+                    onClick={() => {
+                      void saveSettings('delegation');
+                    }}
                     disabled={isSaving}
                   >
                     {isSaving ? 'Saving...' : 'Save Delegation Settings'}
@@ -505,10 +515,10 @@ const SettingsView = () => {
                         className="file-input file-input-bordered w-full max-w-xs"
                         accept="image/png, image/jpeg, image/jpg, image/svg+xml"
                         disabled={isUploading}
-                        onChange={async (e) => {
+                        onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            await handleLogoUpload(file);
+                            void handleLogoUpload(file);
                           }
                         }}
                       />
@@ -523,7 +533,9 @@ const SettingsView = () => {
               <div className="mt-8">
                 <button 
                   className="btn btn-primary"
-                  onClick={() => saveSettings('branding')}
+                  onClick={() => {
+                    void saveSettings('branding');
+                  }}
                   disabled={isSaving}
                 >
                   {isSaving ? 'Saving...' : 'Save Branding Settings'}
@@ -627,7 +639,9 @@ const SettingsView = () => {
               <div className="mt-8">
                 <button 
                   className="btn btn-primary"
-                  onClick={() => saveSettings('analytics')}
+                  onClick={() => {
+                    void saveSettings('analytics');
+                  }}
                   disabled={isSaving}
                 >
                   {isSaving ? 'Saving...' : 'Save Analytics Settings'}

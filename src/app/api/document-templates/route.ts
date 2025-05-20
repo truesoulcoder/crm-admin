@@ -1,6 +1,7 @@
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
 import { z } from 'zod';
+
 import type { Database } from '@/types/supabase';
 
 type DocumentTemplate = Database['public']['Tables']['document_templates']['Row'];
@@ -20,26 +21,57 @@ const documentTemplateSchema = z.object({
 });
 
 // Helper to get Supabase client for Route Handlers
-function getSupabaseRouteHandlerClient() {
-  const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const projectAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+function getSupabaseRouteHandlerClient(request: NextRequest) {
+  // Create a new response object to manage cookies
+  const response = NextResponse.next();
   
   return createServerClient<Database>(
-    projectUrl,
-    projectAnonKey
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return request.cookies.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          // Set the cookie in the response
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+          });
+          // Also update the request cookies for subsequent calls
+          request.cookies.set({
+            name,
+            value,
+            ...options,
+          });
+        },
+        remove(name: string, options: CookieOptions) {
+          // Delete the cookie in the response
+          response.cookies.set({
+            name,
+            value: '',
+            ...options,
+            maxAge: 0, // Set maxAge to 0 to delete the cookie
+          });
+        },
+      },
+    }
   );
 }
 
 // GET handler to fetch document templates for the authenticated user
-export async function GET(req: NextRequest) {
-  const supabase = await getSupabaseRouteHandlerClient();
+export async function GET(request: NextRequest) {
+  const supabase = getSupabaseRouteHandlerClient(request);
+  
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '10', 10);
     const filterIsActive = searchParams.get('is_active');
@@ -96,7 +128,7 @@ export async function GET(req: NextRequest) {
 
 // POST handler to create a new document template
 export async function POST(request: NextRequest) {
-  const supabase = await getSupabaseRouteHandlerClient();
+  const supabase = getSupabaseRouteHandlerClient(request);
   
   try {
     // Verify user is authenticated
@@ -181,7 +213,7 @@ export async function POST(request: NextRequest) {
 
 // PUT handler to update an existing document template
 export async function PUT(request: NextRequest) {
-  const supabase = await getSupabaseRouteHandlerClient();
+  const supabase = getSupabaseRouteHandlerClient(request);
   
   try {
     // Verify user is authenticated
@@ -295,7 +327,7 @@ export async function PUT(request: NextRequest) {
 
 // DELETE handler to soft-delete a document template
 export async function DELETE(request: NextRequest) {
-  const supabase = await getSupabaseRouteHandlerClient();
+  const supabase = getSupabaseRouteHandlerClient(request);
   
   try {
     // Verify user is authenticated

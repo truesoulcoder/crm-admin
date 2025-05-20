@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition, useRef, useEffect } from 'react';
+
 import { supabase } from '@/lib/supabase/client';
 
 // Define the expected response structure from the upload API
@@ -41,7 +42,7 @@ export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing
 
   // Fetch available market regions
   useEffect(() => {
-    (async () => {
+    const fetchMarketRegions = async () => {
       const { data, error } = await supabase
         .from('normalized_leads')
         .select('market_region');
@@ -49,7 +50,9 @@ export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing
         const regions = Array.from(new Set(data.map((row: any) => row.market_region)));
         setMarketRegions(regions);
       }
-    })();
+    };
+    
+    void fetchMarketRegions();
   }, []);
 
   async function onSubmit(e: React.FormEvent) {
@@ -109,7 +112,13 @@ export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing
 
   return (
     <>
-      <form onSubmit={onSubmit} className="space-y-4 p-4 border border-gray-200 rounded-lg shadow-sm bg-white">
+      <form 
+        onSubmit={(e) => {
+          e.preventDefault();
+          void onSubmit(e);
+        }} 
+        className="space-y-4 p-4 border border-gray-200 rounded-lg shadow-sm bg-white"
+      >
         <div>
           <label htmlFor="market-region" className="block text-sm font-medium text-gray-700 mb-1">Market Region</label>
           <input

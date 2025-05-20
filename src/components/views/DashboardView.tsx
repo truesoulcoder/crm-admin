@@ -270,7 +270,10 @@ const DashboardView: React.FC = () => {
                 campaignStatus === 'running' ||
                 campaignStatus === 'starting'
               }
-              onClick={handleInitiatePreflight}
+              onClick={(e) => {
+                e.preventDefault();
+                handleInitiatePreflight().catch(console.error);
+              }}
             >
               Start Campaign (Preflight)
             </Button>
@@ -281,7 +284,10 @@ const DashboardView: React.FC = () => {
                 !selectedCampaignId ||
                 campaignStatus !== 'preflight_awaiting_confirmation'
               }
-              onClick={handleConfirmPreflightAndStart}
+              onClick={(e) => {
+                e.preventDefault();
+                handleConfirmPreflightAndStart().catch(console.error);
+              }}
             >
               Confirm & Launch
             </Button>
@@ -294,7 +300,14 @@ const DashboardView: React.FC = () => {
 
           <div className="card-actions justify-start mt-4 space-x-2">
             {campaignStatus === 'idle' && selectedCampaignId && (
-              <Button className="btn btn-primary" onClick={handleInitiatePreflight} disabled={isLoading || !selectedCampaignId}>
+              <Button 
+                className="btn btn-primary" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleInitiatePreflight().catch(console.error);
+                }} 
+                disabled={isLoading || !selectedCampaignId}
+              >
                 <PlayCircle className="mr-2" /> Initiate Pre-Flight Check
               </Button>
             )}
@@ -302,14 +315,28 @@ const DashboardView: React.FC = () => {
                 <p className='text-info flex items-center'><Info className='mr-1'/> Pre-flight check in progress... Awaiting test email results.</p>
             )}
             {campaignStatus === 'preflight_awaiting_confirmation' && (
-              <Button className="btn btn-success" onClick={handleConfirmPreflightAndStart} disabled={isLoading}>
+              <Button 
+                className="btn btn-success" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleConfirmPreflightAndStart().catch(console.error);
+                }} 
+                disabled={isLoading}
+              >
                 <CheckCircle className="mr-2" /> Confirm Pre-Flight OK & Start Campaign
               </Button>
             )}
             {(campaignStatus === 'running' || campaignStatus === 'starting') && selectedCampaignId && (
-                 <Button className="btn btn-error" onClick={handleStopCampaign} disabled={isLoading || !selectedCampaignId || campaignStatus === 'starting'}>
-                    Stop Campaign
-                </Button>
+                 <Button 
+                color="error"
+                disabled={isLoading || !selectedCampaignId}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleStopCampaign().catch(console.error);
+                }}
+              >
+                Stop Campaign
+              </Button>
             )}
           </div>
         </div>

@@ -2,8 +2,8 @@
 
 import React from 'react';
 
-import LeadsView from '@/components/views/LeadsView';
 import RequireAuth from '@/components/RequireAuth';
+import LeadsView from '@/components/views/LeadsView';
 
 const LeadsPage = () => {
   return (

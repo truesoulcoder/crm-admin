@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '@/lib/supabase/client';
 import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+
+import { supabase } from '@/lib/supabase/client';
 
 // Define types
 interface Lead {
@@ -247,8 +248,8 @@ const CrmView: React.FC = () => {
       }
     };
 
-    fetchLeads();
-  }, [supabase]);
+    void fetchLeads();
+  }, []);
 
   // Filter and sort leads
   useEffect(() => {
@@ -508,7 +509,10 @@ const CrmView: React.FC = () => {
                 </button>
               </div>
               
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                handleSubmit(e).catch(console.error);
+              }} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="form-control">
                     <label className="label">

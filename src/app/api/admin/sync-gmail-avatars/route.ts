@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
+import { people, people_v1 } from '@googleapis/people';
 import { createClient } from '@supabase/supabase-js';
 import { JWT } from 'google-auth-library';
-import { people, people_v1 } from '@googleapis/people';
+import { NextResponse } from 'next/server';
 
 // Ensure these are set in your .env.local
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
