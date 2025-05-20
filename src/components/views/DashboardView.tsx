@@ -3,7 +3,6 @@
 import { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { PlayCircle, AlertCircle, CheckCircle, Info, List } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-// eslint-disable-next-line import/no-unresolved
 import { Button, Card, Alert, Select } from 'react-daisyui';
 
 import { supabase } from '@/lib/supabase/client';
@@ -53,14 +52,13 @@ const DashboardView: React.FC = () => {
       const { data, error: campaignsError } = await supabase
         .from('campaigns')
         .select('*')
-        .eq('is_active', true) // Or however you determine selectable campaigns
         .order('name', { ascending: true });
 
       if (campaignsError) throw campaignsError;
       
       const campaignsWithStatus: CampaignWithStatus[] = data.map((c: Campaign) => ({...c, current_status: c.status || 'idle'}));
       setCampaigns(campaignsWithStatus);
-      addLog(`Fetched ${campaignsWithStatus.length} active campaigns.`, 'success');
+      addLog(`Fetched ${campaignsWithStatus.length} campaigns.`, 'success');
       if (campaignsWithStatus.length > 0 && !selectedCampaignId) {
         setSelectedCampaignId(campaignsWithStatus[0].id);
         setCampaignStatus(campaignsWithStatus[0].current_status || 'idle');
@@ -259,6 +257,34 @@ const DashboardView: React.FC = () => {
                 <option key={campaign.id} value={campaign.id}>{campaign.name} (Status: {campaign.current_status})</option>
               ))}
             </select>
+          </div>
+
+          <div className="mt-4 flex gap-2">
+            <Button
+              color="primary"
+              disabled={
+                isLoading ||
+                !selectedCampaignId ||
+                campaignStatus === 'preflight_pending' ||
+                campaignStatus === 'preflight_awaiting_confirmation' ||
+                campaignStatus === 'running' ||
+                campaignStatus === 'starting'
+              }
+              onClick={handleInitiatePreflight}
+            >
+              Start Campaign (Preflight)
+            </Button>
+            <Button
+              color="success"
+              disabled={
+                isLoading ||
+                !selectedCampaignId ||
+                campaignStatus !== 'preflight_awaiting_confirmation'
+              }
+              onClick={handleConfirmPreflightAndStart}
+            >
+              Confirm & Launch
+            </Button>
           </div>
 
           <div className="mt-4">

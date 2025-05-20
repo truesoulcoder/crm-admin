@@ -724,7 +724,7 @@ const TemplatesView: React.FC = () => {
                   <button
                     className="btn btn-ghost btn-sm btn-circle"
                     title="Preview PDF"
-                    onClick={() => handlePreviewPdf(template)}
+                    onClick={() =>void handlePreviewPdf(template)}
                   >
                     <FileText size={16} />
                   </button>
@@ -842,7 +842,7 @@ const TemplatesView: React.FC = () => {
                 newTemplateNameTrimmed: `'${newTemplateName.trim()}'`,
                 newTemplateBody: `'${newTemplateBody.substring(0, 20)}...'`,
                 newTemplateBodyTrimmed: `'${newTemplateBody.trim().substring(0, 20)}...'`,
-                newTemplateType: newTemplateType,
+                newTemplateType,
                 newTemplateSubject: `'${newTemplateSubject}'`,
                 disabledBecause: {
                   isSubmitting,

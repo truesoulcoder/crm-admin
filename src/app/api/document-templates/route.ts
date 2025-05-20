@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@supabase/ssr';
 import { z } from 'zod';
 import type { Database } from '@/types/supabase';
 
@@ -21,73 +20,13 @@ const documentTemplateSchema = z.object({
 });
 
 // Helper to get Supabase client for Route Handlers
-async function getSupabaseSessionCookie(projectRef: string) {
-  const cookieStore = await cookies();
-  // Try to get the auth token
-  let session = cookieStore.get(`sb-${projectRef}-auth-token`);
-  if (!session) {
-    // Try to reassemble chunked cookies if present
-    let i = 0;
-    let chunk = '';
-    let chunkCookie;
-    
-    while ((chunkCookie = cookieStore.get(`sb-${projectRef}-auth-token.${i}`)) !== undefined) {
-      chunk += chunkCookie.value;
-      i++;
-    }
-    
-    if (chunk) {
-      session = {
-        name: `sb-${projectRef}-auth-token`,
-        value: chunk
-      };
-    }
-  }
-  return session;
-}
-
 function getSupabaseRouteHandlerClient() {
   const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const projectAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  const projectRef = projectUrl.split('https://')[1].split('.')[0];
-
+  
   return createServerClient<Database>(
     projectUrl,
-    projectAnonKey,
-    {
-      cookies: {
-        async get(name: string): Promise<string | undefined> {
-          const cookieStore = await cookies(); // Fresh store on each get
-          if (name === `sb-${projectRef}-auth-token`) {
-            // Use our custom logic for the main auth token, which might be chunked
-            const specialSessionCookie = await getSupabaseSessionCookie(projectRef);
-            return specialSessionCookie?.value;
-          }
-          // For any other cookie, defer to the standard store behavior
-          return cookieStore.get(name)?.value;
-        },
-        async set(name: string, value: string, options: CookieOptions): Promise<void> {
-          try {
-            const cookieStore = await cookies();
-            cookieStore.set({ name, value, ...options });
-          } catch (error) {
-            // The `set` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing user sessions.
-            console.warn(`[Supabase Client] Failed to set cookie '${name}' from Route Handler. Error: ${error}`);
-          }
-        },
-        async remove(name: string, options: CookieOptions): Promise<void> {
-          try {
-            const cookieStore = await cookies();
-            cookieStore.delete({ name, ...options });
-          } catch (error) {
-            // The `delete` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing user sessions.
-            console.warn(`[Supabase Client] Failed to remove cookie '${name}' from Route Handler. Error: ${error}`);
-          }
-        },
-      },
-    }
+    projectAnonKey
   );
 }
 
