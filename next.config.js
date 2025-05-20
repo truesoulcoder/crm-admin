@@ -7,6 +7,41 @@ const __dirname = path.dirname(__filename);
 
 const nextConfig = {
   reactStrictMode: true,
+  // Disable server-side rendering for the app directory
+  experimental: {
+    serverComponentsExternalPackages: ['puppeteer-core', '@sparticuz/chromium']
+  },
+  // Configure webpack to handle Node.js modules
+  webpack: (config, { isServer }) => {
+    // Only add these configurations for server-side bundles
+    if (isServer) {
+      config.externals = [...(config.externals || []), {
+        'puppeteer-core': 'commonjs puppeteer-core',
+        '@sparticuz/chromium': 'commonjs @sparticuz/chromium'
+      }];
+      
+      // Add Node.js polyfills
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        child_process: false,
+        dns: false,
+        http2: false,
+        module: false,
+        dgram: false,
+      };
+    }
+    
+    // Add path aliases
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve(__dirname, 'src'),
+    };
+    
+    return config;
+  },
   images: {
     remotePatterns: [
       {

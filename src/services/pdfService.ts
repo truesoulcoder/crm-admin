@@ -1,7 +1,16 @@
+// This module should only be used in server-side code (API routes)
 import chromium from '@sparticuz/chromium';
 import { Browser, PDFOptions, launch } from 'puppeteer-core';
 
-import { logSystemEvent } from './logService';
+// Only import server-side dependencies
+const isProduction = process.env.NODE_ENV === 'production';
+
+// Logging function that works without the full logService
+const logSystemEvent = async (event: { event_type: string; message: string; details?: any }) => {
+  if (isProduction) {
+    console.log(`[${event.event_type}] ${event.message}`, event.details || '');
+  }
+};
 
 export interface PdfGenerationOptions extends Omit<PDFOptions, 'path'> {
   format?: 'A4' | 'Letter' | PDFOptions['format'];
@@ -17,10 +26,15 @@ export interface PdfGenerationOptions extends Omit<PDFOptions, 'path'> {
  * Generates a PDF buffer from provided HTML content using Puppeteer.
  * Works in both local development and Vercel environments.
  */
+// This function should only be called from server-side code
 export async function generatePdfFromHtml(
   htmlContent: string,
   options: PdfGenerationOptions = {}
 ): Promise<Buffer> {
+  // Ensure we're running in a Node.js environment
+  if (typeof window !== 'undefined') {
+    throw new Error('This function can only be used server-side');
+  }
   let browser: Browser | null = null;
   const startTime = Date.now();
   

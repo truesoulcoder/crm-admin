@@ -24,7 +24,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 
 import Toast from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase/client';
-import { generatePdfFromHtml } from '@/services/pdfService';
+// PDF generation is now handled via API route
 
 // --- Helper Functions ---
 
@@ -566,13 +566,20 @@ const TemplatesView: React.FC = () => {
           created_by: user.id
         };
       } else {
-        // Handle document template (PDF)
-        // 1. Generate PDF buffer
-        const pdfBuffer = await generatePdfFromHtml(templateBody, {
-          format: 'A4',
-          margin: { top: '1cm', right: '1cm', bottom: '1cm', left: '1cm' },
-          printBackground: true
+        // 1. Call our API to generate the PDF
+        const response = await fetch('/api/generate-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ html: templateBody })
         });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to generate PDF');
+        }
+
+        const { pdf: pdfBase64 } = await response.json();
+        const pdfBuffer = Buffer.from(pdfBase64, 'base64');
 
         // 2. Create a unique file path
         const fileName = `${templateName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${Date.now()}.pdf`;
