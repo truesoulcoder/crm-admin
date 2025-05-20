@@ -1,7 +1,17 @@
-import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown } from 'lucide-react';
+'use client'
+
+import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useMemo } from 'react';
+import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown, Map } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
+import { formatAddress } from '@/utils/address';
+
+// Dynamically import the StreetViewMap component with no SSR
+const StreetViewMap = dynamic(
+  () => import('@/components/maps/StreetViewMap'),
+  { ssr: false }
+);
 
 // Define types
 interface Lead {
@@ -47,6 +57,20 @@ const statusOptions: StatusOption[] = [
 ];
 
 const CrmView: React.FC = () => {
+  // Column visibility state - only show status, name, email, phone, and address by default
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
+    name: true,
+    status: true,
+    email: true,
+    phone: true,
+    address: true,
+    // Hide these by default
+    market_region: false,
+    assessed_total: false,
+    mls_curr_status: false,
+    mls_curr_days_on_market: false
+  });
+
   // Sorting & pagination state
   const [sortField, setSortField] = useState<keyof Lead>('first_name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -92,16 +116,13 @@ const CrmView: React.FC = () => {
     }
   };
   
-  // Column configuration
+  // Column configuration - only show status, name, email, phone, and address
   const columnConfigurations: ColumnConfig[] = [
-    { key: 'first_name', label: 'Name', sortable: true },
     { key: 'status', label: 'Status', sortable: true },
-    { key: 'property_address', label: 'Address', sortable: true },
+    { key: 'first_name', label: 'Name', sortable: true },
+    { key: 'email', label: 'Email', sortable: true },
     { key: 'phone', label: 'Phone', sortable: true },
-    { key: 'market_region', label: 'Market Region', sortable: true },
-    { key: 'assessed_total', label: 'Assessed Value', sortable: true },
-    { key: 'mls_curr_status', label: 'MLS Status', sortable: true },
-    { key: 'mls_curr_days_on_market', label: 'DOM', sortable: true },
+    { key: 'property_address', label: 'Address', sortable: true },
   ];
 
   // Handle form input changes
@@ -116,6 +137,53 @@ const CrmView: React.FC = () => {
   // Helper function to get display name from first and last name
   const getDisplayName = (lead: Partial<Lead>): string => {
     return [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'New Lead';
+  };
+
+  // Handle deleting a lead
+  const handleDeleteLead = async (leadId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click from triggering
+    
+    if (!window.confirm('Are you sure you want to delete this lead? This action cannot be undone.')) {
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      const { error } = await supabase
+        .from('crm_leads')
+        .delete()
+        .eq('id', leadId);
+        
+      if (error) throw error;
+      
+      // Update local state
+      setLeads(prev => prev.filter(lead => lead.id !== leadId));
+      
+      // Close modal if open for this lead
+      if (currentLead?.id === leadId) {
+        setIsFormOpen(false);
+        setCurrentLead(null);
+        setFormData({
+          status: 'NEW',
+          first_name: '',
+          last_name: '',
+          email: '',
+          phone: '',
+          address: '',
+          city: '',
+          state: '',
+          zip_code: ''
+        });
+      }
+      
+      alert('Lead deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting lead:', error instanceof Error ? error.message : 'Unknown error');
+      alert(`Error deleting lead: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Handle form submission
@@ -138,7 +206,7 @@ const CrmView: React.FC = () => {
           lead.id === currentLead.id ? { ...lead, ...formData } : lead
         ));
       } else {
-        // Create new lead
+        // Add new lead
         const { data, error } = await supabase
           .from('crm_leads')
           .insert([formData])
@@ -146,28 +214,32 @@ const CrmView: React.FC = () => {
           
         if (error) throw error;
         
-        // Add new lead to local state
+        // Add to local state
         if (data && data[0]) {
-          setLeads([...leads, data[0]]);
+          setLeads([data[0], ...leads]);
         }
       }
       
-      // Reset form and close modal
+      // Close modal and reset form
+      setIsFormOpen(false);
+      setCurrentLead(null);
       setFormData({
+        status: 'NEW',
         first_name: '',
         last_name: '',
         email: '',
         phone: '',
-        status: 'NEW',
         address: '',
         city: '',
         state: '',
         zip_code: ''
       });
-      setIsFormOpen(false);
-      setCurrentLead(null);
+      
+      // Show success message
+      alert(`Lead ${currentLead ? 'updated' : 'added'} successfully!`);
     } catch (error) {
-      console.error('Error saving lead:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('Error saving lead:', error);
+      alert(`Error ${currentLead ? 'updating' : 'adding'} lead. Please try again.`);
     } finally {
       setIsLoading(false);
     }
@@ -192,38 +264,7 @@ const CrmView: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  // Handle deleting a lead
-  const handleDeleteLead = async (leadId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent row click from triggering
-    
-    if (!confirm('Are you sure you want to delete this lead? This action cannot be undone.')) {
-      return;
-    }
-    
-    try {
-      setIsLoading(true);
-      const { error } = await supabase
-        .from('crm_leads')
-        .delete()
-        .eq('id', leadId);
-        
-      if (error) throw error;
-      
-      // Update local state instead of refetching
-      setLeads(prev => prev.filter(lead => lead.id !== leadId));
-      
-      // Close modal if open for this lead
-      if (currentLead?.id === leadId) {
-        setIsFormOpen(false);
-        setCurrentLead(null);
-      }
-    } catch (error) {
-      console.error('Error deleting lead:', error instanceof Error ? error.message : 'Unknown error');
-      alert(`Error deleting lead: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+
 
   // Get badge color based on status
   const getStatusBadgeColor = (status: string) => getStatusBadgeClass(status);
@@ -482,8 +523,24 @@ const CrmView: React.FC = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-base-100 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
+              {currentLead && (
+                <div className="mb-6 rounded-lg overflow-hidden">
+                  <div className="flex items-center bg-base-200 px-4 py-2">
+                    <Map className="w-5 h-5 mr-2 text-primary" />
+                    <h3 className="font-medium">Property Location</h3>
+                  </div>
+                  <StreetViewMap 
+                    address={formatAddress(currentLead)} 
+                    containerStyle={{
+                      width: '100%',
+                      height: '250px',
+                      borderRadius: '0 0 0.5rem 0.5rem',
+                    }}
+                  />
+                </div>
+              )}
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold mb-4">
+                <h2 className="text-xl font-semibold">
                   {currentLead ? `Edit Lead: ${getDisplayName(currentLead)}` : 'Add New Lead'}
                 </h2>
                 <button 
@@ -492,11 +549,11 @@ const CrmView: React.FC = () => {
                     setIsFormOpen(false);
                     setCurrentLead(null);
                     setFormData({
+                      status: 'NEW',
                       first_name: '',
                       last_name: '',
                       email: '',
                       phone: '',
-                      status: 'NEW',
                       address: '',
                       city: '',
                       state: '',
@@ -635,31 +692,59 @@ const CrmView: React.FC = () => {
                   </div>
                 </div>
                 
-                <div className="flex justify-end space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsFormOpen(false);
-                      setCurrentLead(null);
-                      setFormData({});
-                    }}
-                    className="btn btn-ghost"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <span className="loading loading-spinner"></span>
-                    ) : currentLead ? (
-                      'Update Lead'
-                    ) : (
-                      'Add Lead'
+                <div className="flex justify-between items-center pt-4">
+                  <div>
+                    {currentLead && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          // Wrap in void to explicitly ignore the Promise
+                          void handleDeleteLead(currentLead.id, e);
+                        }}
+                        className="btn btn-error btn-sm text-white"
+                        disabled={isLoading}
+                      >
+                        {isLoading ? (
+                          <>
+                            <span className="loading loading-spinner loading-xs"></span>
+                            Deleting...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Delete Lead
+                          </>
+                        )}
+                      </button>
                     )}
-                  </button>
+                  </div>
+                  <div className="flex space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsFormOpen(false);
+                        setCurrentLead(null);
+                        setFormData({});
+                      }}
+                      className="btn btn-ghost"
+                      disabled={isLoading}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <span className="loading loading-spinner"></span>
+                      ) : currentLead ? (
+                        'Update Lead'
+                      ) : (
+                        'Add Lead'
+                      )}
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>

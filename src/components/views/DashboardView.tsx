@@ -356,7 +356,7 @@ const DashboardView: React.FC = () => {
   }
 
   return (
-    <div className="p-4 space-y-4 max-w-4xl mx-auto">
+    <div className="p-4 space-y-4 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-4 flex items-center"><List className="mr-2" />Campaign Dashboard</h1>
 
       {error && (
@@ -366,143 +366,133 @@ const DashboardView: React.FC = () => {
         </Alert>
       )}
 
+      {/* Console Section - Moved to top */}
       <Card className="card bordered shadow-lg bg-base-100">
-        <div className="card-body">
-          <h2 className="card-title">Campaign Control</h2>
-          <div className="form-control w-full">
-            <label className="label">
-              <span className="label-text">Select Campaign:</span>
-            </label>
-            <select 
-              className="select select-bordered w-full" 
-              value={selectedCampaignId || ''} 
-              onChange={handleSelectCampaign}
-              disabled={isLoading || campaignStatus === 'preflight_pending' || campaignStatus === 'preflight_awaiting_confirmation' || campaignStatus === 'running' || campaignStatus === 'starting'}
-            >
-              <option value="" disabled>-- Select a Campaign --</option>
-              {campaigns.map(campaign => (
-                <option key={campaign.id} value={campaign.id}>{campaign.name} (Status: {campaign.current_status})</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="mt-4 flex gap-2">
-            {campaignStatus === 'AWAITING_CONFIRMATION' ? (
-              <>
-                <Button 
-                  color="success" 
-                  startIcon={<CheckCircle size={16} />}
-                  onClick={() => void confirmAndLaunchCampaign()}
-                  loading={isLoading}
-                  className="mr-2"
-                >
-                  Confirm & Launch
-                </Button>
-                <Button 
-                  color="error" 
-                  variant="outline"
-                  startIcon={<XCircle size={16} />}
-                  onClick={() => void cancelCampaignPreflight()}
-                  disabled={isLoading}
-                >
-                  Cancel Pre-flight
-                </Button>
-              </>
-            ) : (
-              <Button 
-                color="primary" 
-                startIcon={campaignStatus === 'PENDING' ? <PlayCircle size={16} /> : <RefreshCw size={16} />}
-                onClick={() => void handleInitiatePreflight()}
-                loading={isLoading}
-                disabled={!selectedCampaignId || campaignStatus === 'ACTIVE'}
-              >
-                {campaignStatus === 'PENDING' ? 'Start Pre-flight Check' : 'Retry Pre-flight'}
-              </Button>
-            )}
-            <Button
-              color="success"
-              disabled={
-                isLoading ||
-                !selectedCampaignId ||
-                campaignStatus !== 'preflight_awaiting_confirmation'
-              }
-              onClick={(e) => {
-                e.preventDefault();
-                handleConfirmPreflightAndStart().catch(console.error);
-              }}
-            >
-              Confirm & Launch
-            </Button>
-          </div>
-
-          <div className="mt-4">
-            <p><strong>Selected Campaign:</strong> {getCampaignName(selectedCampaignId)}</p>
-            <p><strong>Status:</strong> <span className={`badge ${campaignStatus === 'running' ? 'badge-success' : campaignStatus === 'idle' ? 'badge-ghost' : 'badge-warning'}`}>{campaignStatus.replace(/_/g, ' ')}</span></p>
-          </div>
-
-          <div className="card-actions justify-start mt-4 space-x-2">
-            {campaignStatus === 'idle' && selectedCampaignId && (
-              <Button 
-                className="btn btn-primary" 
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleInitiatePreflight().catch(console.error);
-                }} 
-                disabled={isLoading || !selectedCampaignId}
-              >
-                <PlayCircle className="mr-2" /> Initiate Pre-Flight Check
-              </Button>
-            )}
-            {campaignStatus === 'preflight_pending' && (
-                <p className='text-info flex items-center'><Info className='mr-1'/> Pre-flight check in progress... Awaiting test email results.</p>
-            )}
-            {campaignStatus === 'preflight_awaiting_confirmation' && (
-              <Button 
-                className="btn btn-success" 
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleConfirmPreflightAndStart().catch(console.error);
-                }} 
-                disabled={isLoading}
-              >
-                <CheckCircle className="mr-2" /> Confirm Pre-Flight OK & Start Campaign
-              </Button>
-            )}
-            {(campaignStatus === 'running' || campaignStatus === 'starting') && selectedCampaignId && (
-                 <Button 
-                color="error"
-                disabled={isLoading || !selectedCampaignId}
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleStopCampaign().catch(console.error);
-                }}
-              >
-                Stop Campaign
-              </Button>
-            )}
+        <div className="card-body p-4">
+          <h2 className="card-title text-lg">Real-time Monitoring Console</h2>
+          <div className="bg-neutral text-neutral-content p-4 rounded-md h-64 overflow-y-auto font-mono text-sm space-y-1">
+            {consoleLogs.length === 0 && <p>Console is ready. Waiting for logs...</p>}
+            {consoleLogs.map(log => (
+              <div key={log.id} className={`flex items-start ${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : log.type === 'campaign' ? 'text-blue-400' : log.type === 'email' ? 'text-purple-400' : 'text-gray-300'}`}>
+                <span className="w-40 flex-shrink-0 text-xs">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                <span className="flex-grow text-xs">{log.message}</span>
+              </div>
+            ))}
+            <div ref={consoleEndRef} />
           </div>
         </div>
       </Card>
 
-      {campaignStatus === 'preflight_awaiting_confirmation' && (
-        <Alert status="info" className="alert-info">
-            <Info className="w-6 h-6"/>
-            <span>Pre-flight initiated. Please check <strong>chrisphillips@truesoulpartners.com</strong> for a test email. Once confirmed, click "Confirm Pre-Flight OK & Start Campaign".</span>
-        </Alert>
-      )}
-
-      <Card className="card bordered shadow-lg bg-base-100 mt-6">
-        <div className="card-body">
-          <h2 className="card-title">Real-time Monitoring Console</h2>
-          <div className="bg-neutral text-neutral-content p-4 rounded-md h-96 overflow-y-auto font-mono text-sm space-y-1">
-            {consoleLogs.length === 0 && <p>Console is ready. Waiting for logs...</p>}
-            {consoleLogs.map(log => (
-              <div key={log.id} className={`flex items-start ${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : log.type === 'campaign' ? 'text-blue-400' : log.type === 'email' ? 'text-purple-400' : 'text-gray-300'}`}>
-                <span className="w-48 flex-shrink-0">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
-                <span className="flex-grow">{log.message}</span>
+      {/* Campaign Controls - Reorganized into a single row */}
+      <Card className="card bordered shadow-lg bg-base-100">
+        <div className="card-body p-4">
+          <div className="flex flex-col space-y-4">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex-1 min-w-[200px]">
+                <label className="label pb-1">
+                  <span className="label-text font-medium">Campaign</span>
+                </label>
+                <select 
+                  className="select select-bordered w-full" 
+                  value={selectedCampaignId || ''} 
+                  onChange={handleSelectCampaign}
+                  disabled={isLoading || campaignStatus === 'preflight_pending' || campaignStatus === 'preflight_awaiting_confirmation' || campaignStatus === 'running' || campaignStatus === 'starting'}
+                >
+                  <option value="" disabled>-- Select a Campaign --</option>
+                  {campaigns.map(campaign => (
+                    <option key={campaign.id} value={campaign.id}>
+                      {campaign.name} (Status: {campaign.current_status})
+                    </option>
+                  ))}
+                </select>
               </div>
-            ))}
-            <div ref={consoleEndRef} />
+
+              <div className="flex-1 min-w-[200px]">
+                <label className="label pb-1">
+                  <span className="label-text font-medium">Status</span>
+                </label>
+                <div className="flex items-center h-12 px-4 border rounded-lg bg-base-200">
+                  <span className={`badge ${campaignStatus === 'running' ? 'badge-success' : campaignStatus === 'idle' ? 'badge-ghost' : 'badge-warning'}`}>
+                    {campaignStatus ? campaignStatus.replace(/_/g, ' ') : 'N/A'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex-1 min-w-[200px]">
+                <label className="label pb-1">
+                  <span className="label-text font-medium">Actions</span>
+                </label>
+                <div className="flex gap-2">
+                  {campaignStatus === 'AWAITING_CONFIRMATION' ? (
+                    <>
+                      <Button 
+                        color="success" 
+                        size="sm"
+                        startIcon={<CheckCircle size={16} />}
+                        onClick={() => void confirmAndLaunchCampaign()}
+                        loading={isLoading}
+                      >
+                        Confirm & Launch
+                      </Button>
+                      <Button 
+                        color="error" 
+                        size="sm"
+                        variant="outline"
+                        startIcon={<XCircle size={16} />}
+                        onClick={() => void cancelCampaignPreflight()}
+                        disabled={isLoading}
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  ) : campaignStatus === 'preflight_awaiting_confirmation' ? (
+                    <Button 
+                      color="success"
+                      size="sm"
+                      startIcon={<CheckCircle size={16} />}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleConfirmPreflightAndStart().catch(console.error);
+                      }}
+                      disabled={isLoading}
+                    >
+                      Confirm & Start
+                    </Button>
+                  ) : campaignStatus === 'running' || campaignStatus === 'starting' ? (
+                    <Button 
+                      color="error"
+                      size="sm"
+                      startIcon={<XCircle size={16} />}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleStopCampaign().catch(console.error);
+                      }}
+                      disabled={isLoading}
+                    >
+                      Stop Campaign
+                    </Button>
+                  ) : (
+                    <Button 
+                      color="primary"
+                      size="sm"
+                      startIcon={campaignStatus === 'PENDING' ? <PlayCircle size={16} /> : <RefreshCw size={16} />}
+                      onClick={() => void handleInitiatePreflight()}
+                      loading={isLoading}
+                      disabled={!selectedCampaignId || campaignStatus === 'ACTIVE'}
+                    >
+                      {campaignStatus === 'PENDING' ? 'Start Pre-flight' : 'Retry Pre-flight'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {campaignStatus === 'preflight_awaiting_confirmation' && (
+              <Alert status="info" className="alert-info py-2">
+                <Info className="w-5 h-5 flex-shrink-0"/>
+                <span className="text-sm">Pre-flight initiated. Please check <strong>chrisphillips@truesoulpartners.com</strong> for a test email.</span>
+              </Alert>
+            )}
           </div>
         </div>
       </Card>
