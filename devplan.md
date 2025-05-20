@@ -47,6 +47,10 @@
             -   [x] Modal-based PDF viewer with loading/error states
             -   [x] API endpoint for generating sample PDFs from templates
             -   [x] TypeScript type safety improvements
+    -   [x] Document Template Storage Improvements:
+        -   [x] Updated PDF storage to save directly to bucket root instead of user-specific folders
+        -   [x] Standardized template type naming from 'loi_document' to 'pdf_document'
+        -   [x] Added proper database schema for document templates with available_placeholders support
 
 ### 4. Campaign Management
     -   [x] Core functionality implemented (`CampaignsView.tsx`):

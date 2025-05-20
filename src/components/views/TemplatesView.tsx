@@ -73,6 +73,7 @@ interface DocumentTemplate {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  file_path?: string | null;
 }
 
 interface ApiErrorResponse {
@@ -290,6 +291,20 @@ const TemplatesView: React.FC = () => {
         setPdfLoading(false);
         return;
       }
+      
+      // If we have a file_path, construct the direct URL to the PDF in Supabase storage
+      if (template.file_path) {
+        const { data: { publicUrl } } = supabase.storage
+          .from('pdf-templates')
+          .getPublicUrl(template.file_path);
+        
+        if (publicUrl) {
+          setPdfUrl(publicUrl);
+          return;
+        }
+      }
+      
+      // Fallback to the old method if no file_path is available
       const res = await fetch(`/api/document-templates/${template.id}-sample-pdf`);
       if (!res.ok) throw new Error('Failed to generate PDF preview');
       const blob = await res.blob();

@@ -184,8 +184,10 @@ const CampaignsView: React.FC = () => {
 
       // Fetch distinct market regions from normalized_leads
       const { data: regionsData, error: regionsError } = await supabase
-        .from('normalized_leads')
-        .select('market_region', { distinct: true });
+      .from('normalized_leads')
+      .select('market_region', { count: 'exact' })
+      .not('market_region', 'is', null)
+      .not('market_region', 'eq', '');
 
       if (regionsError) throw regionsError;
 
@@ -326,16 +328,15 @@ const CampaignsView: React.FC = () => {
         .from('campaigns')
         .insert([{
           user_id: user.id,
+          created_by: user.id, // Add created_by field
           name: campaignName,
-          email_template_id: selectedEmailTemplate, // This is the ID, which is correct
-          pdf_template_id: selectedDocumentTemplate || null, // Ensure null if empty, and aligns with DB schema
-          target_market_region: selectedMarketRegion, // Add selected market region
+          email_template_id: selectedEmailTemplate,
+          pdf_template_id: selectedDocumentTemplate || null,
+          target_market_region: selectedMarketRegion,
           assigned_sender_ids: selectedSenders.map(s => s.id),
-          status: 'DRAFT',
-          // created_at: new Date().toISOString(), // Supabase can handle created_at with default now()
-          // is_active: true // is_active might be better handled by status or a separate field if needed
+          status: 'DRAFT'
         }])
-        .select(); // .select() is good for getting back the created record
+        .select();
 
       if (error) throw error;
 
