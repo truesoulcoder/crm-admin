@@ -11,14 +11,19 @@ const publicPaths = ['/'];
 
 // Define role-based redirects
 const getRedirectPath = (role: string | null, currentPath: string): string | null => {
-  // If user is a guest, redirect to CRM page
+  // If user is a guest, only allow access to /crm path
   if (role === 'guest') {
     return currentPath.startsWith('/crm') ? null : '/crm';
   }
   
-  // If user is authenticated but not a guest, prevent access to login page
-  if (role !== 'guest' && currentPath === '/') {
+  // If user is authenticated (has a role) and is on the login page, redirect to dashboard
+  if (role && role !== 'guest' && currentPath === '/') {
     return '/dashboard';
+  }
+  
+  // If user has no role and is not on the login page, redirect to login
+  if (!role && currentPath !== '/') {
+    return '/';
   }
   
   return null;

@@ -74,28 +74,49 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
         case 'SIGNED_IN':
           if (newSession) {
             const userRole = getUserRole(newSession.user);
-            setSession(newSession);
-            setUser(newSession.user);
-            setRole(userRole);
-            setIsLoading(false);
+            // Batch state updates
+            void (async () => {
+              try {
+                setSession(newSession);
+                setUser(newSession.user);
+                setRole(userRole);
+                setIsLoading(false);
+              } catch (error) {
+                console.error('Error in SIGNED_IN handler:', error);
+              }
+            })();
           }
           break;
           
         case 'SIGNED_OUT':
-          setSession(null);
-          setUser(null);
-          setRole('guest');
-          setIsLoading(false);
-          if (pathname !== '/') {
-            router.replace('/');
-          }
+          // Batch state updates and redirect
+          void (async () => {
+            try {
+              setSession(null);
+              setUser(null);
+              setRole('guest');
+              setIsLoading(false);
+              if (window.location.pathname !== '/') {
+                window.location.href = '/';
+              }
+            } catch (error) {
+              console.error('Error in SIGNED_OUT handler:', error);
+            }
+          })();
           break;
           
         case 'USER_UPDATED':
           if (newSession) {
             const userRole = getUserRole(newSession.user);
-            setUser(newSession.user);
-            setRole(userRole);
+            // Batch state updates
+            void (async () => {
+              try {
+                setUser(newSession.user);
+                setRole(userRole);
+              } catch (error) {
+                console.error('Error in USER_UPDATED handler:', error);
+              }
+            })();
           }
           break;
       }
