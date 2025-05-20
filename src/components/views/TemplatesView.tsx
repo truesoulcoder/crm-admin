@@ -206,6 +206,9 @@ const TemplatesView: React.FC = () => {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [isPdfUploading, setIsPdfUploading] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
 
   // Set client-side flag on mount and get user
   useEffect(() => {
@@ -482,6 +485,8 @@ const TemplatesView: React.FC = () => {
     setNewTemplateSubject('');
     setNewTemplateBody('');
     setRawPlaceholdersInput('');
+    setPdfFile(null);
+    setPdfPreviewUrl(null);
     setClickablePlaceholders([...DEFAULT_PLACEHOLDERS]);
     setModalError(null);
     setIsTemplateModalOpen(true);
@@ -510,15 +515,26 @@ const TemplatesView: React.FC = () => {
     setNewTemplateSubject('');
     setNewTemplateBody('');
     setRawPlaceholdersInput('');
+    setPdfFile(null);
+    setPdfPreviewUrl(null);
     setClickablePlaceholders([]);
   }, []);
+
+  const handlePdfFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPdfFile(file);
+      setPdfPreviewUrl(URL.createObjectURL(file));
+    }
+  };
 
   const handleSubmitTemplate = useCallback(async () => {
     console.log('handleSubmitTemplate called with:', {
       name: newTemplateName,
       bodyLength: newTemplateBody.length,
       type: newTemplateType,
-      subject: newTemplateSubject
+      subject: newTemplateSubject,
+      hasPdfFile: !!pdfFile
     });
     
     if (!editor) {
@@ -538,8 +554,8 @@ const TemplatesView: React.FC = () => {
       return;
     }
     
-    if (!templateBody) {
-      setModalError('Template content cannot be empty.');
+    if (newTemplateType === 'document' && !pdfFile) {
+      setModalError('Please upload a PDF file for document templates.');
       return;
     }
     
@@ -581,58 +597,50 @@ const TemplatesView: React.FC = () => {
           created_by: user.id
         };
       } else {
-        // 1. Call our API to generate the PDF
-        const response = await fetch('/api/generate-pdf', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ html: templateBody })
-        });
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || 'Failed to generate PDF');
+        // Handle document template with PDF upload
+        if (!pdfFile) {
+          throw new Error('No PDF file provided for document template');
         }
 
-        const { pdf: pdfBase64 } = await response.json();
-        const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+        setIsPdfUploading(true);
+        
+        try {
+          // Upload the PDF file directly to Supabase Storage
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('pdf-templates')
+            .upload(pdfFile.name, pdfFile, {
+              contentType: 'application/pdf',
+              upsert: true,
+              cacheControl: '3600'
+            });
 
-        // 2. Create a unique file path
-        const fileName = `${templateName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${Date.now()}.pdf`;
-        filePath = `templates/${user.id}/${fileName}`;
+          if (uploadError) {
+            console.error('Error uploading PDF to storage:', uploadError);
+            throw new Error('Failed to upload PDF to storage');
+          }
 
-        // 3. Upload to Supabase Storage
-        const { error: uploadError } = await supabase.storage
-          .from('pdf-templates')
-          .upload(filePath, pdfBuffer, {
-            contentType: 'application/pdf',
-            upsert: true
-          });
+          // Get public URL
+          const { data: { publicUrl } } = supabase.storage
+            .from('pdf-templates')
+            .getPublicUrl(pdfFile.name);
 
-        if (uploadError) {
-          console.error('Error uploading PDF to storage:', uploadError);
-          throw new Error('Failed to upload template to storage');
+          // Prepare template data
+          templateData = {
+            name: templateName,
+            content: templateBody,
+            file_path: pdfFile.name, // Store just the filename in the root
+            file_type: 'application/pdf',
+            type: 'document',
+            is_active: true,
+            user_id: user.id,
+            created_by: user.id,
+            available_placeholders: clickablePlaceholders,
+            subject: null,
+            deleted_at: null
+          };
+        } finally {
+          setIsPdfUploading(false);
         }
-
-        // 4. Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('pdf-templates')
-          .getPublicUrl(filePath);
-
-        // 5. Prepare template data with file path and URL
-        templateData = {
-          name: templateName,
-          content: templateBody,
-          file_path: filePath, // Use the storage path, not the public URL
-          file_type: 'application/pdf',
-          type: 'document', // Use 'document' instead of 'pdf' to match the schema
-          is_active: true,
-          user_id: user.id,
-          created_by: user.id,
-          available_placeholders: clickablePlaceholders,
-          // Add any other required fields based on your schema
-          subject: null, // Required by the schema but not used for document templates
-          deleted_at: null // Explicitly set to null
-        };
       }
 
       console.log('Saving template data:', templateData);
@@ -685,7 +693,7 @@ const TemplatesView: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
-  }, [editor, newTemplateName, newTemplateType, newTemplateSubject, newTemplateBody, rawPlaceholdersInput, editingTemplate, closeModal, fetchTemplates]);
+  }, [editor, newTemplateName, newTemplateType, newTemplateSubject, newTemplateBody, rawPlaceholdersInput, editingTemplate, closeModal, fetchTemplates, pdfFile, user]);
 
   const handleDeleteTemplate = useCallback(async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this template?')) {
@@ -938,11 +946,42 @@ const TemplatesView: React.FC = () => {
                 </div>
               )}
             </div>
-            <div className="form-control mt-4">
-              <label className="label"><span className="label-text">Template Content (HTML)*</span></label>
-              <MenuBar editor={editor} />
-              <EditorContent editor={editor} />
-            </div>
+            {newTemplateType === 'pdf_document' ? (
+              <div className="form-control mt-4">
+                <label className="label">
+                  <span className="label-text">PDF Document*</span>
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handlePdfFileChange}
+                  className="file-input file-input-bordered w-full"
+                  disabled={isSubmitting || isPdfUploading}
+                />
+                {pdfPreviewUrl && (
+                  <div className="mt-2">
+                    <p className="text-sm text-base-content/70 mb-1">Preview:</p>
+                    <iframe
+                      src={pdfPreviewUrl}
+                      className="w-full h-64 border rounded-md"
+                      title="PDF Preview"
+                    />
+                  </div>
+                )}
+                {isPdfUploading && (
+                  <div className="mt-2 flex items-center text-sm text-base-content/70">
+                    <Loader2 className="animate-spin mr-2" size={16} />
+                    Uploading PDF...
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="form-control mt-4">
+                <label className="label"><span className="label-text">Template Content (HTML)*</span></label>
+                <MenuBar editor={editor} />
+                <EditorContent editor={editor} />
+              </div>
+            )}
             <div className="modal-action mt-6">
               {/* Debug info - will appear in browser dev tools */}
               <div className="hidden" data-debug-info={JSON.stringify({
@@ -971,23 +1010,52 @@ const TemplatesView: React.FC = () => {
                   console.log('Create Template button clicked');
                   console.log('Current state:', {
                     isSubmitting,
+                    isPdfUploading,
                     newTemplateName,
-                    newTemplateBody: `${newTemplateBody.substring(0, 50)  }...`,
+                    newTemplateBody: `${newTemplateBody.substring(0, 50)}...`,
                     newTemplateType,
                     newTemplateSubject,
-                    disabled: isSubmitting || !newTemplateName.trim() || !newTemplateBody.trim() || (newTemplateType === 'email' && !newTemplateSubject.trim())
+                    hasPdfFile: !!pdfFile,
+                    disabled: isSubmitting || isPdfUploading || !newTemplateName.trim() || 
+                      (newTemplateType === 'email' ? !newTemplateBody.trim() : !pdfFile) || 
+                      (newTemplateType === 'email' && !newTemplateSubject.trim())
                   });
-                  if (!isSubmitting && 
-                      newTemplateName.trim() && 
-                      newTemplateBody.trim() && 
-                      (newTemplateType !== 'email' || newTemplateSubject.trim())) {
-                    void handleSubmitTemplate();
+                  
+                  if (isSubmitting || isPdfUploading) return;
+                  
+                  if (!newTemplateName.trim()) {
+                    setModalError('Template name is required');
+                    return;
                   }
+                  
+                  if (newTemplateType === 'email') {
+                    if (!newTemplateBody.trim()) {
+                      setModalError('Email content cannot be empty');
+                      return;
+                    }
+                    if (!newTemplateSubject.trim()) {
+                      setModalError('Email subject is required');
+                      return;
+                    }
+                  } else if (!pdfFile) {
+                    setModalError('Please upload a PDF file');
+                    return;
+                  }
+                  
+                  void handleSubmitTemplate();
                 }}
-                disabled={isSubmitting || !newTemplateName.trim() || !newTemplateBody.trim() || (newTemplateType === 'email' && !newTemplateSubject.trim())}
+                disabled={
+                  isSubmitting || 
+                  isPdfUploading || 
+                  !newTemplateName.trim() || 
+                  (newTemplateType === 'email' ? !newTemplateBody.trim() : !pdfFile) || 
+                  (newTemplateType === 'email' && !newTemplateSubject.trim())
+                }
               >
-                {isSubmitting && <Loader2 className="animate-spin mr-2" size={18} />} 
-                {isSubmitting ? (editingTemplate ? 'Saving...' : 'Creating...') : (editingTemplate ? 'Save Changes' : 'Create Template')}
+                {(isSubmitting || isPdfUploading) && <Loader2 className="animate-spin mr-2" size={18} />} 
+                {isSubmitting || isPdfUploading 
+                  ? (editingTemplate ? 'Saving...' : 'Creating...') 
+                  : (editingTemplate ? 'Save Changes' : 'Create Template')}
               </button>
             </div>
           </div>

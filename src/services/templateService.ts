@@ -46,13 +46,28 @@ export async function uploadPdfTemplate({
   userId,
 }: UploadPdfTemplateParams): Promise<string> {
   try {
+    // Sanitize the template name to create a clean filename
+    const sanitizedTemplateName = templateName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '_')  // Replace non-alphanumeric with underscores
+      .replace(/_+/g, '_')          // Replace multiple underscores with single
+      .replace(/^_+|_+$/g, '');     // Remove leading/trailing underscores
+    
     const fileExt = file.name.split('.').pop();
-    const fileName = `${templateName}-${Date.now()}.${fileExt}`;
-    const filePath = fileName; // Save directly to root of the bucket
+    const fileName = `${sanitizedTemplateName}.${fileExt}`;
+    
+    // Remove any existing file with this name
+    await supabase.storage
+      .from(BUCKET_NAME)
+      .remove([fileName]);
 
+    // Upload the file with the template name
     const { error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(filePath, file);
+      .upload(fileName, file, {
+        upsert: true,
+        contentType: file.type
+      });
 
     if (uploadError) {
       throw uploadError;
@@ -61,12 +76,12 @@ export async function uploadPdfTemplate({
     // Get public URL
     const { data: { publicUrl } } = supabase.storage
       .from(BUCKET_NAME)
-      .getPublicUrl(filePath);
+      .getPublicUrl(fileName);
 
     if (!publicUrl) {
       throw new Error('Failed to get public URL for uploaded template');
     }
-
+    
     return publicUrl;
   } catch (err) {
     const error = err as Error;

@@ -368,7 +368,6 @@ export async function processCampaign(campaignId: string) {
                 body,
                 attachments,
                 pdfBuffer: attachments?.[0]?.content, // Pass buffer if available
-                templateId: campaign.pdf_template?.id, // Pass template ID if available
                 leadData: effectiveLead, // Pass full lead data for template rendering in action
               }
             );
