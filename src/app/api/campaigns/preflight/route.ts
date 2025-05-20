@@ -1,7 +1,11 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
-import { type Lead, prepareAndSendOfferEmail } from '@/actions/emailSending.action'; // Import Lead type
-import { getAdminSupabaseClient } from '@/services/supabaseAdminService';
+import { prepareAndSendOfferEmail } from '@/actions/emailSending.action';
+import { createAdminServerClient } from '@/lib/supabase/server';
+import { Database } from '@/types/supabase';
+
+type Lead = Database['public']['Tables']['normalized_leads']['Row'];
 
 export const dynamic = 'force-dynamic';
 
@@ -19,13 +23,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = getAdminSupabaseClient();
-    
-    // 1. Get campaign details
+    // 1. Get campaign details with type assertion for sender_id
     const { data: campaign, error: campaignError } = await supabase
       .from('campaigns')
       .select('*')
-      .eq('id', campaignId)
+      .eq('id', String(campaignId))
       .single();
 
     if (campaignError || !campaign) {
@@ -35,36 +37,56 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Get admin user's email for test email
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // 2. Get admin user's email from session
+    const supabase = await createAdminServerClient();
+    const { data: { session } } = await supabase.auth.getSession();
     
-    if (userError || !user?.email) {
+    if (!session?.user?.email || !session.user.id) {
       return new NextResponse(
-        JSON.stringify({ error: 'Could not get admin user details' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Could not get admin user details. Please sign in again.' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }
       );
     }
+    
+    const adminEmail = session.user.email;
 
-    // 3. Get a test lead
-    const { data: testLead, error: leadError } = await supabase
+    // 3. Get a test lead with proper type assertion for campaign_id
+    const { data: testLeadData, error: leadError } = await supabase
       .from('normalized_leads')
       .select('*')
-      .eq('campaign_id', campaignId)
+      .eq('campaign_id', String(campaignId))
       .limit(1)
       .single();
 
-    if (leadError || !testLead) {
+    if (leadError || !testLeadData) {
       return new NextResponse(
         JSON.stringify({ error: 'No leads found for this campaign' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
+    
+    // Create a copy of the test lead and update the email
+    const testLead = { ...testLeadData, email: adminEmail };
 
-    // 4. Get sender details
+    // 4. Get sender details with proper type assertions
+    interface CampaignWithSender extends Record<string, unknown> {
+      sender_id?: string;
+      document_template_id?: string;
+    }
+    
+    const campaignWithSender = campaign as CampaignWithSender;
+    const senderId = campaignWithSender.sender_id;
+    if (!senderId) {
+      return new NextResponse(
+        JSON.stringify({ error: 'Campaign is missing sender ID' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    
     const { data: sender, error: senderError } = await supabase
       .from('senders')
       .select('*')
-      .eq('id', campaign.sender_id)
+      .eq('id', senderId)
       .single();
 
     if (senderError || !sender) {
@@ -77,6 +99,9 @@ export async function POST(request: Request) {
       // 5. Send test email immediately
     const { prepareAndSendOfferEmail } = await import('@/actions/emailSending.action');
     
+    // Update the lead's email to the admin's email for testing
+    testLead.email = adminEmail;
+    
     // 6. Fetch Email Template based on campaign.email_template_id
     if (!campaign.email_template_id) {
       return new NextResponse(
@@ -86,7 +111,7 @@ export async function POST(request: Request) {
     }
     const { data: emailTemplate, error: emailTemplateError } = await supabase
       .from('email_templates')
-      .select('subject, body')
+      .select('*')
       .eq('id', campaign.email_template_id)
       .single();
 
@@ -99,17 +124,18 @@ export async function POST(request: Request) {
 
     // 7. Fetch Document Template based on campaign.document_template_id (if exists)
     let documentHtmlContent: string | undefined = undefined;
-    if (campaign.document_template_id) {
+    const documentTemplateId = campaignWithSender.document_template_id;
+    if (documentTemplateId) {
       const { data: documentTemplate, error: documentTemplateError } = await supabase
         .from('document_templates')
         .select('content') // Assuming 'content' stores the HTML for the PDF
-        .eq('id', campaign.document_template_id)
+        .eq('id', documentTemplateId)
         .single();
 
       if (documentTemplateError) {
         // Log error but proceed, as document might be optional for some campaigns
         console.error('Error fetching document template:', documentTemplateError.message);
-        addLog(`Warning: Could not fetch document template ID ${campaign.document_template_id}. Proceeding without PDF attachment.`, 'warning');
+        addLog(`Warning: Could not fetch document template ID ${documentTemplateId}. Proceeding without PDF attachment.`, 'warning');
       } else if (documentTemplate) {
         documentHtmlContent = documentTemplate.content;
       }
@@ -121,10 +147,12 @@ export async function POST(request: Request) {
     // Ensure testLead is cast to the Lead type expected by prepareAndSendOfferEmail
     const leadDataForEmail: Lead = {
       id: testLead.id,
-      contact1_name: testLead.contact1_name || 'Test Recipient',
-      contact1_email_1: user.email, // For preflight, send to admin
-      contact2_email_1: testLead.contact2_email_1,
-      contact3_email_1: testLead.contact3_email_1,
+      contact1_name: testLead.contact1_name ?? 'Test Recipient',
+      contact1_email_1: adminEmail, // For preflight, send to admin
+      contact2_email_1: testLead.contact2_email_1 ?? null,
+      contact2_name: testLead.contact2_name ?? null,
+      contact3_email_1: testLead.contact3_email_1 ?? null,
+      contact3_name: testLead.contact3_name ?? null,
       property_address: testLead.property_address || 'Test Property',
       wholesale_value: testLead.wholesale_value || 0,
       assessed_total: testLead.assessed_total || 0,
@@ -172,16 +200,16 @@ export async function POST(request: Request) {
       .insert({
         campaign_id: campaignId,
         lead_id: testLead.id,
-        recipient_email: user.email,
+        recipient_email: adminEmail,
         status: 'sent',
         sender_id: sender.id,
         is_test: true,
-        subject: `[TEST] ${campaign.email_subject || 'Test Email'}`,
-        body: campaign.email_body || '',
+        subject: `[TEST] ${emailTemplate?.subject || 'Test Email'}`,
+        body: emailTemplate?.body_html || emailTemplate?.body_text || '',
         sent_at: new Date().toISOString(),
         metadata: {
           is_preflight: true,
-          admin_email: user.email,
+          admin_email: adminEmail,
           timestamp: new Date().toISOString(),
           gmail_message_id: result.messageId || null
         }
@@ -189,18 +217,28 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    // 6. Log the pre-flight check
-    await supabase.from('system_events').insert({
-      event_type: 'INFO',
-      message: 'Pre-flight check initiated',
-      details: {
-        campaign_id: campaignId,
-        admin_email: user.email,
-        email_task_id: emailTask.id
-      },
+    // 6. Log the pre-flight check to campaign_log instead of system_events
+    const logEntry = {
       campaign_id: campaignId,
-      created_by: user.id
-    });
+      event_type: 'preflight_check',
+      status: 'success',
+      message: 'Preflight check completed successfully',
+      details: JSON.stringify({
+        admin_email: adminEmail,
+        test_lead_id: testLead.id,
+        sender_id: sender.id,
+        timestamp: new Date().toISOString()
+      }),
+      user_id: session.user.id // Add the user ID from the session
+    };
+    
+    const { error: logError } = await supabase
+      .from('campaign_log')
+      .insert([logEntry]); // Wrap in array to match expected type
+
+    if (logError) {
+      console.error('Error logging preflight check:', logError);
+    }
 
     return new NextResponse(
       JSON.stringify({ 
@@ -211,7 +249,8 @@ export async function POST(request: Request) {
     );
 
   } catch (error) {
-    console.error('Error in pre-flight check:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    console.error('Preflight check failed:', error);
     return new NextResponse(
       JSON.stringify({ 
         error: 'Internal server error',
