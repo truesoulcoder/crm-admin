@@ -115,12 +115,14 @@ export async function POST(req: NextRequest) {
     
     // Create the new email template
     const templateData = {
-      created_by: user.id,
       name: validation.data.name,
       subject: validation.data.subject,
       body_html: validation.data.body_html,
       body_text: validation.data.body_text || '',
-      is_active: validation.data.is_active // Will be true by default from schema
+      placeholders: body.placeholders || [],
+      is_active: validation.data.is_active, // Will be true by default from schema
+      user_id: user.id,
+      created_by: user.id
     };
     
     const { data: newTemplate, error: insertError } = await supabase

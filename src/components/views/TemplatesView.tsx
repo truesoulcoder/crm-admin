@@ -518,19 +518,21 @@ const TemplatesView: React.FC = () => {
       const templateData = isEmailTemplate 
         ? {
             name: templateName,
-            body_html: templateBody, // email-templates table expects 'body_html'
-            body_text: templateBody.replace(/<[^>]*>?/gm, ''), // Convert HTML to plain text
             subject: templateSubject,
+            body_html: templateBody,
+            body_text: templateBody.replace(/<[^>]*>?/gm, ''), // Convert HTML to plain text
+            placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : [],
             is_active: true,
-            placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : []
+            user_id: user?.id, // Add user_id for the foreign key
+            created_by: user?.id // Add created_by for the foreign key
           }
         : {
             name: templateName,
-            content: templateBody, // document-templates table uses 'content'
+            content: templateBody,
             type: 'pdf',
-            subject: templateSubject, // Include subject for document templates
             is_active: true,
-            available_placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : []
+            user_id: user?.id, // Add user_id for the foreign key
+            created_by: user?.id // Add created_by for the foreign key
           };
       
       console.log('Saving with data:', { isEmailTemplate, endpoint, templateData });
