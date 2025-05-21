@@ -1,5 +1,10 @@
 // This module should only be used in server-side code (API routes)
-import chromium from '@sparticuz/chromium';
+import { readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { logInfo } from './logService.js';
+import { chromium } from '@sparticuz/chromium';
+import { fontkit } from '@pdf-lib/fontkit';
+import { PDFDocument, rgb } from 'pdf-lib';
 import { Browser, PDFOptions, launch } from 'puppeteer-core';
 
 // Only import server-side dependencies
@@ -26,10 +31,58 @@ export interface PdfGenerationOptions extends Omit<PDFOptions, 'path'> {
  * Generates a PDF buffer from provided HTML content using Puppeteer.
  * Works in both local development and Vercel environments.
  */
+/**
+ * Generates a PDF using a branded template with overlaid content
+ * @param htmlContent - HTML content to overlay on the template
+ * @param options - PDF generation options
+ * @returns PDF buffer
+ */
+export async function generatePdfFromTemplateWithBranding(
+  htmlContent: string,
+  options: PdfGenerationOptions = {}
+): Promise<Buffer> {
+  const templatePath = join(process.cwd(), 'public', 'letter_of_intent_branded_watermarked.pdf');
+  const templateBuffer = readFileSync(templatePath);
+  
+  // Generate the content PDF with transparent background
+  const contentBuffer = await generatePdfFromHtml(htmlContent, {
+    ...options,
+    displayHeaderFooter: false,
+    printBackground: true,
+    margin: { top: '0', right: '0', bottom: '0', left: '0' },
+  });
+  
+  try {
+    // Load the template and content PDFs
+    const templatePdf = await PDFDocument.load(templateBuffer);
+    const contentPdf = await PDFDocument.load(contentBuffer);
+    
+    // Embed fonts from the template
+    templatePdf.registerFontkit(fontkit);
+    
+    // Copy pages from content to template
+    const pages = await templatePdf.copyPages(contentPdf, contentPdf.getPageIndices());
+    
+    // Add each page to the template
+    for (const page of pages) {
+      templatePdf.addPage(page);
+    }
+    
+    // Save the merged PDF
+    const mergedPdf = await templatePdf.save();
+    return Buffer.from(mergedPdf);
+  } catch (error) {
+    console.error('Error merging PDFs:', error);
+    // Fallback to just the content if merging fails
+    return contentBuffer;
+  }
+}
+
 // This function should only be called from server-side code
 export async function generatePdfFromHtml(
   htmlContent: string,
-  options: PdfGenerationOptions = {}
+  options: PdfGenerationOptions = {},
+  isOverlay: boolean = false
 ): Promise<Buffer> {
   // Ensure we're running in a Node.js environment
   if (typeof window !== 'undefined') {
@@ -78,9 +131,14 @@ export async function generatePdfFromHtml(
 
     // Prepare PDF options
     const pdfOptions: PDFOptions = {
-      format: 'A4',
+      format: 'Letter',
       printBackground: true,
-      margin: {
+      margin: isOverlay ? {
+        top: '0',
+        right: '0',
+        bottom: '0',
+        left: '0',
+      } : {
         top: '1cm',
         right: '1cm',
         bottom: '1cm',

@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 import { logSystemEvent } from './logService';
-import { generatePdfFromHtml } from './pdfService';
+import { generatePdfFromHtml, generatePdfFromTemplateWithBranding } from './pdfService';
 
 const BUCKET_NAME = 'pdf-templates';
 
@@ -157,33 +157,55 @@ interface GeneratePdfFromTemplateParams {
 /**
  * Generates a PDF from a template with data
  */
-export async function generatePdfFromTemplate({
-  templateContent,
-  data,
-  fileName = `document-${Date.now()}.pdf`,
-}: GeneratePdfFromTemplateParams): Promise<{ buffer: Buffer; fileName: string }> {
+export async function generatePdfFromTemplate(
+  params: GeneratePdfFromTemplateParams & { useBrandedTemplate?: boolean }
+): Promise<{ buffer: Buffer; fileName: string }> {
+  const {
+    templateContent,
+    data,
+    fileName,
+    useBrandedTemplate = true
+  } = params;
   try {
-    // Render the template with provided data
-    const renderedHtml = renderTemplate(templateContent, data);
+    // Render the template with data
+    const renderedContent = renderTemplate(templateContent, data);
     
-    // Generate PDF from the rendered HTML
-    const pdfBuffer = await generatePdfFromHtml(renderedHtml);
-    
+    // Generate PDF from the rendered content
+    const pdfBuffer = useBrandedTemplate 
+      ? await generatePdfFromTemplateWithBranding(renderedContent, {
+          format: 'Letter',
+          margin: { top: '1in', right: '1in', bottom: '1in', left: '1in' },
+        })
+      : await generatePdfFromHtml(renderedContent, {
+          format: 'Letter',
+          margin: { top: '1in', right: '1in', bottom: '1in', left: '1in' },
+        });
+
     return {
       buffer: pdfBuffer,
-      fileName: fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`
+      fileName: fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`,
     };
-  } catch (err) {
-    const error = err as Error;
+  } catch (error: unknown) {
+    console.error('Error generating PDF from template:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
     await logSystemEvent({
       event_type: 'PDF_GENERATION_ERROR',
       message: 'Failed to generate PDF from template',
       details: {
-        error: error.message,
+        error: errorMessage,
+        stack: errorStack,
         templateLength: templateContent?.length || 0,
       },
     });
-    throw error;
+    
+    // Re-throw the error with a more specific message if needed
+    const errorToThrow = new Error(`Failed to generate PDF: ${errorMessage}`);
+    if (error instanceof Error) {
+      errorToThrow.stack = error.stack;
+    }
+    throw errorToThrow;
   }
 }
 

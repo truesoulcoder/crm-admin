@@ -1,8 +1,8 @@
 'use client'
 
+import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown, Map, AlertCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useMemo } from 'react';
-import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown, Map } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
 import { formatAddress } from '@/utils/address';
@@ -693,29 +693,71 @@ const CrmView: React.FC = () => {
                 </div>
                 
                 <div className="flex justify-between items-center pt-4">
-                  <div>
+                  <div className="flex-1">
                     {currentLead && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          // Wrap in void to explicitly ignore the Promise
-                          void handleDeleteLead(currentLead.id, e);
-                        }}
-                        className="btn btn-error btn-sm text-white"
-                        disabled={isLoading}
-                      >
-                        {isLoading ? (
-                          <>
-                            <span className="loading loading-spinner loading-xs"></span>
-                            Deleting...
-                          </>
-                        ) : (
-                          <>
-                            <Trash2 className="w-4 h-4 mr-1" />
-                            Delete Lead
-                          </>
-                        )}
-                      </button>
+                      <div className="dropdown dropdown-top">
+                        <button
+                          type="button"
+                          tabIndex={0}
+                          className="btn btn-error btn-sm text-white hover:bg-error/90 transition-colors"
+                          disabled={isLoading}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1.5" />
+                          Delete Lead
+                        </button>
+                        <div className="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-64">
+                          <div className="p-3">
+                            <h3 className="font-medium text-error">Delete Lead</h3>
+                            <p className="text-sm text-base-content/80 mt-1">
+                              Are you sure you want to delete this lead? This action cannot be undone.
+                            </p>
+                            <div className="flex justify-end gap-2 mt-3">
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const dropdown = document.activeElement as HTMLElement;
+                                  if (dropdown) dropdown.blur();
+                                }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-error btn-xs text-white"
+                                disabled={isLoading}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // Use a non-async function that returns void
+                                  const handleDelete = async () => {
+                                    try {
+                                      await handleDeleteLead(currentLead.id, e);
+                                      const dropdown = document.activeElement as HTMLElement;
+                                      if (dropdown) dropdown.blur();
+                                    } catch (error: unknown) {
+                                      console.error('Error deleting lead:', error);
+                                      // Show error message without using toast
+                                      const errorMsg = error instanceof Error ? error.message : 'An unknown error occurred';
+                                      alert(`Failed to delete lead: ${errorMsg}`);
+                                    }
+                                  };
+                                  // Call the async function and handle the promise
+                                  handleDelete().catch((error: unknown) => {
+                                    console.error('Error in handleDelete:', error);
+                                  });
+                                }}
+                              >
+                                {isLoading ? (
+                                  <span className="loading loading-spinner loading-xs"></span>
+                                ) : (
+                                  'Delete'
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                   <div className="flex space-x-3">
