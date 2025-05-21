@@ -240,9 +240,6 @@ const CampaignsView: React.FC = () => {
       } finally {
         setIsLoading(false);
       }
-      } else {
-        setSelectedMarketRegion('');
-      }
 
     } catch (err) {
       console.error('Error fetching supporting data:', err);
