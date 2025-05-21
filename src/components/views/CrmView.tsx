@@ -2,12 +2,12 @@
 
 import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown, Map, AlertCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, ChangeEvent } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { supabase } from '@/lib/supabase/client';
 import { formatAddress } from '@/utils/address';
-import { useTable, useSortBy, Column, Row } from 'react-table';
-import LeadCard from '@/components/crm/LeadCard'; // Placeholder: Adjust path as needed
+import { useTable, useSortBy, Column } from 'react-table';
 
 
 // Dynamically import the GoogleMapsLoader with SSR disabled
@@ -94,7 +94,6 @@ const CrmView: React.FC = () => {
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
-  const [isLeadCardOpen, setIsLeadCardOpen] = useState<boolean>(false);
   const [currentLead, setCurrentLead] = useState<Lead | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -124,14 +123,21 @@ const CrmView: React.FC = () => {
     mls_curr_status: false,
     mls_curr_days_on_market: false
   });
+  
+  // Handle input change - single source of truth
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  }, []);
 
   // Refs
-
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
-
-  
   // Initialize Supabase client
   
 
@@ -182,6 +188,79 @@ const CrmView: React.FC = () => {
     }));
   };
 
+  // Handle lead deletion
+  const handleDeleteLead = async (leadId: string) => {
+    try {
+      setIsFormOpen(false);
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .eq('id', leadId);
+
+      if (error) throw error;
+
+      // Refresh leads after deletion
+      await fetchLeads();
+    } catch (error) {
+      console.error('Error deleting lead:', error);
+    }
+  };
+
+  // Handle form submission - single source of truth
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    
+    try {
+      const leadDataToSubmit = { ...formData };
+
+      if (currentLead?.id) { // Editing existing lead
+        const { data, error } = await supabase
+          .from('crm_leads')
+          .update(leadDataToSubmit)
+          .eq('id', currentLead.id)
+          .select();
+        
+        if (error) throw error;
+        if (data && data.length > 0) {
+          setLeads((prev: Lead[]) => prev.map((l: Lead) => l.id === data[0].id ? data[0] : l));
+        }
+      } else { // Adding new lead
+        const { data, error } = await supabase
+          .from('crm_leads')
+          .insert([leadDataToSubmit])
+          .select();
+          
+        if (error) throw error;
+        if (data && data[0]) {
+          setLeads((prev: Lead[]) => [data[0] as Lead, ...prev]);
+        }
+      }
+      
+      setIsFormOpen(false);
+      setCurrentLead(null);
+      setFormData({ 
+        first_name: '', 
+        last_name: '', 
+        email: '', 
+        phone: '', 
+        status: 'NEW',
+        address: '', 
+        city: '', 
+        state: '', 
+        zip_code: ''
+      });
+      
+      // Refresh leads to ensure we have the latest data
+      await fetchLeads();
+    } catch (error) {
+      console.error('Error saving lead:', error);
+      alert(`Error: ${error instanceof Error ? error.message : 'Failed to save lead'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentLead, formData, fetchLeads, supabase, setIsFormOpen, setCurrentLead, setLeads]);
+
   // Helper function to get display name from first and last name
   const getDisplayName = (lead: Partial<Lead>): string => {
     return [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'New Lead';
@@ -189,32 +268,28 @@ const CrmView: React.FC = () => {
 
   // Helper function to format full address
   const formatFullAddress = (lead: Lead): string => {
-    const address = lead.property_address || lead.address || '';
-    const city = lead.property_city || lead.city || '';
-    const state = lead.property_state || lead.state || '';
-    const zip = lead.property_postal_code || lead.zip_code || '';
-    
-    const parts = [address];
-    if (city || state || zip) {
-      const cityStateZip = [city, state, zip].filter(Boolean).join(' ');
-      parts.push(cityStateZip);
-    }
-    
-    return parts.filter(Boolean).join(' ');
+    const parts = [
+      lead.property_address_street,
+      lead.property_address_city,
+      lead.property_address_state,
+      lead.property_address_zip
+    ].filter(Boolean);
+    return parts.join(', ');
   };
 
-
-  // Handle closing the lead card/modal
-  const handleCloseLeadCard = useCallback(() => {
-    setIsLeadCardOpen(false);
-    setCurrentLead(null);
-  }, [setIsLeadCardOpen, setCurrentLead]);
-
-  // Handle row click to show lead details
+  // Handle row click to open edit form
   const handleRowClick = useCallback((lead: Lead) => {
     setCurrentLead(lead);
-    setIsLeadCardOpen(true);
-  }, [setCurrentLead, setIsLeadCardOpen]);
+    setIsFormOpen(true);
+    setFormData({
+      ...lead,
+      // Map property_* fields to address, city, state, zip_code if they exist
+      address: lead.property_address || lead.property_address_street || '',
+      city: lead.property_city || lead.property_address_city || '',
+      state: lead.property_state || lead.property_address_state || '',
+      zip_code: lead.property_postal_code || lead.property_address_zip || '',
+    });
+  }, []);
 
   // Handle lead update
   const handleUpdateLead = useCallback(async (updatedLeadData: Partial<Lead>) => {
@@ -240,7 +315,7 @@ const CrmView: React.FC = () => {
         );
       }
       
-      setIsLeadCardOpen(false);
+      setIsFormOpen(false);
       setCurrentLead(null); 
       alert('Lead updated successfully!');
     } catch (err) {
@@ -249,7 +324,7 @@ const CrmView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [currentLead, supabase, setIsLoading, setLeads, setIsLeadCardOpen, setCurrentLead]);
+  }, [currentLead, supabase]);
 
   // Handle delete lead
   const handleDeleteLead = useCallback(async (leadId: string) => {
@@ -281,52 +356,7 @@ const CrmView: React.FC = () => {
     }
   }, [supabase, setIsLoading, setLeads, currentLead, setIsLeadCardOpen, setIsFormOpen, setCurrentLead]);
 
-  // Handle form submission (for Add/Edit Lead Form)
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    
-    try {
-      const leadDataToSubmit: Partial<Lead> = { ...formData };
 
-      if (currentLead && currentLead.id) { // Editing existing lead
-        const { data, error } = await supabase
-          .from('crm_leads')
-          .update(leadDataToSubmit)
-          .eq('id', currentLead.id)
-          .select();
-        
-        if (error) throw error;
-        if (data && data.length > 0) {
-          setLeads((prev: Lead[]) => prev.map((l: Lead) => l.id === data[0].id ? data[0] : l));
-        }
-        alert('Lead updated successfully!');
-      } else { // Adding new lead
-        const { data, error } = await supabase
-          .from('crm_leads')
-          .insert([leadDataToSubmit])
-          .select();
-          
-        if (error) throw error;
-        if (data && data[0]) {
-          setLeads((prev: Lead[]) => [data[0] as Lead, ...prev]);
-        }
-        alert('Lead added successfully!');
-      }
-      
-      setIsFormOpen(false);
-      setCurrentLead(null);
-      setFormData({ 
-        first_name: '', last_name: '', email: '', phone: '', status: 'NEW',
-        address: '', city: '', state: '', zip_code: ''
-      });
-    } catch (error) {
-      console.error('Error submitting lead:', error);
-      alert(`Error submitting lead: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [supabase, formData, currentLead, setIsLoading, setLeads, setIsFormOpen, setCurrentLead, setFormData]);
 
   // Fetch initial leads
   useEffect(() => {
@@ -390,8 +420,6 @@ const CrmView: React.FC = () => {
     setFilteredLeads(processedLeads);
   }, [leads, searchTerm, statusFilter, sortField, sortDirection, setFilteredLeads]);
 
-
-
   const {
     getTableProps,
     getTableBodyProps,
@@ -403,17 +431,18 @@ const CrmView: React.FC = () => {
       columns: tableColumns,
       data: filteredLeads, 
     },
-    useSortBy);
+    useSortBy
+  );
 
+  // Paginate rows
   const paginatedRows = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
     const end = start + rowsPerPage;
     return rows.slice(start, end); // `rows` comes from useTable
   }, [rows, currentPage, rowsPerPage]);
 
-  const totalPages = useMemo(() => {
-    return Math.ceil(rows.length / rowsPerPage); // `rows` from useTable
-  }, [rows, rowsPerPage]);
+  // Calculate total pages for pagination
+  const totalPages = Math.ceil(filteredLeads.length / rowsPerPage); // `rows` from useTable
 
   const handleOpenAddLeadModal = useCallback(() => {
     setCurrentLead(null);
@@ -590,117 +619,48 @@ const CrmView: React.FC = () => {
       {!isLoading && totalPages > 0 && (
         <div className="mt-6 flex flex-wrap justify-between items-center gap-4">
           <div className="text-sm text-gray-600">
-            Showing {paginatedRows.length > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0}
+            Showing {filteredLeads.length > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0}
             {' '}to{' '}
-            {Math.min(currentPage * rowsPerPage, rows.length)} {/* Use rows.length from useTable for total items */}
-            {' '}of {rows.length} leads
+            {Math.min(currentPage * rowsPerPage, filteredLeads.length)}
+            {' '}of {filteredLeads.length} leads
           </div>
-          <div className="join">
-            <button
-              className="join-item btn btn-sm"
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
+          <div className="flex items-center gap-2">
+            <select
+              className="select select-bordered select-sm"
+              value={rowsPerPage}
+              onChange={e => {
+                setRowsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
             >
-              « Prev
-            </button>
-            {[...Array(totalPages)].map((_, i) => {
-              const pageNum = i + 1;
-              if (
-                totalPages <= 7 || 
-                pageNum === 1 ||
-                pageNum === totalPages ||
-                (pageNum >= currentPage - 2 && pageNum <= currentPage + 2)
-              ) {
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`join-item btn btn-sm ${currentPage === pageNum ? 'btn-active btn-primary' : ''}`}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              } else if (
-                (pageNum === currentPage - 3 && pageNum !== 1) ||
-                (pageNum === currentPage + 3 && pageNum !== totalPages)
-              ) {
-                return <button key={`ellipsis-${pageNum}`} className="join-item btn btn-sm btn-disabled">...</button>;
-              }
-              return null;
-            })}
-            <button
-              className="join-item btn btn-sm"
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-            >
-              Next »
-            </button>
-                
-            </div>
-            <div>
-              <select
-                className="select select-bordered select-sm"
-                value={rowsPerPage}
-                onChange={e => {
-                  setRowsPerPage(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
+              {[10, 25, 50, 100].map(pageSize => (
+                <option key={pageSize} value={pageSize}>
+                  Show {pageSize}
+                </option>
+              ))}
+            </select>
+            <div className="join">
+              <button 
+                className="join-item btn btn-sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
               >
-                {[10, 25, 50, 100].map(pageSize => (
-                  <option key={pageSize} value={pageSize}>
-                    Show {pageSize}
-                  </option>
-                ))}
-              </select>
+                «
+              </button>
+              <button className="join-item btn btn-sm">
+                {currentPage}
+              </button>
+              <button 
+                className="join-item btn btn-sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                »
+              </button>
             </div>
           </div>
-        </>
+        </div>
       )}
-    </div>
-  );
-              {isLoading && !leads.length ? (
-                <tr><td colSpan={columnConfigurations.length} className="text-center py-10">Loading leads...</td></tr>
-              ) : !isLoading && !leads.length ? (
-                <tr><td colSpan={columnConfigurations.length} className="text-center py-10">No leads found.</td></tr>
-              ) : (
-                filteredLeads.map((lead) => (
-                  <tr 
-                    key={lead.id} 
-                    className="hover:bg-base-200 cursor-pointer transition-colors"
-                    onClick={() => handleRowClick(lead)}
-                  >
-                    {/* Name */}
-                    <td className="py-4">
-                      <div className="font-medium">
-                        {[lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'No Name'}
-                      </div>
-                    </td>
-                    
-                    {/* Status */}
-                    <td>
-                      <span className={`badge ${getStatusBadgeClass(lead.status)}`}>
-                        {statusOptions.find(s => s.value === lead.status)?.label || lead.status}
-                      </span>
-                    </td>
-                    
-                    {/* Address */}
-                    <td>
-                      <div className="flex items-start">
-                        <MapPin size={16} className="mr-1.5 mt-0.5 flex-shrink-0 text-red-500" />
-                        <div>
-                          {formatFullAddress(lead) || '-'}
-                        </div>
-                      </div>
-                    </td>
-                    
-                    {/* Phone */}
-                    <td>{lead.phone || '-'}</td>
-                    
-                    {/* Email */}
-                    <td>
-                      {lead.email ? (
-                        <div className="text-sm opacity-90 flex items-center">
-                          <Mail className="w-3 h-3 mr-1.5 flex-shrink-0 opacity-70" />
                           <span className="truncate max-w-xs" title={lead.email}>
                             {lead.email}
                           </span>
@@ -732,441 +692,236 @@ const CrmView: React.FC = () => {
             </button>
             <button 
               className="join-item btn btn-sm"
-              onClick={() => setCurrentPage(p => p + 1)}
-              disabled={currentPage * rowsPerPage >= filteredLeads.length}
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
             >
               Next
             </button>
           </div>
         </div>
-      </div>
-
-      {/* Edit/Add Lead Modal */}
-      {isFormOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-base-100 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
-            {/* Close Button - Fixed in top-right corner */}
-            <button 
-              className="btn btn-circle btn-ghost btn-sm absolute right-2 top-2 z-10"
-              onClick={() => {
-                setIsFormOpen(false);
-                setCurrentLead(null);
-                setFormData({
-                  status: 'NEW',
-                  first_name: '',
-                  last_name: '',
-                  email: '',
-                  phone: '',
-                  address: '',
-                  city: '',
-                  state: '',
-                  zip_code: ''
-                });
-              }}
-              aria-label="Close modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
             
-            <div className="p-6">
-              {currentLead && (
-                <div className="mb-6 rounded-lg overflow-hidden relative">
-                  <div className="flex items-center bg-base-200 px-4 py-2">
-                    <MapPin className="w-5 h-5 mr-2 text-primary" />
-                    <h3 className="font-medium">Property Location - {formatAddress(currentLead)}</h3>
-                  </div>
-                  <StreetViewMap 
-                    address={formatAddress(currentLead)} 
-                    containerStyle={{
-                      width: '100%',
-                      height: '300px',
-                      borderRadius: '0 0 0.5rem 0.5rem',
-                    }}
-                  />
-                </div>
-              )}
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold">
-                  {currentLead ? `Edit Lead: ${getDisplayName(currentLead)}` : 'Add New Lead'}
-                </h2>
+            {/* Modal Body */}
+            <div className="relative p-0 max-w-4xl mx-auto">
+              {/* Modal Header */}
+              <div className="bg-base-200 p-4 border-b border-base-300 flex justify-between items-center">
+                <h1 className="text-xl font-bold">
+                  Property Location: {formatFullAddress(currentLead || {})}
+                </h1>
+                <button 
+                  onClick={() => setIsFormOpen(false)}
+                  className="btn btn-ghost btn-sm btn-circle"
+                >
+                  <X size={20} />
+                </button>
               </div>
-              
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                handleSubmit(e).catch(console.error);
-              }} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">First Name</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="first_name"
-                      value={formData.first_name || ''}
-                      onChange={handleInputChange}
-                      className="input input-bordered w-full"
-                      required
-                    />
-                  </div>
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Last Name</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="last_name"
-                      value={formData.last_name || ''}
-                      onChange={handleInputChange}
-                      className="input input-bordered w-full"
-                    />
-                  </div>
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Email</span>
-                    </label>
-                    <input
-                      type="email"
-                      name="email"
-                      className="input input-bordered w-full"
-                      value={formData.email || ''}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                  
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Phone</span>
-                    </label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      className="input input-bordered w-full"
-                      value={formData.phone || ''}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                  
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Status</span>
-                    </label>
-                    <select
-                      name="status"
-                      className="select select-bordered w-full"
-                      value={formData.status || 'NEW'}
-                      onChange={handleInputChange}
-                    >
-                      {statusOptions.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Property Address</span>
-                    </label>
-                    <input
-                      ref={addressInputRef}
-                      type="text"
-                      id="property-address"
-                      name="property_address"
-                      className="input input-bordered w-full"
-                      value={formData.property_address || ''}
-                      onChange={handleInputChange}
-                      placeholder="Start typing an address..."
-                      autoComplete="off"
-                    />
-                  </div>
-                  
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">City</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="city"
-                      className="input input-bordered w-full"
-                      value={formData.city || ''}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                  
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">State</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="state"
-                      className="input input-bordered w-full"
-                      value={formData.state || ''}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                  
-                  <div className="form-control">
-                    <label className="label">
-                      <span className="label-text">Postal Code</span>
-                    </label>
-                    <input
-                      type="text"
-                      name="zip_code"
-                      className="input input-bordered w-full"
-                      value={formData.zip_code || ''}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                </div>
-                
-                <div className="flex justify-between items-center pt-4">
-                  <div className="flex-1">
-                    {currentLead && (
-                      <div className="dropdown dropdown-top">
-                        <button
-                          type="button"
-                          tabIndex={0}
-                          className="btn btn-error btn-sm text-white hover:bg-error/90 transition-colors"
-                          disabled={isLoading}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1.5" />
-                          Delete Lead
-                        </button>
-                        <div className="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-64">
-                          <div className="p-3">
-                            <h3 className="font-medium text-error">Delete Lead</h3>
-                            <p className="text-sm text-base-content/80 mt-1">
-                              Are you sure you want to delete this lead? This action cannot be undone.
-                            </p>
-                            <div className="flex justify-end gap-2 mt-3">
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-xs"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const dropdown = document.activeElement as HTMLElement;
-                                  if (dropdown) dropdown.blur();
-                                }}
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-error btn-xs text-white"
-                                disabled={isLoading}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  // Use void to explicitly ignore the Promise
-                                  void (async () => {
-                                    try {
-                                      // Call handleDelete with the current lead ID and event
-                                      await handleDelete(currentLead.id, e);
-                                      // Close the dropdown after successful deletion
-                                      const dropdown = document.activeElement as HTMLElement;
-                                      if (dropdown) dropdown.blur();
-                                    } catch (error) {
-                                      console.error('Error deleting lead:', error);
-                                      // Optionally show an error message to the user
-                                    }
-                                  })();
-                                  // Explicitly return void to satisfy the type checker
-                                  return undefined;
-                                }}
-                              >
-                                {isLoading ? (
-                                  <span className="loading loading-spinner loading-xs"></span>
-                                ) : (
-                                  'Delete'
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex space-x-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsFormOpen(false);
-                        setCurrentLead(null);
-                        setFormData({});
-                      }}
-                      className="btn btn-ghost"
-                      disabled={isLoading}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <span className="loading loading-spinner"></span>
-                      ) : currentLead ? (
-                        'Update Lead'
-                      ) : (
-                        'Add Lead'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Edit/Add Lead Modal */}
-      {isFormOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-base-100 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
-            {/* Close Button - Fixed in top-right corner */}
-            <button 
-              className="btn btn-circle btn-ghost btn-sm absolute right-2 top-2 z-10"
-              onClick={() => {
-                setIsFormOpen(false);
-                setCurrentLead(null);
-                setFormData({
-                  status: 'NEW',
-                  first_name: '',
-                  last_name: '',
-                  email: '',
-                  phone: '',
-                  address: '',
-                  city: '',
-                  state: '',
-                  zip_code: ''
-                });
-              }}
-              aria-label="Close modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="p-6">
-              {currentLead && (
-                <div className="mb-6 rounded-lg overflow-hidden relative">
-                  <div className="flex items-center bg-base-200 px-4 py-2">
-                    <MapPin className="w-5 h-5 mr-2 text-primary" />
-                    <h3 className="font-medium">Property Location - {formatAddress(currentLead)}</h3>
-                  </div>
-                  <StreetViewMap 
-                    address={formatAddress(currentLead)} 
+              {/* Google Maps Street View */}
+              <div className="h-64 w-full bg-gray-200">
+                {currentLead && (
+                  <StreetViewMap
+                    address={formatFullAddress(currentLead)}
                     containerStyle={{
                       width: '100%',
-                      height: '300px',
-                      borderRadius: '0 0 0.5rem 0.5rem',
+                      height: '100%',
                     }}
                   />
-                </div>
-              )}
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold">
-                  {currentLead ? `Edit Lead: ${getDisplayName(currentLead)}` : 'Add New Lead'}
-                </h2>
+                )}
               </div>
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                handleSubmit(e).catch(console.error);
-              }} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* ...form fields here (see previous snippet)... */}
-                </div>
-                <div className="flex justify-between items-center pt-4">
-                  <div className="flex-1">
-                    {currentLead && (
-                      <div className="dropdown dropdown-top">
-                        <button
-                          type="button"
-                          tabIndex={0}
-                          className="btn btn-error btn-sm text-white hover:bg-error/90 transition-colors"
-                          disabled={isLoading}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1.5" />
-                          Delete Lead
-                        </button>
-                        <div className="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-64">
-                          <div className="p-3">
-                            <h3 className="font-medium text-error">Delete Lead</h3>
-                            <p className="text-sm text-base-content/80 mt-1">
-                              Are you sure you want to delete this lead? This action cannot be undone.
-                            </p>
-                            <div className="flex justify-end gap-2 mt-3">
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-xs"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const dropdown = document.activeElement as HTMLElement;
-                                  if (dropdown) dropdown.blur();
-                                }}
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                className="btn btn-error btn-xs text-white"
-                                disabled={isLoading}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void (async () => {
-                                    try {
-                                      await handleDelete(currentLead.id, e);
-                                      const dropdown = document.activeElement as HTMLElement;
-                                      if (dropdown) dropdown.blur();
-                                    } catch (error) {
-                                      console.error('Error deleting lead:', error);
-                                    }
-                                  })();
-                                  return undefined;
-                                }}
-                              >
-                                {isLoading ? (
-                                  <span className="loading loading-spinner loading-xs"></span>
-                                ) : (
-                                  'Delete'
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
+
+              <div className="p-6 space-y-6">
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSubmit(e).catch(console.error);
+                }} className="space-y-6">
+                  {/* Location Section */}
+                  <div>
+                    <h2 className="text-lg font-semibold mb-3 pb-2 border-b border-base-300">Location</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="form-control">
+                        <label className="label py-1">
+                          <span className="label-text text-sm font-medium">Address</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="property_address_street"
+                          className="input input-bordered input-sm w-full"
+                          value={formData.property_address_street || ''}
+                          onChange={handleInputChange}
+                          required
+                        />
                       </div>
-                    )}
+                      
+                      <div className="form-control">
+                        <label className="label py-1">
+                          <span className="label-text text-sm font-medium">City</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="property_address_city"
+                          className="input input-bordered input-sm w-full"
+                          value={formData.property_address_city || ''}
+                          onChange={handleInputChange}
+                          required
+                        />
+                      </div>
+                      
+                      <div className="form-control">
+                        <label className="label py-1">
+                          <span className="label-text text-sm font-medium">State</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="property_address_state"
+                          className="input input-bordered input-sm w-full"
+                          value={formData.property_address_state || ''}
+                          onChange={handleInputChange}
+                          required
+                        />
+                      </div>
+                      
+                      <div className="form-control">
+                        <label className="label py-1">
+                          <span className="label-text text-sm font-medium">ZIP Code</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="property_address_zip"
+                          className="input input-bordered input-sm w-full"
+                          value={formData.property_address_zip || ''}
+                          onChange={handleInputChange}
+                          required
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex space-x-3">
+                  
+                  {/* Contact Section */}
+                  <div>
+                    <h2 className="text-lg font-semibold mb-3 pb-2 border-b border-base-300">Contact</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="form-control">
+                        <label className="label py-1">
+                          <span className="label-text text-sm font-medium">First Name</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="first_name"
+                          className="input input-bordered input-sm w-full"
+                          value={formData.first_name || ''}
+                          onChange={handleInputChange}
+                          required
+                        />
+                      </div>
+                      
+                      <div className="form-control">
+                        <label className="label py-1">
+                          <span className="label-text text-sm font-medium">Last Name</span>
+                        </label>
+                        <input
+                          type="text"
+                          name="last_name"
+                          className="input input-bordered input-sm w-full"
+                          value={formData.last_name || ''}
+                          onChange={handleInputChange}
+                          required
+                        />
+                      </div>
+                      
+                      <div className="form-control">
+                        <label className="label py-1">
+                          <span className="label-text text-sm font-medium">Email</span>
+                        </label>
+                        <input
+                          type="email"
+                          name="email"
+                          className="input input-bordered input-sm w-full"
+                          value={formData.email || ''}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      
+                      <div className="form-control">
+                        <label className="label py-1">
+                          <span className="label-text text-sm font-medium">Phone</span>
+                        </label>
+                        <input
+                          type="tel"
+                          name="phone"
+                          className="input input-bordered input-sm w-full"
+                          value={formData.phone || ''}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      
+                      <div className="form-control md:col-span-2">
+                        <label className="label py-1">
+                          <span className="label-text text-sm font-medium">Notes</span>
+                        </label>
+                        <textarea
+                          name="notes"
+                          className="textarea textarea-bordered w-full"
+                          rows={3}
+                          value={formData.notes || ''}
+                          onChange={handleInputChange}
+                        />
+                      </div>
+                      
+                      <div className="form-control">
+                        <label className="label py-1">
+                          <span className="label-text text-sm font-medium">Status</span>
+                        </label>
+                        <select
+                          name="status"
+                          className="select select-bordered select-sm w-full"
+                          value={formData.status || 'NEW'}
+                          onChange={handleInputChange}
+                        >
+                          {statusOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex justify-between items-center pt-4 border-t border-base-300">
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsFormOpen(false);
-                        setCurrentLead(null);
-                        setFormData({});
-                      }}
-                      className="btn btn-ghost"
+                      onClick={() => currentLead && handleDeleteLead(currentLead.id)}
+                      className="btn btn-error btn-sm text-white hover:bg-error/90"
                       disabled={isLoading}
                     >
-                      Cancel
+                      <Trash2 className="w-4 h-4 mr-1.5" />
+                      Delete Lead
                     </button>
-                    <button
-                      type="submit"
-                      className="btn btn-primary"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <span className="loading loading-spinner"></span>
-                      ) : currentLead ? (
-                        'Update Lead'
-                      ) : (
-                        'Add Lead'
-                      )}
-                    </button>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsFormOpen(false)}
+                        className="btn btn-ghost btn-sm"
+                        disabled={isLoading}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn btn-primary btn-sm"
+                        disabled={isLoading}
+                      >
+                        {isLoading ? (
+                          <span className="loading loading-spinner loading-xs"></span>
+                        ) : (
+                          'Update Lead'
+                        )}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </form>
+                </form>
+              </div>
             </div>
           </div>
         </div>
