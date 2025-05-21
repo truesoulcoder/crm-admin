@@ -1,11 +1,17 @@
 'use client'
 
-import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown, Map, AlertCircle } from 'lucide-react';
+import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown, Map, AlertCircle, X as XIcon } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 import { supabase } from '@/lib/supabase/client';
 import { formatAddress } from '@/utils/address';
+
+// Dynamically import the LeadCard component with no SSR
+const LeadCard = dynamic(
+  () => import('@/components/leads/LeadCard'),
+  { ssr: false }
+);
 
 // Dynamically import the StreetViewMap component with no SSR
 const StreetViewMap = dynamic(
@@ -86,6 +92,7 @@ const CrmView: React.FC = () => {
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
+  const [isLeadCardOpen, setIsLeadCardOpen] = useState<boolean>(false);
   const [currentLead, setCurrentLead] = useState<Lead | null>(null);
   const [formData, setFormData] = useState<Partial<Lead>>({
     first_name: '',
@@ -141,28 +148,28 @@ const CrmView: React.FC = () => {
     return [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'New Lead';
   };
 
-  // Handle deleting a lead
-  const handleDeleteLead = async (leadId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent row click from triggering
-    
-    if (!window.confirm('Are you sure you want to delete this lead? This action cannot be undone.')) {
+  // Handle delete confirmation
+  const handleDelete = async (leadId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation?.();
+    if (!window.confirm('Are you sure you want to delete this lead?')) {
       return;
     }
     
-    setIsLoading(true);
-    
     try {
+      setIsLoading(true);
       const { error } = await supabase
         .from('crm_leads')
         .delete()
         .eq('id', leadId);
         
       if (error) throw error;
-      
+    
       // Update local state
       setLeads(prev => prev.filter(lead => lead.id !== leadId));
+      setFilteredLeads(prev => prev.filter(lead => lead.id !== leadId));
       
-      // Close modal if open for this lead
+      // Close modals if open for this lead
+      setIsLeadCardOpen(false);
       if (currentLead?.id === leadId) {
         setIsFormOpen(false);
         setCurrentLead(null);
@@ -279,12 +286,14 @@ const CrmView: React.FC = () => {
       zip_code: lead.zip_code || lead.property_postal_code || ''
     });
     setIsFormOpen(true);
+    setIsLeadCardOpen(false);
   };
 
-
-
-  // Get badge color based on status
-  const getStatusBadgeColor = (status: string) => getStatusBadgeClass(status);
+  // Handle row click to show lead card
+  const handleRowClick = (lead: Lead) => {
+    setCurrentLead(lead);
+    setIsLeadCardOpen(true);
+  };
 
   // Load Google Maps Places API and initialize autocomplete
   useEffect(() => {
@@ -541,7 +550,7 @@ const CrmView: React.FC = () => {
                   <tr 
                     key={lead.id} 
                     className="hover:bg-base-200 cursor-pointer transition-colors"
-                    onClick={() => handleEdit(lead)}
+                    onClick={() => handleRowClick(lead)}
                   >
                     <td className="py-4">
                       <div className="flex items-center space-x-3">
@@ -834,23 +843,11 @@ const CrmView: React.FC = () => {
                                 disabled={isLoading}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  // Use a non-async function that returns void
-                                  const handleDelete = async () => {
-                                    try {
-                                      await handleDeleteLead(currentLead.id, e);
-                                      const dropdown = document.activeElement as HTMLElement;
-                                      if (dropdown) dropdown.blur();
-                                    } catch (error: unknown) {
-                                      console.error('Error deleting lead:', error);
-                                      // Show error message without using toast
-                                      const errorMsg = error instanceof Error ? error.message : 'An unknown error occurred';
-                                      alert(`Failed to delete lead: ${errorMsg}`);
-                                    }
-                                  };
-                                  // Call the async function and handle the promise
-                                  handleDelete().catch((error: unknown) => {
-                                    console.error('Error in handleDelete:', error);
-                                  });
+                                  // Call handleDelete with the current lead ID and event
+                                  handleDelete(currentLead.id, e);
+                                  // Close the dropdown after deletion
+                                  const dropdown = document.activeElement as HTMLElement;
+                                  if (dropdown) dropdown.blur();
                                 }}
                               >
                                 {isLoading ? (
@@ -894,6 +891,30 @@ const CrmView: React.FC = () => {
                   </div>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lead Card Modal */}
+      {isLeadCardOpen && currentLead && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-medium">Lead Details</h3>
+              <button 
+                onClick={() => setIsLeadCardOpen(false)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <XIcon className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="p-6">
+              <LeadCard 
+                lead={currentLead}
+                onEdit={() => handleEdit(currentLead)}
+                onDelete={(e) => void handleDelete(currentLead.id, e)}
+              />
             </div>
           </div>
         </div>
