@@ -611,10 +611,6 @@ const CrmView: React.FC<Record<string, never>> = (): React.JSX.Element => {
                         </div>
                       ) : '-'}
                     </td>
-                    <td>{displayValue(lead.market_region)}</td>
-                    <td>{lead.assessed_total ? `$${Number(lead.assessed_total).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}</td>
-                    <td>{displayValue(lead.mls_curr_status)}</td>
-                    <td>{displayValue(lead.mls_curr_days_on_market)}</td>
                   </tr>
                 ))
               )}
