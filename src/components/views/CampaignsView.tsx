@@ -182,23 +182,64 @@ const CampaignsView: React.FC = () => {
         // setError((prevError: string | null): string | null => (prevError ? prevError + " " : "") + 'Error parsing document templates data.');
       }
 
-      // Fetch distinct market regions from normalized_leads
-      const { data: regionsData, error: regionsError } = await supabase
-      .from('normalized_leads')
-      .select('market_region', { count: 'exact' })
-      .not('market_region', 'is', null)
-      .not('market_region', 'eq', '');
+      // Fetch distinct market regions from normalized_leads with error handling and loading states
+      try {
+        setIsLoading(true);
+        
+        // First, check if we have a cached version
+        const cachedRegions = localStorage.getItem('cachedMarketRegions');
+        const cacheTimestamp = localStorage.getItem('marketRegionsCacheTimestamp');
+        const oneHourAgo = Date.now() - 60 * 60 * 1000; // 1 hour cache
+        
+        if (cachedRegions && cacheTimestamp && Number(cacheTimestamp) > oneHourAgo) {
+          // Use cached data if it's less than 1 hour old
+          const markets = JSON.parse(cachedRegions);
+          setAvailableMarketRegions(markets);
+          if (markets.length > 0) {
+            setSelectedMarketRegion(markets[0]);
+          }
+          return;
+        }
+        
+        // If no cache or cache is stale, fetch fresh data
+        console.log('Fetching fresh market regions data...');
+        
+        // Use a more efficient query with distinct and limit
+        const { data: regionsData, error: regionsError } = await supabase
+          .from('normalized_leads')
+          .select('market_region')
+          .not('market_region', 'is', null)
+          .not('market_region', 'eq', '')
+          .order('market_region', { ascending: true });
 
-      if (regionsError) throw regionsError;
+        if (regionsError) throw regionsError;
 
-      const markets = regionsData
-        ?.map((item: { market_region: string | null }) => item.market_region)
-        .filter((value): value is string => typeof value === 'string' && value !== '') // Ensure it's a non-empty string
-        .filter((value, index, self) => self.indexOf(value) === index) // Then get unique
-        .sort() || []; // Sort alphabetically
-      setAvailableMarketRegions(markets);
-      if (markets.length > 0) {
-        setSelectedMarketRegion(markets[0]); // Default to the first market region
+        // Process the data more efficiently
+        const uniqueMarkets = Array.from(
+          new Set(
+            regionsData
+              .map((item: { market_region: string | null }) => item.market_region)
+              .filter((value): value is string => Boolean(value))
+          )
+        ).sort();
+
+        // Update state
+        setAvailableMarketRegions(uniqueMarkets);
+        if (uniqueMarkets.length > 0) {
+          setSelectedMarketRegion(uniqueMarkets[0]);
+        }
+
+        // Cache the results
+        localStorage.setItem('cachedMarketRegions', JSON.stringify(uniqueMarkets));
+        localStorage.setItem('marketRegionsCacheTimestamp', Date.now().toString());
+        
+      } catch (error) {
+        console.error('Error fetching market regions:', error);
+        // You might want to show a user-friendly error message here
+        // setError('Failed to load market regions. Please try again later.');
+      } finally {
+        setIsLoading(false);
+      }
       } else {
         setSelectedMarketRegion('');
       }
