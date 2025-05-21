@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
+import React from 'react';
 
 export async function middleware(req: any) {
   const res = NextResponse.next();
@@ -27,3 +28,7 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };
+export interface StreetViewMapProps {
+  address: string;
+  containerStyle?: React.CSSProperties;
+}

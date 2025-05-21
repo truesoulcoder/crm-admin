@@ -7,6 +7,13 @@ interface StreetViewMapProps {
   containerStyle?: React.CSSProperties;
 }
 
+// Helper component to show error state
+const ErrorDisplay = ({ message, containerStyle }: { message: string; containerStyle: React.CSSProperties }) => (
+  <div style={containerStyle} className="bg-base-200 rounded-lg flex items-center justify-center">
+    <p>Error: {message}</p>
+  </div>
+);
+
 const StreetViewMap: React.FC<StreetViewMapProps> = ({
   address,
   containerStyle = {
@@ -17,46 +24,22 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
     overflow: 'hidden'
   },
 }) => {
+  // State hooks - must be called unconditionally at the top
   const [position, setPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
   const [isGeocoding, setIsGeocoding] = useState(false);
-  const [apiKey, setApiKey] = useState<string>('');
   const [hasStreetView, setHasStreetView] = useState<boolean>(false);
   const [showMap, setShowMap] = useState<boolean>(false);
+  const [mapLoaded, setMapLoaded] = useState<boolean>(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  // Get API key from environment or use a placeholder
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  
+  // Check API key after component mounts
   useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
-    if (!key) {
+    if (!apiKey) {
       console.error('Google Maps API key is not set. Please set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in your environment variables.');
-      setError('Google Maps API key is not configured');
-      return;
-    }
-    setApiKey(key);
-  }, []);
-
-  // Load Google Maps API
-  useEffect(() => {
-    if (!apiKey) return;
-
-    if (!window.google) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-      script.async = true;
-      script.onload = () => setIsLoaded(true);
-      script.onerror = () => {
-        setError('Failed to load Google Maps API');
-        setIsLoaded(false);
-      };
-      document.head.appendChild(script);
-      
-      return () => {
-        // Cleanup script if component unmounts
-        document.head.removeChild(script);
-      };
-    } else {
-      setIsLoaded(true);
+      setApiError('Google Maps API key is not configured');
     }
   }, [apiKey]);
 
@@ -92,9 +75,9 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
       });
   }, []);
 
-  // Geocode address when address or API is ready
+  // Geocode address when address changes
   useEffect(() => {
-    if (!isLoaded || !address || !apiKey) return;
+    if (!address) return;
     
     const geocodeAddress = async () => {
       if (!window.google?.maps) {
@@ -165,11 +148,15 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
       void geocodeAddress();
     }, 500);
     return () => clearTimeout(timer);
-  }, [address, isLoaded, apiKey, checkStreetView]);
+  }, [address, apiKey, checkStreetView]);
   
   // Toggle between map and street view
   const toggleView = () => {
-    setShowMap(!showMap);
+    setShowMap(prev => !prev);
+  };
+
+  const handleMapLoad = () => {
+    setMapLoaded(true);
   };
 
   // Loading state
@@ -209,6 +196,14 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
     );
   }
 
+  // Show error if API key is missing
+  if (!apiKey || apiError) {
+    return <ErrorDisplay 
+      message={apiError || 'Google Maps API key is not configured'} 
+      containerStyle={containerStyle} 
+    />;
+  }
+
   const mapOptions = {
     disableDefaultUI: true,
     zoomControl: true,
@@ -225,9 +220,16 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
   };
 
   return (
-    <div style={containerStyle} className="relative">
+    <div className="flex flex-col h-full">
+      <div className="sticky top-0 z-10 bg-base-100 p-2 border-b border-base-200 shadow-sm">
+        <h3 className="font-medium">Property Location</h3>
+        <p className="text-sm text-base-content/80">{address}</p>
+      </div>
+      <div style={containerStyle} className="relative flex-1">
       <LoadScript 
         googleMapsApiKey={apiKey}
+        libraries={['places']}
+        onLoad={handleMapLoad}
         loadingElement={
           <div className="w-full h-full flex items-center justify-center">
             <div className="loading loading-spinner text-primary"></div>
@@ -279,6 +281,7 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
           </GoogleMap>
         )}
       </LoadScript>
+    </div>
     </div>
   );
 };
