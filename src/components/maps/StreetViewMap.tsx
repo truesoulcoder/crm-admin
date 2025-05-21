@@ -181,23 +181,21 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
   }
 
   // Handle loading and error states
-  if (!mapsLoaded) {
-    return (
-      <div style={containerStyle} className="flex items-center justify-center bg-base-200">
-        <div className="flex flex-col items-center">
-          <Loader2 className="h-8 w-8 animate-spin mb-2" />
-          <p>Loading Google Maps...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (apiError || loadError) {
+  if (!mapsLoaded || apiError || loadError) {
     return (
       <div style={containerStyle} className="bg-base-200 rounded-lg flex flex-col items-center justify-center p-4 text-center">
-        <AlertTriangle className="w-6 h-6 text-error mb-2" />
-        <p className="text-error">{apiError || 'Failed to load Google Maps'}</p>
-        <p className="text-sm text-base-content/70 mt-2">Please try again later</p>
+        {apiError || loadError ? (
+          <>
+            <AlertTriangle className="w-6 h-6 text-error mb-2" />
+            <p className="text-error">{apiError || 'Failed to load Google Maps'}</p>
+            <p className="text-sm text-base-content/70 mt-2">Please try again later</p>
+          </>
+        ) : (
+          <>
+            <Loader2 className="h-8 w-8 animate-spin mb-2" />
+            <p>Loading Google Maps...</p>
+          </>
+        )}
       </div>
     );
   }
@@ -244,65 +242,23 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
     ]
   };
 
-  // Render loading state
-  if (!mapsLoaded) {
-    return (
-      <div style={containerStyle} className="flex items-center justify-center bg-base-200">
-        <div className="flex flex-col items-center">
-          <Loader2 className="h-8 w-8 animate-spin mb-2" />
-          <p>Loading Google Maps...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Render error state if API key is missing or there was a load error
-  if (apiError || loadError) {
-    return (
-      <div style={containerStyle} className="bg-base-200 rounded-lg flex flex-col items-center justify-center p-4 text-center">
-        <AlertTriangle className="w-6 h-6 text-error mb-2" />
-        <p className="text-error">{apiError || 'Failed to load Google Maps'}</p>
-        <p className="text-sm text-base-content/70 mt-2">Please try again later</p>
-      </div>
-    );
-  }
-
-  // Render geocoding state
-  if (isGeocoding) {
-    return (
-      <div style={containerStyle} className="bg-base-200 rounded-lg flex flex-col items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin mb-2" />
-        <p className="text-sm text-base-content/70">Finding location...</p>
-      </div>
-    );
-  }
-
-  // Render error state if there was an error
-  if (error) {
-    return (
-      <div style={containerStyle} className="bg-base-200 rounded-lg flex flex-col items-center justify-center p-4 text-center">
-        <AlertTriangle className="w-6 h-6 text-error mb-2" />
-        <p className="text-error">{error}</p>
-        <p className="text-sm text-base-content/70 mt-2">Address: {address}</p>
-      </div>
-    );
-  }
-
-  // Render no position state
-  if (!position) {
-    return (
-      <div style={containerStyle} className="bg-base-200 rounded-lg flex items-center justify-center">
-        <p>No location data available for this address</p>
-      </div>
-    );
-  }
-
   // Main render
   return (
-    <div className="flex flex-col h-full">
-      <div className="sticky top-0 z-10 bg-base-100 p-2 border-b border-base-200 shadow-sm">
-        <h3 className="font-medium">Property Location</h3>
-        <p className="text-sm text-base-content/80">{address}</p>
+    <div className="flex flex-col h-full relative">
+      <div className="sticky top-0 z-20 bg-base-100 p-3 border-b border-base-300 shadow-md flex justify-between items-center">
+        <div>
+          <h3 className="font-medium text-lg">Property Location</h3>
+          <p className="text-sm text-base-content/80 truncate max-w-md">{address}</p>
+        </div>
+        <button 
+          onClick={() => {/* Add your close handler here */}} 
+          className="btn btn-circle btn-ghost btn-sm"
+          aria-label="Close map view"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
       </div>
       
       <div style={containerStyle} className="relative">
@@ -381,8 +337,11 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
           >
             <div className="absolute top-2 right-2 z-10 bg-white p-1 rounded shadow">
               <button 
-                onClick={() => setShowMap(false)}
-                className="btn btn-sm btn-ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMap(false);
+                }}
+                className={`btn btn-sm ${hasStreetView ? 'btn-ghost' : 'btn-disabled'}`}
                 disabled={!hasStreetView}
                 title={hasStreetView ? 'Switch to Street View' : 'Street View not available'}
               >

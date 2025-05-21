@@ -194,24 +194,39 @@ const CrmView: React.FC = () => {
     setIsLoading(true);
     
     try {
+      // Only include fields that exist in the crm_leads table
+      const validFields = [
+        'first_name', 'last_name', 'email', 'phone', 'status',
+        'address', 'city', 'state', 'zip_code', 'market_region'
+      ];
+      
+      // Filter form data to only include valid fields
+      const filteredFormData = Object.entries(formData).reduce<Partial<Lead>>((acc, [key, value]) => {
+        if (validFields.includes(key) && value !== undefined) {
+          // Use type assertion to ensure type safety
+          (acc as Record<string, any>)[key] = value;
+        }
+        return acc;
+      }, {});
+      
       if (currentLead) {
         // Update existing lead
         const { error } = await supabase
           .from('crm_leads')
-          .update(formData)
+          .update(filteredFormData)
           .eq('id', currentLead.id);
           
         if (error) throw error;
         
         // Update local state
         setLeads(leads.map(lead => 
-          lead.id === currentLead.id ? { ...lead, ...formData } : lead
+          lead.id === currentLead.id ? { ...lead, ...filteredFormData } : lead
         ));
       } else {
         // Add new lead
         const { data, error } = await supabase
           .from('crm_leads')
-          .insert([formData])
+          .insert([filteredFormData])
           .select();
           
         if (error) throw error;
