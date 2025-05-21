@@ -1,11 +1,14 @@
 'use client'
 
-import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown, Map, AlertCircle, X as XIcon } from 'lucide-react';
+import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown, Map, AlertCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 import { supabase } from '@/lib/supabase/client';
 import { formatAddress } from '@/utils/address';
+import { useTable, useSortBy, Column, Row } from 'react-table';
+import LeadCard from '@/components/crm/LeadCard'; // Placeholder: Adjust path as needed
+
 
 // Dynamically import the GoogleMapsLoader with SSR disabled
 const GoogleMapsLoader = dynamic(
@@ -13,11 +16,6 @@ const GoogleMapsLoader = dynamic(
   { ssr: false }
 );
 
-// Dynamically import the LeadCard component with no SSR
-const LeadCard = dynamic(
-  () => import('@/components/leads/LeadCard'),
-  { ssr: false }
-);
 
 // Dynamically import the StreetViewMap component with no SSR
 const StreetViewMap = dynamic(
@@ -33,27 +31,41 @@ interface Lead {
   email?: string;
   phone?: string;
   status: string;
+  created_at?: string;
+  updated_at?: string;
+  
+  // Address fields
+  property_address_full?: string;
+  property_address_street?: string;
+  property_address_city?: string;
+  property_address_state?: string;
+  property_address_zip?: string;
+  
+  // Property details
+  appraised_value?: number;
+  beds?: number;
+  baths?: number;
+  sq_ft?: number;
+  
+  // Additional fields
+  notes?: string;
+  mls_curr_status?: string;
+  mls_curr_days_on_market?: string;
+  market_region?: string;
+  
+  // Legacy fields (keep for backward compatibility)
   address?: string;
   city?: string;
   state?: string;
   zip_code?: string;
-  created_at?: string;
-  updated_at?: string;
   property_address?: string;
   property_city?: string;
   property_state?: string;
   property_postal_code?: string;
   assessed_total?: number;
-  mls_curr_status?: string;
-  mls_curr_days_on_market?: string;
-  market_region?: string;
 }
 
-interface ColumnConfig {
-  key: keyof Lead | string;
-  label: string;
-  sortable?: boolean;
-}
+
 
 interface StatusOption {
   value: string;
@@ -76,38 +88,20 @@ const statusOptions: StatusOption[] = [
 ];
 
 // Main CrmView component
-const CrmView: React.FC<Record<string, never>> = (): React.JSX.Element => {
-  // Column visibility state - only show status, name, email, phone, and address by default
-  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
-    name: true,
-    status: true,
-    email: true,
-    phone: true,
-    address: true,
-    // Hide these by default
-    market_region: false,
-    assessed_total: false,
-    mls_curr_status: false,
-    mls_curr_days_on_market: false
-  });
-
-  // Sorting & pagination state
-  const [sortField, setSortField] = useState<keyof Lead>('updated_at');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [rowsPerPage, setRowsPerPage] = useState<number>(10);
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
-  const addressInputRef = useRef<HTMLInputElement>(null);
-
-  // Data state
+const CrmView: React.FC = () => {
+  // State hooks
   const [leads, setLeads] = useState<Lead[]>([]);
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [isLeadCardOpen, setIsLeadCardOpen] = useState<boolean>(false);
   const [currentLead, setCurrentLead] = useState<Lead | null>(null);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [sortField, setSortField] = useState<keyof Lead>('updated_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(25);
   const [formData, setFormData] = useState<Partial<Lead>>({
     first_name: '',
     last_name: '',
@@ -119,12 +113,30 @@ const CrmView: React.FC<Record<string, never>> = (): React.JSX.Element => {
     state: '',
     zip_code: ''
   });
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
+    name: true,
+    status: true,
+    email: true,
+    phone: true,
+    address: true,
+    market_region: false,
+    assessed_total: false,
+    mls_curr_status: false,
+    mls_curr_days_on_market: false
+  });
+
+  // Refs
+
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+
+
   
   // Initialize Supabase client
   
 
   // Sort Indicator Component
-  const SortIndicator = ({ field }: { field: keyof Lead | '' }) => {
+  const SortIndicator = ({ field }: { field: keyof Lead }) => {
     if (sortField !== field) return null;
     return sortDirection === 'asc' ? <ChevronUp size={16} className="inline ml-1" /> : <ChevronDown size={16} className="inline ml-1" />;
   };
@@ -138,15 +150,28 @@ const CrmView: React.FC<Record<string, never>> = (): React.JSX.Element => {
       setSortDirection('asc');
     }
   };
+
+  const getStatusBadgeClass = (statusValue: string): string => {
+    const option = statusOptions.find(opt => opt.value === statusValue);
+    return option ? option.color : 'badge-neutral'; // Using DaisyUI badge class
+  };
   
   // Column configuration - only show status, name, email, phone, and address
-  const columnConfigurations: ColumnConfig[] = [
-    { key: 'first_name', label: 'Name', sortable: true },
-    { key: 'status', label: 'Status', sortable: true },
-    { key: 'property_address', label: 'Address', sortable: true },
-    { key: 'phone', label: 'Phone', sortable: true },
-    { key: 'email', label: 'Email', sortable: true },
-  ];
+  const tableColumns = useMemo<Column<Lead>[]>(() => [
+    { Header: 'Name', accessor: (row: Lead) => `${row.first_name || ''} ${row.last_name || ''}`.trim(), id: 'name' },
+    { 
+      Header: 'Status', 
+      accessor: 'status',
+      Cell: ({ value }: { value: string }) => (
+        <span className={`badge ${getStatusBadgeClass(value)}`}>
+          {statusOptions.find(s => s.value === value)?.label || value}
+        </span>
+      ),
+    },
+    { Header: 'Address', accessor: 'property_address_full' }, // Or use formatFullAddress if more complex
+    { Header: 'Phone', accessor: 'phone' },
+    { Header: 'Email', accessor: 'email' },
+  ], [getStatusBadgeClass]); // Added getStatusBadgeClass to dependencies
 
   // Handle form input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -178,390 +203,461 @@ const CrmView: React.FC<Record<string, never>> = (): React.JSX.Element => {
     return parts.filter(Boolean).join(' ');
   };
 
-  // Handle delete confirmation
-  const handleDelete = async (leadId: string, e?: React.MouseEvent) => {
-    e?.stopPropagation?.();
+
+  // Handle closing the lead card/modal
+  const handleCloseLeadCard = useCallback(() => {
+    setIsLeadCardOpen(false);
+    setCurrentLead(null);
+  }, [setIsLeadCardOpen, setCurrentLead]);
+
+  // Handle row click to show lead details
+  const handleRowClick = useCallback((lead: Lead) => {
+    setCurrentLead(lead);
+    setIsLeadCardOpen(true);
+  }, [setCurrentLead, setIsLeadCardOpen]);
+
+  // Handle lead update
+  const handleUpdateLead = useCallback(async (updatedLeadData: Partial<Lead>) => {
+    if (!currentLead || !currentLead.id) {
+      console.error('No current lead selected for update or lead ID is missing.');
+      alert('Error: No lead selected for update.');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('crm_leads')
+        .update(updatedLeadData)
+        .eq('id', currentLead.id)
+        .select();
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const updatedLeadFromServer = data[0] as Lead;
+        setLeads((prevLeads: Lead[]) =>
+          prevLeads.map((l: Lead) => (l.id === updatedLeadFromServer.id ? updatedLeadFromServer : l))
+        );
+      }
+      
+      setIsLeadCardOpen(false);
+      setCurrentLead(null); 
+      alert('Lead updated successfully!');
+    } catch (err) {
+      console.error('Error updating lead:', err);
+      alert(`Error updating lead: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentLead, supabase, setIsLoading, setLeads, setIsLeadCardOpen, setCurrentLead]);
+
+  // Handle delete lead
+  const handleDeleteLead = useCallback(async (leadId: string) => {
     if (!window.confirm('Are you sure you want to delete this lead?')) {
       return;
     }
-    
+    setIsLoading(true);
     try {
-      setIsLoading(true);
       const { error } = await supabase
         .from('crm_leads')
         .delete()
         .eq('id', leadId);
-        
+
       if (error) throw error;
-    
-      // Update local state
-      setLeads(prev => prev.filter(lead => lead.id !== leadId));
-      setFilteredLeads(prev => prev.filter(lead => lead.id !== leadId));
-      
-      // Close modals if open for this lead
-      setIsLeadCardOpen(false);
+
+      setLeads((prevLeads: Lead[]) => prevLeads.filter((lead: Lead) => lead.id !== leadId));
+
       if (currentLead?.id === leadId) {
+        setIsLeadCardOpen(false);
         setIsFormOpen(false);
         setCurrentLead(null);
-        setFormData({
-          status: 'NEW',
-          first_name: '',
-          last_name: '',
-          email: '',
-          phone: '',
-          address: '',
-          city: '',
-          state: '',
-          zip_code: ''
-        });
       }
-      
       alert('Lead deleted successfully!');
     } catch (error) {
-      console.error('Error deleting lead:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('Error deleting lead:', error);
       alert(`Error deleting lead: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [supabase, setIsLoading, setLeads, currentLead, setIsLeadCardOpen, setIsFormOpen, setCurrentLead]);
 
-  // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Handle form submission (for Add/Edit Lead Form)
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
     try {
-      // Only include fields that exist in the crm_leads table
-      const validFields = [
-        'first_name', 'last_name', 'email', 'phone', 'status',
-        'address', 'city', 'state', 'zip_code', 'market_region'
-      ];
-      
-      // Filter form data to only include valid fields
-      const filteredFormData = Object.entries(formData).reduce<Partial<Lead>>((acc, [key, value]) => {
-        if (validFields.includes(key) && value !== undefined) {
-          // Use type assertion to ensure type safety
-          (acc as Record<string, any>)[key] = value;
-        }
-        return acc;
-      }, {});
-      
-      if (currentLead) {
-        // Update existing lead
-        const { error } = await supabase
-          .from('crm_leads')
-          .update(filteredFormData)
-          .eq('id', currentLead.id);
-          
-        if (error) throw error;
-        
-        // Update local state
-        setLeads(leads.map(lead => 
-          lead.id === currentLead.id ? { ...lead, ...filteredFormData } : lead
-        ));
-      } else {
-        // Add new lead
+      const leadDataToSubmit: Partial<Lead> = { ...formData };
+
+      if (currentLead && currentLead.id) { // Editing existing lead
         const { data, error } = await supabase
           .from('crm_leads')
-          .insert([filteredFormData])
+          .update(leadDataToSubmit)
+          .eq('id', currentLead.id)
+          .select();
+        
+        if (error) throw error;
+        if (data && data.length > 0) {
+          setLeads((prev: Lead[]) => prev.map((l: Lead) => l.id === data[0].id ? data[0] : l));
+        }
+        alert('Lead updated successfully!');
+      } else { // Adding new lead
+        const { data, error } = await supabase
+          .from('crm_leads')
+          .insert([leadDataToSubmit])
           .select();
           
         if (error) throw error;
-        
-        // Add to local state
         if (data && data[0]) {
-          setLeads([data[0], ...leads]);
+          setLeads((prev: Lead[]) => [data[0] as Lead, ...prev]);
         }
+        alert('Lead added successfully!');
       }
       
-      // Close modal and reset form
       setIsFormOpen(false);
       setCurrentLead(null);
-      setFormData({
-        status: 'NEW',
-        first_name: '',
-        last_name: '',
-        email: '',
-        phone: '',
-        address: '',
-        city: '',
-        state: '',
-        zip_code: ''
+      setFormData({ 
+        first_name: '', last_name: '', email: '', phone: '', status: 'NEW',
+        address: '', city: '', state: '', zip_code: ''
       });
-      
-      // Show success message
-      alert(`Lead ${currentLead ? 'updated' : 'added'} successfully!`);
     } catch (error) {
-      console.error('Error saving lead:', error);
-      alert(`Error ${currentLead ? 'updating' : 'adding'} lead. Please try again.`);
+      console.error('Error submitting lead:', error);
+      alert(`Error submitting lead: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [supabase, formData, currentLead, setIsLoading, setLeads, setIsFormOpen, setCurrentLead, setFormData]);
 
-  // Open edit form with lead data
-  const handleEdit = (lead: Lead) => {
-    setCurrentLead(lead);
-    setFormData({
-      ...lead,
-      // Ensure all required fields have default values
-      first_name: lead.first_name || '',
-      last_name: lead.last_name || '',
-      email: lead.email || '',
-      phone: lead.phone || '',
-      status: lead.status || 'NEW',
-      address: lead.address || lead.property_address || '',
-      city: lead.city || lead.property_city || '',
-      state: lead.state || lead.property_state || '',
-      zip_code: lead.zip_code || lead.property_postal_code || ''
-    });
-    setIsFormOpen(true);
-    setIsLeadCardOpen(false);
-  };
-
-  // Handle row click to show lead card
-  const handleRowClick = (lead: Lead) => {
-    setCurrentLead(lead);
-    setIsLeadCardOpen(true);
-  };
-
-  // Initialize Google Places Autocomplete when component mounts
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.google && addressInputRef.current) {
-      const autocomplete = new window.google.maps.places.Autocomplete(
-        addressInputRef.current,
-        { types: ['address'] }
-      );
-      
-      const placeChangedHandler = () => {
-        const place = autocomplete.getPlace();
-        if (!place.address_components) return;
-        
-        interface AddressComponents {
-          address?: string;
-          city?: string;
-          state?: string;
-          zip_code?: string;
-        }
-        
-        const addressObj: AddressComponents = {};
-        
-        place.address_components.forEach(component => {
-          const componentType = component.types[0];
-          
-          switch (componentType) {
-            case 'street_number':
-              addressObj.address = component.long_name;
-              break;
-            case 'route':
-              addressObj.address = `${addressObj.address || ''} ${component.long_name}`.trim();
-              break;
-            case 'locality':
-              addressObj.city = component.long_name;
-              break;
-            case 'administrative_area_level_1':
-              addressObj.state = component.short_name;
-              break;
-            case 'postal_code':
-              addressObj.zip_code = component.long_name;
-              break;
-            default:
-              break;
-          }
-        });
-        
-        setFormData(prev => ({
-          ...prev,
-          ...addressObj,
-          property_address: addressObj.address || prev.property_address,
-          property_city: addressObj.city || prev.property_city,
-          property_state: addressObj.state || prev.property_state,
-          property_postal_code: addressObj.zip_code || prev.property_postal_code
-        }));
-      };
-      
-      // Add the event listener
-      autocomplete.addListener('place_changed', placeChangedHandler);
-      
-      // Store the autocomplete instance in the ref
-      autocompleteRef.current = autocomplete;
-      
-      // Cleanup function
-      return () => {
-        if (autocompleteRef.current) {
-          // Remove the event listener when component unmounts
-          window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
-          autocompleteRef.current = null;
-        }
-      };
-    }
-  }, []); // Empty dependency array means this effect runs once on mount
-
-  // Fetch leads from Supabase
+  // Fetch initial leads
   useEffect(() => {
     const fetchLeads = async () => {
+      setIsLoading(true);
       try {
-        setIsLoading(true);
         const { data, error } = await supabase
           .from('crm_leads')
-          .select('*');
+          .select('*')
+          .order('updated_at', { ascending: false });
 
         if (error) throw error;
-
         setLeads(data || []);
       } catch (error) {
         console.error('Error fetching leads:', error);
+        alert(`Error fetching leads: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setLeads([]);
       } finally {
         setIsLoading(false);
       }
     };
-
-    void fetchLeads();
-  }, []);
+    fetchLeads();
+  }, [supabase, setIsLoading, setLeads]);
 
   // Filter and sort leads
   useEffect(() => {
-    let result = [...leads];
-    
-    // Apply search filter
+    let processedLeads = [...leads];
+
     if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter(lead => 
-        (lead.first_name?.toLowerCase().includes(term) || lead.last_name?.toLowerCase().includes(term)) ||
-        (lead.email?.toLowerCase().includes(term)) ||
-        (lead.phone?.includes(term)) ||
-        (lead.status?.toLowerCase().includes(term)) ||
-        (lead.property_address?.toLowerCase().includes(term)) ||
-        (lead.property_city?.toLowerCase().includes(term)) ||
-        (lead.property_state?.toLowerCase().includes(term)) ||
-        (lead.property_postal_code?.toLowerCase().includes(term))
+      const searchLower = searchTerm.toLowerCase();
+      processedLeads = processedLeads.filter(lead =>
+        Object.values(lead).some(value =>
+          String(value).toLowerCase().includes(searchLower)
+        )
       );
     }
-    
-    // Apply status filter
-    if (statusFilter && statusFilter !== 'ALL') {
-      result = result.filter(lead => lead.status === statusFilter);
-    }
-    
-    // Apply sorting
-    result.sort((a, b) => {
-      // Default sort by updated_at descending if no sort field
-      const field = sortField || 'updated_at';
-      const direction = sortDirection || 'desc';
-      
-      let aValue = field ? a[field as keyof Lead] : a.updated_at;
-      let bValue = field ? b[field as keyof Lead] : b.updated_at;
-      
-      // Handle null/undefined values
-      if (aValue === null || aValue === undefined) return direction === 'asc' ? -1 : 1;
-      if (bValue === null || bValue === undefined) return direction === 'asc' ? 1 : -1;
-      
-      // Convert to string for comparison if needed
-      if (typeof aValue !== 'string') aValue = String(aValue);
-      if (typeof bValue !== 'string') bValue = String(bValue);
-      
-      // Compare values
-      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
-      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
-      return 0;
-    });
-    
-    setFilteredLeads(result);
-  }, [leads, searchTerm, statusFilter, sortField, sortDirection]);
 
-  // Helper to get displayable value
-  const displayValue = (value: any) => value === null || value === undefined ? '-' : String(value);
-  
-  // Get status badge color
-  const getStatusBadgeClass = (status: string | null | undefined): string => {
-    if (!status) return 'badge-ghost';
-    const lowerStatus = status.toLowerCase();
-    if (lowerStatus.includes('new') || lowerStatus.includes('open')) return 'badge-info';
-    if (lowerStatus.includes('contacted') || lowerStatus.includes('step')) return 'badge-success';
-    if (lowerStatus.includes('offer sent') || lowerStatus.includes('pending')) return 'badge-warning';
-    if (lowerStatus.includes('not interested') || lowerStatus.includes('closed') || lowerStatus.includes('lost')) return 'badge-error';
-    return 'badge-neutral';
-  };
+    if (statusFilter !== 'ALL') {
+      processedLeads = processedLeads.filter(lead => lead.status === statusFilter);
+    }
+
+    if (sortField) {
+      processedLeads.sort((a, b) => {
+        const aValue = a[sortField];
+        const bValue = b[sortField];
+
+        if (aValue === undefined || aValue === null) return 1;
+        if (bValue === undefined || bValue === null) return -1;
+
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          return sortDirection === 'asc' ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+        }
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+        }
+        const aStr = String(aValue).toLowerCase();
+        const bStr = String(bValue).toLowerCase();
+        return sortDirection === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
+      });
+    }
+    setFilteredLeads(processedLeads);
+  }, [leads, searchTerm, statusFilter, sortField, sortDirection, setFilteredLeads]);
+
+
+
+  const {
+    getTableProps,
+    getTableBodyProps,
+    headerGroups,
+    rows,
+    prepareRow,
+  } = useTable<Lead>(
+    {
+      columns: tableColumns,
+      data: filteredLeads, 
+    },
+    useSortBy);
+
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    const end = start + rowsPerPage;
+    return rows.slice(start, end); // `rows` comes from useTable
+  }, [rows, currentPage, rowsPerPage]);
+
+  const totalPages = useMemo(() => {
+    return Math.ceil(rows.length / rowsPerPage); // `rows` from useTable
+  }, [rows, rowsPerPage]);
+
+  const handleOpenAddLeadModal = useCallback(() => {
+    setCurrentLead(null);
+    setFormData({
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+      status: 'NEW',
+      property_address_full: '', // For direct input before autocomplete
+      property_address_street: '',
+      property_address_city: '',
+      property_address_state: '',
+      property_address_zip: '',
+      // Keep legacy fields if your DB schema still uses them as primary
+      address: '', 
+      city: '',
+      state: '',
+      zip_code: '',
+      notes: '',
+      market_region: '',
+    });
+    if (addressInputRef.current) { // Clear previous autocomplete input
+      addressInputRef.current.value = '';
+    }
+    setIsFormOpen(true);
+    setIsLeadCardOpen(false);
+  }, [setFormData, setCurrentLead, setIsFormOpen, setIsLeadCardOpen]);
+
+  const handleCloseFormModal = useCallback(() => {
+    setIsFormOpen(false);
+    setCurrentLead(null);
+  }, [setIsFormOpen, setCurrentLead]);
 
   return (
     <div className="p-4 md:p-6 bg-base-200 min-h-screen">
       <h1 className="text-3xl font-bold mb-6 text-base-content">CRM Leads</h1>
-      {/* Status indicators */}
-      {isLoading && (
-        <div className="mb-4 p-2 bg-base-300 rounded text-sm">
-          Loading leads...
-        </div>
-      )}
-      
-      {/* Search and Filters */}
-      <div className="mb-6 p-4 bg-base-100 rounded-lg shadow">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
+
+      {/* Controls: Search, Filter, Add Lead Button */}
+      <div className="mb-6 p-4 bg-base-100 rounded-lg shadow-md">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          <div className="form-control">
+            <label className="label">
+              <span className="label-text">Search Leads</span>
+            </label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search leads..."
-                className="input input-bordered w-full pl-10"
+                placeholder="Name, email, address..."
+                className="input input-bordered w-full pr-10"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
+              <Search className="absolute top-1/2 right-3 transform -translate-y-1/2 h-5 w-5 text-base-content opacity-50" />
             </div>
           </div>
-          <select 
-            className="select select-bordered"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="ALL">All Statuses</option>
-            {statusOptions.map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <button 
-            className="btn btn-primary"
-            onClick={() => {
-              setCurrentLead(null);
-              setFormData({
-                first_name: '',
-                last_name: '',
-                email: '',
-                phone: '',
-                status: 'NEW',
-                address: '',
-                city: '',
-                state: '',
-                zip_code: ''
-              });
-              setIsFormOpen(true);
-            }}
-          >
-            <PlusCircle className="w-4 h-4 mr-2" />
-            Add Lead
+
+          <div className="form-control">
+            <label className="label">
+              <span className="label-text">Filter by Status</span>
+            </label>
+            <select
+              className="select select-bordered w-full"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="ALL">All Statuses</option>
+              {statusOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <button className="btn btn-primary md:mt-auto" onClick={handleOpenAddLeadModal}>
+            <PlusCircle size={20} className="mr-2" />
+            Add New Lead
           </button>
         </div>
       </div>
+      
+      {isLoading && (
+        <div className="flex justify-center items-center my-10">
+          <span className="loading loading-spinner loading-lg text-primary"></span>
+          <p className="ml-3 text-lg">Loading leads...</p>
+        </div>
+      )}
 
       {/* Leads Table */}
-      <div className="bg-base-100 rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto bg-base-100 rounded-lg shadow">
-          <table className="table table-zebra table-sm w-full">
+      {!isLoading && filteredLeads.length > 0 && (
+        <div className="overflow-x-auto bg-base-100 rounded-lg shadow-md">
+          <table {...getTableProps()} className="table table-zebra w-full">
             <thead>
-              <tr className="text-base-content">
-                {columnConfigurations.map(col => (
-                  <th 
-                    key={col.key} 
-                    onClick={() => col.sortable !== false && handleSort(col.key as keyof Lead)}
-                    className={col.sortable !== false ? 'cursor-pointer hover:bg-base-300' : ''}
-                  >
-                    {col.label} {col.sortable !== false && <SortIndicator field={col.key as keyof Lead} />}
-                  </th>
-                ))}
-              </tr>
+              {headerGroups.map(headerGroup => (
+                <tr {...headerGroup.getHeaderGroupProps()} key={headerGroup.id || Math.random().toString()}>
+                  {headerGroup.headers.map(column => (
+                    <th 
+                      {...column.getHeaderProps((column as any).getSortByToggleProps ? (column as any).getSortByToggleProps() : {})}
+                      key={column.id}
+                      className="p-3 cursor-pointer select-none"
+                      onClick={() => column.id && column.id !== 'actions' ? handleSort(column.id as keyof Lead) : null}
+                    >
+                      {column.render('Header')}
+                      {(column.id && column.id !== 'actions') && (
+                        (column as any).isSorted
+                        ? ((column as any).isSortedDesc
+                          ? <ChevronDown size={16} className="inline ml-1" />
+                          : <ChevronUp size={16} className="inline ml-1" />)
+                        : <SortIndicator field={column.id as keyof Lead} />
+                      )}
+                    </th>
+                  ))}
+                  <th className="p-3 text-center">Actions</th>
+                </tr>
+              ))}
             </thead>
-            <tbody>
+            <tbody {...getTableBodyProps()}>
+              {paginatedRows.map(rowInstance => { // Renamed 'row' to 'rowInstance' to avoid conflict with useTable's 'rows'
+                prepareRow(rowInstance);
+                return (
+                  <tr 
+                    {...rowInstance.getRowProps()} 
+                    key={rowInstance.original.id} 
+                    className="hover:bg-base-300 cursor-pointer"
+                    onClick={() => handleRowClick(rowInstance.original)}
+                  >
+                    {rowInstance.cells.map(cell => (
+                      <td {...cell.getCellProps()} key={cell.column.id} className="p-3 align-middle">
+                        {cell.column.id === 'status' ? (
+                          <span className={`badge ${getStatusBadgeClass(cell.value as string)}`}>
+                            {statusOptions.find(s => s.value === cell.value)?.label || cell.value}
+                          </span>
+                        ) : cell.column.id === 'name' ? (
+                           <div className="font-medium">{getDisplayName(rowInstance.original)}</div>
+                        ) : cell.column.id === 'property_address_full' ? (
+                           <div>{formatFullAddress(rowInstance.original)}</div>
+                        ) : (
+                          cell.render('Cell')
+                        )}
+                      </td>
+                    ))}
+                    <td className="p-3 text-center">
+                      <button 
+                        className="btn btn-ghost btn-sm text-info mr-2" 
+                        onClick={(e) => { e.stopPropagation(); handleRowClick(rowInstance.original); }}
+                        title="Edit/View Lead"
+                      >
+                        <Edit3 size={16} />
+                      </button>
+                      <button 
+                        className="btn btn-ghost btn-sm text-error" 
+                        onClick={(e) => { e.stopPropagation(); handleDeleteLead(rowInstance.original.id); }}
+                        title="Delete Lead"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!isLoading && filteredLeads.length === 0 && (
+         <div className="text-center py-10 bg-base-100 rounded-lg shadow-md">
+           <AlertCircle size={48} className="mx-auto mb-4 text-gray-400" />
+           <p className="text-xl font-semibold">No leads found.</p>
+           <p className="text-gray-500">Try adjusting your search or filters, or add a new lead.</p>
+         </div>
+      )}
+
+      {/* Pagination Controls */}
+      {!isLoading && totalPages > 0 && (
+        <div className="mt-6 flex flex-wrap justify-between items-center gap-4">
+          <div className="text-sm text-gray-600">
+            Showing {paginatedRows.length > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0}
+            {' '}to{' '}
+            {Math.min(currentPage * rowsPerPage, rows.length)} {/* Use rows.length from useTable for total items */}
+            {' '}of {rows.length} leads
+          </div>
+          <div className="join">
+            <button
+              className="join-item btn btn-sm"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >
+              « Prev
+            </button>
+            {[...Array(totalPages)].map((_, i) => {
+              const pageNum = i + 1;
+              if (
+                totalPages <= 7 || 
+                pageNum === 1 ||
+                pageNum === totalPages ||
+                (pageNum >= currentPage - 2 && pageNum <= currentPage + 2)
+              ) {
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`join-item btn btn-sm ${currentPage === pageNum ? 'btn-active btn-primary' : ''}`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              } else if (
+                (pageNum === currentPage - 3 && pageNum !== 1) ||
+                (pageNum === currentPage + 3 && pageNum !== totalPages)
+              ) {
+                return <button key={`ellipsis-${pageNum}`} className="join-item btn btn-sm btn-disabled">...</button>;
+              }
+              return null;
+            })}
+            <button
+              className="join-item btn btn-sm"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next »
+            </button>
+                
+            </div>
+            <div>
+              <select
+                className="select select-bordered select-sm"
+                value={rowsPerPage}
+                onChange={e => {
+                  setRowsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+              >
+                {[10, 25, 50, 100].map(pageSize => (
+                  <option key={pageSize} value={pageSize}>
+                    Show {pageSize}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
               {isLoading && !leads.length ? (
                 <tr><td colSpan={columnConfigurations.length} className="text-center py-10">Loading leads...</td></tr>
               ) : !isLoading && !leads.length ? (
@@ -926,25 +1022,151 @@ const CrmView: React.FC<Record<string, never>> = (): React.JSX.Element => {
         </div>
       )}
 
-      {/* Lead Card Modal */}
-      {isLeadCardOpen && currentLead && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="relative bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white p-4 border-b flex justify-between items-center">
-              <h3 className="text-lg font-medium">Lead Details</h3>
-              <button 
-                onClick={() => setIsLeadCardOpen(false)}
-                className="text-gray-400 hover:text-gray-500"
-              >
-                <XIcon className="h-6 w-6" />
-              </button>
-            </div>
+      {/* Edit/Add Lead Modal */}
+      {isFormOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-base-100 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
+            {/* Close Button - Fixed in top-right corner */}
+            <button 
+              className="btn btn-circle btn-ghost btn-sm absolute right-2 top-2 z-10"
+              onClick={() => {
+                setIsFormOpen(false);
+                setCurrentLead(null);
+                setFormData({
+                  status: 'NEW',
+                  first_name: '',
+                  last_name: '',
+                  email: '',
+                  phone: '',
+                  address: '',
+                  city: '',
+                  state: '',
+                  zip_code: ''
+                });
+              }}
+              aria-label="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
             <div className="p-6">
-              <LeadCard 
-                lead={currentLead}
-                onEdit={() => handleEdit(currentLead)}
-                onDelete={(e) => void handleDelete(currentLead.id, e)}
-              />
+              {currentLead && (
+                <div className="mb-6 rounded-lg overflow-hidden relative">
+                  <div className="flex items-center bg-base-200 px-4 py-2">
+                    <MapPin className="w-5 h-5 mr-2 text-primary" />
+                    <h3 className="font-medium">Property Location - {formatAddress(currentLead)}</h3>
+                  </div>
+                  <StreetViewMap 
+                    address={formatAddress(currentLead)} 
+                    containerStyle={{
+                      width: '100%',
+                      height: '300px',
+                      borderRadius: '0 0 0.5rem 0.5rem',
+                    }}
+                  />
+                </div>
+              )}
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold">
+                  {currentLead ? `Edit Lead: ${getDisplayName(currentLead)}` : 'Add New Lead'}
+                </h2>
+              </div>
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                handleSubmit(e).catch(console.error);
+              }} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* ...form fields here (see previous snippet)... */}
+                </div>
+                <div className="flex justify-between items-center pt-4">
+                  <div className="flex-1">
+                    {currentLead && (
+                      <div className="dropdown dropdown-top">
+                        <button
+                          type="button"
+                          tabIndex={0}
+                          className="btn btn-error btn-sm text-white hover:bg-error/90 transition-colors"
+                          disabled={isLoading}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1.5" />
+                          Delete Lead
+                        </button>
+                        <div className="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-64">
+                          <div className="p-3">
+                            <h3 className="font-medium text-error">Delete Lead</h3>
+                            <p className="text-sm text-base-content/80 mt-1">
+                              Are you sure you want to delete this lead? This action cannot be undone.
+                            </p>
+                            <div className="flex justify-end gap-2 mt-3">
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const dropdown = document.activeElement as HTMLElement;
+                                  if (dropdown) dropdown.blur();
+                                }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-error btn-xs text-white"
+                                disabled={isLoading}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void (async () => {
+                                    try {
+                                      await handleDelete(currentLead.id, e);
+                                      const dropdown = document.activeElement as HTMLElement;
+                                      if (dropdown) dropdown.blur();
+                                    } catch (error) {
+                                      console.error('Error deleting lead:', error);
+                                    }
+                                  })();
+                                  return undefined;
+                                }}
+                              >
+                                {isLoading ? (
+                                  <span className="loading loading-spinner loading-xs"></span>
+                                ) : (
+                                  'Delete'
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsFormOpen(false);
+                        setCurrentLead(null);
+                        setFormData({});
+                      }}
+                      className="btn btn-ghost"
+                      disabled={isLoading}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={isLoading}
+                    >
+                      {isLoading ? (
+                        <span className="loading loading-spinner"></span>
+                      ) : currentLead ? (
+                        'Update Lead'
+                      ) : (
+                        'Add Lead'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </form>
             </div>
           </div>
         </div>
