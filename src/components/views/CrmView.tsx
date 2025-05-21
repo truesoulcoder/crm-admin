@@ -7,6 +7,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { formatAddress } from '@/utils/address';
 
+// Dynamically import the GoogleMapsLoader with SSR disabled
+const GoogleMapsLoader = dynamic(
+  () => import('@/components/maps/GoogleMapsLoader'),
+  { ssr: false }
+);
+
 // Dynamically import the LeadCard component with no SSR
 const LeadCard = dynamic(
   () => import('@/components/leads/LeadCard'),
@@ -58,11 +64,19 @@ interface StatusOption {
 const statusOptions: StatusOption[] = [
   { value: 'NEW', label: 'New', color: 'bg-blue-100 text-blue-800' },
   { value: 'CONTACTED', label: 'Contacted', color: 'bg-purple-100 text-purple-800' },
+  { value: 'CONTRACT-SENT', label: 'Contract Sent', color: 'bg-yellow-100 text-yellow-800' },
+  { value: 'CONTRACT-SIGNED', label: 'Contract Signed', color: 'bg-green-100 text-green-800' },
+  { value: 'NEEDS-DISPO', label: 'Needs Disposition', color: 'bg-orange-100 text-orange-800' },
+  { value: 'ASSIGNED', label: 'Assigned', color: 'bg-indigo-100 text-indigo-800' },
+  { value: 'CLOSED', label: 'Closed', color: 'bg-gray-100 text-gray-800' },
+  { value: 'DEAD', label: 'Dead', color: 'bg-red-100 text-red-800' },
+  // Legacy statuses for backward compatibility
   { value: 'QUALIFIED', label: 'Qualified', color: 'bg-green-100 text-green-800' },
   { value: 'UNQUALIFIED', label: 'Unqualified', color: 'bg-red-100 text-red-800' },
 ];
 
-const CrmView: React.FC = () => {
+// Main CrmView component
+const CrmView: React.FC<Record<string, never>> = (): React.JSX.Element => {
   // Column visibility state - only show status, name, email, phone, and address by default
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
     name: true,
@@ -127,11 +141,11 @@ const CrmView: React.FC = () => {
   
   // Column configuration - only show status, name, email, phone, and address
   const columnConfigurations: ColumnConfig[] = [
-    { key: 'status', label: 'Status', sortable: true },
     { key: 'first_name', label: 'Name', sortable: true },
-    { key: 'email', label: 'Email', sortable: true },
-    { key: 'phone', label: 'Phone', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
     { key: 'property_address', label: 'Address', sortable: true },
+    { key: 'phone', label: 'Phone', sortable: true },
+    { key: 'email', label: 'Email', sortable: true },
   ];
 
   // Handle form input changes
@@ -146,6 +160,22 @@ const CrmView: React.FC = () => {
   // Helper function to get display name from first and last name
   const getDisplayName = (lead: Partial<Lead>): string => {
     return [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'New Lead';
+  };
+
+  // Helper function to format full address
+  const formatFullAddress = (lead: Lead): string => {
+    const address = lead.property_address || lead.address || '';
+    const city = lead.property_city || lead.city || '';
+    const state = lead.property_state || lead.state || '';
+    const zip = lead.property_postal_code || lead.zip_code || '';
+    
+    const parts = [address];
+    if (city || state || zip) {
+      const cityStateZip = [city, state, zip].filter(Boolean).join(' ');
+      parts.push(cityStateZip);
+    }
+    
+    return parts.filter(Boolean).join(' ');
   };
 
   // Handle delete confirmation
@@ -295,86 +325,77 @@ const CrmView: React.FC = () => {
     setIsLeadCardOpen(true);
   };
 
-  // Load Google Maps Places API and initialize autocomplete
+  // Initialize Google Places Autocomplete when component mounts
   useEffect(() => {
-    if (typeof window !== 'undefined' && !window.google) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`;
-      script.async = true;
-      document.head.appendChild(script);
+    if (typeof window !== 'undefined' && window.google && addressInputRef.current) {
+      const autocomplete = new window.google.maps.places.Autocomplete(
+        addressInputRef.current,
+        { types: ['address'] }
+      );
       
-      script.onload = () => {
-        if (addressInputRef.current) {
-          initAutocomplete();
-        }
-      };
-      
-      return () => {
-        document.head.removeChild(script);
-      };
-    } else if (window.google && addressInputRef.current) {
-      initAutocomplete();
-    }
-  }, []);
-  
-  // Initialize Google Places Autocomplete
-  const initAutocomplete = () => {
-    if (!addressInputRef.current) return;
-    
-    const autocomplete = new window.google.maps.places.Autocomplete(
-      addressInputRef.current,
-      { types: ['address'] }
-    );
-    
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
-      if (!place.address_components) return;
-      
-      interface AddressComponents {
-        address?: string;
-        city?: string;
-        state?: string;
-        zip_code?: string;
-      }
-      
-      const addressObj: AddressComponents = {};
-      
-      place.address_components.forEach(component => {
-        const componentType = component.types[0];
+      const placeChangedHandler = () => {
+        const place = autocomplete.getPlace();
+        if (!place.address_components) return;
         
-        switch (componentType) {
-          case 'street_number':
-            addressObj.address = component.long_name;
-            break;
-          case 'route':
-            addressObj.address = `${addressObj.address || ''} ${component.long_name}`.trim();
-            break;
-          case 'locality':
-            addressObj.city = component.long_name;
-            break;
-          case 'administrative_area_level_1':
-            addressObj.state = component.short_name;
-            break;
-          case 'postal_code':
-            addressObj.zip_code = component.long_name;
-            break;
-          default:
-            break;
+        interface AddressComponents {
+          address?: string;
+          city?: string;
+          state?: string;
+          zip_code?: string;
         }
-      });
+        
+        const addressObj: AddressComponents = {};
+        
+        place.address_components.forEach(component => {
+          const componentType = component.types[0];
+          
+          switch (componentType) {
+            case 'street_number':
+              addressObj.address = component.long_name;
+              break;
+            case 'route':
+              addressObj.address = `${addressObj.address || ''} ${component.long_name}`.trim();
+              break;
+            case 'locality':
+              addressObj.city = component.long_name;
+              break;
+            case 'administrative_area_level_1':
+              addressObj.state = component.short_name;
+              break;
+            case 'postal_code':
+              addressObj.zip_code = component.long_name;
+              break;
+            default:
+              break;
+          }
+        });
+        
+        setFormData(prev => ({
+          ...prev,
+          ...addressObj,
+          property_address: addressObj.address || prev.property_address,
+          property_city: addressObj.city || prev.property_city,
+          property_state: addressObj.state || prev.property_state,
+          property_postal_code: addressObj.zip_code || prev.property_postal_code
+        }));
+      };
       
-      setFormData(prev => ({
-        ...prev,
-        ...addressObj,
-        property_address: addressObj.address || prev.property_address,
-        property_city: addressObj.city || prev.property_city,
-        property_state: addressObj.state || prev.property_state,
-        property_postal_code: addressObj.zip_code || prev.property_postal_code
-      }));
-    });
-    
-    autocompleteRef.current = autocomplete;
-  };
+      // Add the event listener
+      autocomplete.addListener('place_changed', placeChangedHandler);
+      
+      // Store the autocomplete instance in the ref
+      autocompleteRef.current = autocomplete;
+      
+      // Cleanup function
+      return () => {
+        if (autocompleteRef.current) {
+          // Remove the event listener when component unmounts
+          window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
+          autocompleteRef.current = null;
+        }
+      };
+    }
+  }, []); // Empty dependency array means this effect runs once on mount
 
   // Fetch leads from Supabase
   useEffect(() => {
@@ -552,41 +573,44 @@ const CrmView: React.FC = () => {
                     className="hover:bg-base-200 cursor-pointer transition-colors"
                     onClick={() => handleRowClick(lead)}
                   >
+                    {/* Name */}
                     <td className="py-4">
-                      <div className="flex items-center space-x-3">
-                        <div>
-                          <div className="font-medium">
-                            {[lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'No Name'}
-                          </div>
-                          {lead.email && (
-                            <div className="text-sm opacity-70 flex items-center mt-1">
-                              <Mail className="w-3 h-3 mr-1 flex-shrink-0" />
-                              <span className="truncate max-w-xs" title={lead.email}>
-                                {lead.email}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                      <div className="font-medium">
+                        {[lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'No Name'}
                       </div>
                     </td>
+                    
+                    {/* Status */}
                     <td>
                       <span className={`badge ${getStatusBadgeClass(lead.status)}`}>
                         {statusOptions.find(s => s.value === lead.status)?.label || lead.status}
                       </span>
                     </td>
+                    
+                    {/* Address */}
                     <td>
                       <div className="flex items-start">
                         <MapPin size={16} className="mr-1.5 mt-0.5 flex-shrink-0 text-red-500" />
                         <div>
-                          {lead.property_address || lead.address || '-'}
-                          <br />
-                          {lead.property_city || lead.city || lead.state || lead.zip_code 
-                            ? `${lead.property_city || lead.city || ''}${(lead.property_city || lead.city) && (lead.property_state || lead.state) ? ', ' : ''}${lead.property_state || lead.state || ''} ${lead.property_postal_code || lead.zip_code || ''}` 
-                            : null}
+                          {formatFullAddress(lead) || '-'}
                         </div>
                       </div>
                     </td>
+                    
+                    {/* Phone */}
                     <td>{lead.phone || '-'}</td>
+                    
+                    {/* Email */}
+                    <td>
+                      {lead.email ? (
+                        <div className="text-sm opacity-90 flex items-center">
+                          <Mail className="w-3 h-3 mr-1.5 flex-shrink-0 opacity-70" />
+                          <span className="truncate max-w-xs" title={lead.email}>
+                            {lead.email}
+                          </span>
+                        </div>
+                      ) : '-'}
+                    </td>
                     <td>{displayValue(lead.market_region)}</td>
                     <td>{lead.assessed_total ? `$${Number(lead.assessed_total).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}</td>
                     <td>{displayValue(lead.mls_curr_status)}</td>
@@ -843,11 +867,21 @@ const CrmView: React.FC = () => {
                                 disabled={isLoading}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  // Call handleDelete with the current lead ID and event
-                                  handleDelete(currentLead.id, e);
-                                  // Close the dropdown after deletion
-                                  const dropdown = document.activeElement as HTMLElement;
-                                  if (dropdown) dropdown.blur();
+                                  // Use void to explicitly ignore the Promise
+                                  void (async () => {
+                                    try {
+                                      // Call handleDelete with the current lead ID and event
+                                      await handleDelete(currentLead.id, e);
+                                      // Close the dropdown after successful deletion
+                                      const dropdown = document.activeElement as HTMLElement;
+                                      if (dropdown) dropdown.blur();
+                                    } catch (error) {
+                                      console.error('Error deleting lead:', error);
+                                      // Optionally show an error message to the user
+                                    }
+                                  })();
+                                  // Explicitly return void to satisfy the type checker
+                                  return undefined;
                                 }}
                               >
                                 {isLoading ? (
@@ -923,4 +957,5 @@ const CrmView: React.FC = () => {
   );
 };
 
+// Export the CrmView component as default
 export default CrmView;
