@@ -1,29 +1,69 @@
 'use client';
 
+import { Highlight } from '@tiptap/extension-highlight';
 import { Link } from '@tiptap/extension-link';
 import { Placeholder } from '@tiptap/extension-placeholder';
+import { TextAlign } from '@tiptap/extension-text-align';
+import { Underline } from '@tiptap/extension-underline';
 import { Editor, EditorContent, useEditor } from '@tiptap/react';
 import { StarterKit } from '@tiptap/starter-kit';
-import {
-  Bold,
-  Edit3,
-  FileText,
-  Heading1,
-  Heading2,
-  Heading3,
-  Italic,
-  Loader2,
+import { 
+  Bold, 
+  Edit3, 
+  FileText, 
+  Italic, 
+  Loader2, 
+  Search, 
+  Trash2, 
+  X, 
+  Underline as UnderlineIcon,
+  Strikethrough,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
+  ListOrdered,
+  List,
+  Quote,
+  Code,
+  Undo,
+  Redo,
+  Code2,
+  Highlighter,
   Pilcrow,
+  Link as LinkIcon,
   PlusCircle,
-  Search,
-  Trash2,
-  X,
+  Unlink,
+  IndentIncrease,
+  IndentDecrease
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import Toast from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase/client';
+
+// Type declarations
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    highlight: {
+      setHighlight: (attributes?: { color: string }) => ReturnType;
+      toggleHighlight: (attributes?: { color: string }) => ReturnType;
+      unsetHighlight: () => ReturnType;
+    };
+    textAlign: {
+      setTextAlign: (alignment: string) => ReturnType;
+      unsetTextAlign: () => ReturnType;
+      toggleTextAlign: (alignment: string) => ReturnType;
+    };
+    underline: {
+      setUnderline: () => ReturnType;
+      toggleUnderline: () => ReturnType;
+      unsetUnderline: () => ReturnType;
+    };
+  }
+}
+
 // PDF generation is now handled via API route
 
 // --- Helper Functions ---
@@ -98,80 +138,240 @@ const getTypeBadge = (template_type: string) => {
 };
 
 const MenuBar: React.FC<{ editor: Editor | null }> = ({ editor }) => {
+  const addLink = useCallback(() => {
+    if (!editor) return;
+    
+    const previousUrl = editor.getAttributes('link').href as string | undefined;
+    const url = window.prompt('Enter URL', previousUrl || 'https://');
+    
+    // User cancelled the prompt
+    if (url === null) return;
+    
+    // Empty string means remove the link
+    if (url.trim() === '') {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run();
+      return;
+    }
+    
+    // Validate URL format
+    try {
+      // This will throw for invalid URLs
+      new URL(url);
+    } catch (e) {
+      // Invalid URL, show error and return
+      alert('Please enter a valid URL (e.g., https://example.com)');
+      return;
+    }
+    
+    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+  }, [editor]);
+
   if (!editor) {
     return null;
   }
 
   return (
-    <div className="menu menu-horizontal bg-base-200 rounded-md p-1 mb-2 flex flex-wrap gap-1">
-      <button
-        onClick={() => editor.chain().focus().toggleBold().run()}
-        disabled={!editor.can().chain().focus().toggleBold().run()}
-        className={`btn btn-sm btn-ghost ${editor.isActive('bold') ? 'btn-active' : ''}`}
-        title="Bold"
-      >
-        <Bold size={16}/>
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-        disabled={!editor.can().chain().focus().toggleItalic().run()}
-        className={`btn btn-sm btn-ghost ${editor.isActive('italic') ? 'btn-active' : ''}`}
-        title="Italic"
-      >
-        <Italic size={16}/>
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-        className={`btn btn-sm btn-ghost ${editor.isActive('bulletList') ? 'btn-active' : ''}`}
-        title="Bullet List"
-      >
-        • List
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        className={`btn btn-sm btn-ghost ${editor.isActive('orderedList') ? 'btn-active' : ''}`}
-        title="Ordered List"
-      >
-        1. List
-      </button>
-      <button
-        onClick={() => {
-          const url = window.prompt('Enter URL');
-          if (url) editor.chain().focus().setMark('link', { href: url }).run();
-        }}
-        className={`btn btn-sm btn-ghost ${editor.isActive('link') ? 'btn-active' : ''}`}
-        title="Insert Link (Ctrl+K)"
-      >
-        🔗
-      </button>
-      <button
-        onClick={() => editor.chain().focus().setParagraph().run()}
-        className={`btn btn-sm btn-ghost ${editor.isActive('paragraph') ? 'btn-active' : ''}`}
-        title="Paragraph"
-      >
-        <Pilcrow size={16}/>
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        className={`btn btn-sm btn-ghost ${editor.isActive('heading', { level: 1 }) ? 'btn-active' : ''}`}
-        title="Heading 1"
-      >
-        <Heading1 size={16}/>
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        className={`btn btn-sm btn-ghost ${editor.isActive('heading', { level: 2 }) ? 'btn-active' : ''}`}
-        title="Heading 2"
-      >
-        <Heading2 size={16}/>
-      </button>
-      <button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        className={`btn btn-sm btn-ghost ${editor.isActive('heading', { level: 3 }) ? 'btn-active' : ''}`}
-        title="Heading 3"
-      >
-        <Heading3 size={16}/>
-      </button>
+    <div className="menu menu-horizontal bg-base-200 rounded-md p-1.5 mb-3 flex flex-wrap gap-1 shadow-sm border border-base-300">
+      {/* Text Formatting */}
+      <div className="flex items-center gap-1 border-r border-base-300 pr-2 mr-1">
+        <button
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          disabled={!editor.can().chain().focus().toggleBold().run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive('bold') ? 'btn-active' : ''}`}
+          title="Bold (Ctrl+B)"
+        >
+          <Bold size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          disabled={!editor.can().chain().focus().toggleItalic().run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive('italic') ? 'btn-active' : ''}`}
+          title="Italic (Ctrl+I)"
+        >
+          <Italic size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().toggleUnderline().run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive('underline') ? 'btn-active' : ''}`}
+          title="Underline (Ctrl+U)"
+        >
+          <UnderlineIcon size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().toggleStrike().run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive('strike') ? 'btn-active' : ''}`}
+          title="Strikethrough (Ctrl+Shift+S)"
+        >
+          <Strikethrough size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().toggleHighlight().run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive('highlight') ? 'btn-active' : ''}`}
+          title="Highlight (Ctrl+Shift+H)"
+        >
+          <Highlighter size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().toggleCode().run()}
+          disabled={!editor.can().chain().focus().toggleCode().run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive('code') ? 'btn-active' : ''}`}
+          title="Code (Ctrl+E)"
+        >
+          <Code size={16} />
+        </button>
+      </div>
+
+      {/* Text Alignment */}
+      <div className="flex items-center gap-1 border-r border-base-300 px-2 mr-1">
+        <button
+          onClick={() => editor.chain().focus().setTextAlign('left').run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive({ textAlign: 'left' }) ? 'btn-active' : ''}`}
+          type="button"
+          title="Align Left"
+        >
+          <AlignLeft size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().setTextAlign('center').run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive({ textAlign: 'center' }) ? 'btn-active' : ''}`}
+          type="button"
+          title="Center"
+        >
+          <AlignCenter size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().setTextAlign('right').run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive({ textAlign: 'right' }) ? 'btn-active' : ''}`}
+          type="button"
+          title="Align Right"
+        >
+          <AlignRight size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().setTextAlign('justify').run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive({ textAlign: 'justify' }) ? 'btn-active' : ''}`}
+          type="button"
+          title="Justify"
+        >
+          <AlignJustify size={16} />
+        </button>
+      </div>
+
+      {/* Lists & Indentation */}
+      <div className="flex items-center gap-1 border-r border-base-300 px-2 mr-1">
+        <button
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive('bulletList') ? 'btn-active' : ''}`}
+          title="Bullet List"
+        >
+          <List size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          className={`btn btn-xs btn-ghost btn-square ${editor.isActive('orderedList') ? 'btn-active' : ''}`}
+          title="Numbered List"
+        >
+          <ListOrdered size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().sinkListItem('listItem').run()}
+          disabled={!editor.can().sinkListItem('listItem')}
+          className="btn btn-xs btn-ghost btn-square"
+          title="Indent"
+        >
+          <IndentIncrease size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().liftListItem('listItem').run()}
+          disabled={!editor.can().liftListItem('listItem')}
+          className="btn btn-xs btn-ghost btn-square"
+          title="Outdent"
+        >
+          <IndentDecrease size={16} />
+        </button>
+      </div>
+
+      {/* Headings & Blocks */}
+      <div className="flex items-center gap-1 border-r border-base-300 px-2 mr-1">
+        <button
+          onClick={() => editor.chain().focus().setParagraph().run()}
+          className={`btn btn-xs btn-ghost ${editor.isActive('paragraph') ? 'btn-active' : ''}`}
+          title="Paragraph"
+        >
+          <Pilcrow size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+          className={`btn btn-xs btn-ghost ${editor.isActive('heading', { level: 1 }) ? 'btn-active' : ''}`}
+          title="Heading 1"
+        >
+          <span className="font-bold">H1</span>
+        </button>
+        <button
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          className={`btn btn-xs btn-ghost ${editor.isActive('heading', { level: 2 }) ? 'btn-active' : ''}`}
+          title="Heading 2"
+        >
+          <span className="font-bold">H2</span>
+        </button>
+        <button
+          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+          className={`btn btn-xs btn-ghost ${editor.isActive('heading', { level: 3 }) ? 'btn-active' : ''}`}
+          title="Heading 3"
+        >
+          <span className="font-bold">H3</span>
+        </button>
+        <button
+          onClick={() => editor.chain().focus().toggleBlockquote().run()}
+          className={`btn btn-xs btn-ghost ${editor.isActive('blockquote') ? 'btn-active' : ''}`}
+          title="Blockquote"
+        >
+          <Quote size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+          className={`btn btn-xs btn-ghost ${editor.isActive('codeBlock') ? 'btn-active' : ''}`}
+          title="Code Block"
+        >
+          <Code2 size={16} />
+        </button>
+      </div>
+
+      {/* Links & Actions */}
+      <div className="flex items-center gap-1">
+        <button
+          onClick={addLink}
+          className={`btn btn-xs btn-ghost ${editor.isActive('link') ? 'btn-active' : ''}`}
+          title="Add/Edit Link"
+        >
+          <LinkIcon size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().unsetLink().run()}
+          disabled={!editor.isActive('link')}
+          className="btn btn-xs btn-ghost"
+          title="Remove Link"
+        >
+          <Unlink size={16} />
+        </button>
+        <div className="divider divider-horizontal mx-0"></div>
+        <button
+          onClick={() => editor.chain().focus().undo().run()}
+          disabled={!editor.can().undo()}
+          className="btn btn-xs btn-ghost"
+          title="Undo (Ctrl+Z)"
+        >
+          <Undo size={16} />
+        </button>
+        <button
+          onClick={() => editor.chain().focus().redo().run()}
+          disabled={!editor.can().redo()}
+          className="btn btn-xs btn-ghost"
+          title="Redo (Ctrl+Y)"
+        >
+          <Redo size={16} />
+        </button>
+      </div>
     </div>
   );
 };
@@ -209,6 +409,7 @@ const TemplatesView: React.FC = () => {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [isPdfUploading, setIsPdfUploading] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<DocumentTemplate | null>(null);
 
   // Set client-side flag on mount and get user
   useEffect(() => {
@@ -240,88 +441,106 @@ const TemplatesView: React.FC = () => {
   const lastContent = useRef('');
 
   // Initialize editor only on client side
-  const editor = useEditor(
-    {
-      extensions: [
-        StarterKit.configure({
-          bulletList: {
-            keepMarks: true,
-            keepAttributes: false,
-          },
-          orderedList: {
-            keepMarks: true,
-            keepAttributes: false,
-          },
-        }),
-        Placeholder.configure({
-          placeholder: 'Enter HTML content here... use {{placeholder_name}} for variables.'
-        }),
-        Link,
-      ],
-      content: isClient ? newTemplateBody : '',
-      onUpdate: ({ editor }) => {
-        if (!isClient) return;
-        const html = editor.getHTML();
-        // Only update state if content actually changed
-        if (html !== lastContent.current) {
-          lastContent.current = html;
-          setNewTemplateBody(html);
-        }
-      },
-      editorProps: {
-        attributes: {
-          class: 'prose dark:prose-invert prose-sm sm:prose-base lg:prose-lg xl:prose-2xl p-3 min-h-[10rem] border border-base-300 rounded-md focus:outline-none focus:border-primary w-full',
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: {
+          levels: [1, 2, 3],
         },
-      },
-      autofocus: false,
-      editable: isClient,
-      injectCSS: isClient,
-      enablePasteRules: isClient,
-      enableInputRules: isClient,
+        codeBlock: false, // We'll use the custom one
+      }),
+      Underline.extend({
+        addKeyboardShortcuts() {
+          return {
+            'Mod-u': () => this.editor.commands.toggleUnderline(),
+          };
+        },
+      }).configure({
+        HTMLAttributes: {
+          class: 'underline',
+        },
+      }),
+      Highlight.extend({
+        addKeyboardShortcuts() {
+          return {
+            'Mod-h': () => this.editor.commands.toggleHighlight(),
+          };
+        },
+      }).configure({
+        multicolor: true,
+        HTMLAttributes: {
+          class: 'bg-yellow-200 dark:bg-yellow-800',
+        },
+      }),
+      TextAlign.configure({
+        types: ['heading', 'paragraph'],
+        alignments: ['left', 'center', 'right', 'justify'],
+        defaultAlignment: 'left',
+      }),
+      Placeholder.configure({
+        placeholder: 'Start typing your template here...',
+      }),
+      Link.configure({
+        openOnClick: true,
+      }),
+    ],
+    content: isClient ? newTemplateBody : '',
+    onUpdate: ({ editor: editorInstance }) => {
+      if (!isClient) return;
+      const html = editorInstance.getHTML();
+      // Only update state if content actually changed
+      if (html !== lastContent.current) {
+        lastContent.current = html;
+        setNewTemplateBody(html);
+      }
     },
-    [isClient] // Removed newTemplateBody from deps to prevent re-initialization
-  );
+    editorProps: {
+      attributes: {
+        class: 'prose dark:prose-invert prose-sm sm:prose-base lg:prose-lg xl:prose-2xl p-3 min-h-[10rem] border border-base-300 rounded-md focus:outline-none focus:border-primary w-full bg-white',
+      },
+    },
+    autofocus: true,
+    editable: isClient,
+    injectCSS: true,
+    enablePasteRules: isClient,
+    enableInputRules: isClient,
+  }, [isClient, newTemplateBody]);
 
   // --- PDF Preview Modal State and Handler ---
-  const handlePreviewPdf = async (template: DocumentTemplate) => {
+  const handlePreviewPdf = useCallback(async (template: DocumentTemplate) => {
     setPdfLoading(true);
     setPdfError(null);
     setPdfModalOpen(true);
+    setPreviewTemplate(template);
+
     try {
-      // Only support document templates for now
-      if (template.template_type !== 'document') {
-        setPdfError('PDF preview is only available for document templates.');
-        setPdfLoading(false);
-        return;
-      }
-      
-      // If we have a file_path, construct the direct URL to the PDF in Supabase storage
-      if (template.file_path) {
-        const { data: { publicUrl } } = supabase.storage
+      if (template.template_type === 'document' && template.file_path) {
+        // Generate a signed URL for the PDF file
+        const { data, error } = await supabase.storage
           .from('pdf-templates')
-          .getPublicUrl(template.file_path);
-        
-        if (publicUrl) {
-          setPdfUrl(publicUrl);
-          return;
+          .createSignedUrl(template.file_path, 3600); // URL valid for 1 hour
+          
+        if (error) throw error;
+        if (data?.signedUrl) {
+          console.log('Generated signed URL for PDF:', data.signedUrl);
+          setPdfUrl(data.signedUrl);
+        } else {
+          throw new Error('Could not generate preview URL');
         }
+      } else if (template.template_type === 'email') {
+        // For email templates, we'll show the HTML content in a modal
+        setPdfUrl(null);
+      } else {
+        throw new Error('Unsupported template type for preview');
       }
-      
-      // Fallback to the old method if no file_path is available
-      const res = await fetch(`/api/document-templates/${template.id}-sample-pdf`);
-      if (!res.ok) throw new Error('Failed to generate PDF preview');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      setPdfUrl(url);
     } catch (e) {
-      const err = e instanceof Error ? e.message : 'An unknown error occurred';
-      console.error('PDF preview error:', e);
-      setPdfError(`Failed to load PDF preview: ${err}`);
-      setPdfUrl(null);
+      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred';
+      console.error('Error in handlePreviewPdf:', e);
+      setPdfError(`Failed to load preview: ${errorMessage}`);
     } finally {
       setPdfLoading(false);
     }
-  };
+  }, []);
 
   // Update editor content when newTemplateBody changes (only on initial load or when editing a different template)
   useEffect(() => {
@@ -582,7 +801,7 @@ const TemplatesView: React.FC = () => {
       }
 
       let templateData;
-      let filePath = '';
+      const filePath = '';
 
       if (isEmailTemplate) {
         // Handle email template
@@ -605,39 +824,48 @@ const TemplatesView: React.FC = () => {
         setIsPdfUploading(true);
         
         try {
-          // Upload the PDF file directly to Supabase Storage
+          // Use the original filename for the template
+          const fileName = pdfFile.name;
+          
+          // First, check if file exists and delete it if it does
+          const { error: checkError } = await supabase.storage
+            .from('pdf-templates')
+            .remove([fileName]);
+            
+          if (checkError && checkError.message !== 'The resource was not found') {
+            console.warn('Error checking for existing file:', checkError);
+          }
+          
+          // Upload the PDF file directly to the root of the pdf-templates bucket
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('pdf-templates')
-            .upload(pdfFile.name, pdfFile, {
+            .upload(fileName, pdfFile, {
               contentType: 'application/pdf',
-              upsert: true,
+              upsert: true, // Allow overwriting since we're using the same filename
               cacheControl: '3600'
             });
 
           if (uploadError) {
             console.error('Error uploading PDF to storage:', uploadError);
-            throw new Error('Failed to upload PDF to storage');
+            throw new Error(`Failed to upload PDF to storage: ${uploadError.message}`);
           }
 
-          // Get public URL
-          const { data: { publicUrl } } = supabase.storage
-            .from('pdf-templates')
-            .getPublicUrl(pdfFile.name);
+          console.log('PDF uploaded successfully:', uploadData);
 
-          // Prepare template data
+          // Prepare document template data
           templateData = {
             name: templateName,
-            content: templateBody,
-            file_path: pdfFile.name, // Store just the filename in the root
-            file_type: 'application/pdf',
-            type: 'document',
+            template_type: 'document',
+            body: templateBody,
+            file_path: fileName, // Just store the filename, not the full path
+            available_placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : [],
             is_active: true,
-            user_id: user.id,
-            created_by: user.id,
-            available_placeholders: clickablePlaceholders,
             subject: null,
-            deleted_at: null
+            user_id: user.id,
+            created_by: user.id
           };
+          
+          console.log('Document template data prepared:', templateData);
         } finally {
           setIsPdfUploading(false);
         }
@@ -657,6 +885,14 @@ const TemplatesView: React.FC = () => {
         credentials: 'include', // Include credentials for auth
         body: JSON.stringify(templateData),
       });
+      
+      console.log('API Response Status:', response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('API Error Response:', errorData);
+        throw new Error(errorData.error || 'Failed to save template to database');
+      }
       
       console.log('API response status:', response.status);
 
@@ -838,13 +1074,18 @@ const TemplatesView: React.FC = () => {
                   <button className="btn btn-ghost btn-sm btn-circle" title="View/Edit" onClick={() => openEditModal(template)}>
                     <Edit3 size={16} /> 
                   </button>
-                  <button
-                    className="btn btn-ghost btn-sm btn-circle"
-                    title="Preview PDF"
-                    onClick={() =>void handlePreviewPdf(template)}
-                  >
-                    <FileText size={16} />
-                  </button>
+                  {template.template_type === 'document' && (
+                    <button
+                      className="btn btn-ghost btn-sm btn-circle"
+                      title="Preview Document"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handlePreviewPdf(template);
+                      }}
+                    >
+                      <FileText size={16} />
+                    </button>
+                  )}
                   <button 
                     className="btn btn-ghost btn-sm btn-circle text-error" 
                     title="Delete" 
@@ -928,21 +1169,30 @@ const TemplatesView: React.FC = () => {
                 readOnly={isSubmitting}
               />
               {clickablePlaceholders.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {clickablePlaceholders.map((placeholder, index) => (
-                    <button // Changed from DaisyUI button to custom styled button for pill look
-                      key={index}
-                      type="button" // Explicitly type as button to prevent form submission
-                      className="px-3 py-1 bg-base-200 hover:bg-base-300 text-base-content text-xs rounded-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary transition-colors duration-150 ease-in-out shadow-sm"
-                      onClick={() => {
-                        if (editor) {
-                          editor.chain().focus().insertContent(placeholder).run();
-                        }
-                      }}
-                    >
-                      {placeholder}
-                    </button>
-                  ))}
+                <div className="mt-3">
+                  <p className="text-sm text-base-content/70 mb-2">Click to insert placeholders:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {clickablePlaceholders.map((placeholder, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        className="btn btn-xs btn-outline btn-primary hover:bg-primary/10 hover:text-primary-content transition-all duration-200 ease-in-out transform hover:scale-105 active:scale-95 rounded-full border-2 border-primary/30 hover:border-primary/50 px-3 py-1.5 text-xs font-medium shadow-sm"
+                        onClick={() => {
+                          if (editor) {
+                            editor.chain().focus().insertContent(placeholder).run();
+                          }
+                        }}
+                        title={`Insert ${placeholder}`}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-primary/80">{placeholder}</span>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-primary/60" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clipRule="evenodd" />
+                          </svg>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -1064,37 +1314,67 @@ const TemplatesView: React.FC = () => {
       {/* PDF Preview Modal JSX */}
       {pdfModalOpen && (
         <dialog id="pdf_preview_modal" className="modal modal-open" open>
-          <div className="modal-box w-11/12 max-w-3xl">
-            <form method="dialog">
-              <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onClick={() => { setPdfModalOpen(false); setPdfUrl(null); setPdfError(null); }}>
+          <div className="modal-box w-11/12 max-w-5xl h-[90vh] flex flex-col">
+            <form method="dialog" className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-lg">
+                {previewTemplate?.template_type === 'document' ? 'Document Preview' : 'Email Template Preview'}
+                {previewTemplate?.name && (
+                  <span className="ml-2 text-sm font-normal text-base-content/70">
+                    - {previewTemplate.name}
+                  </span>
+                )}
+              </h3>
+              <button 
+                className="btn btn-sm btn-circle btn-ghost" 
+                onClick={(e) => {
+                  e.preventDefault();
+                  setPdfModalOpen(false);
+                  setPdfUrl(null);
+                  setPdfError(null);
+                  setPreviewTemplate(null);
+                }}
+              >
                 ✕
               </button>
             </form>
-            <h3 className="font-bold text-lg mb-4">PDF Preview</h3>
-            {pdfLoading ? (
-              <div className="flex flex-col items-center justify-center min-h-[300px]">
-                <Loader2 className="animate-spin mb-4" size={32} />
-                <span>Generating PDF preview...</span>
-              </div>
-            ) : pdfError ? (
-              <div className="alert alert-error mb-4">
-                <div className="flex-1">
-                  <X size={18} className="mr-2"/>
-                  <label>{pdfError}</label>
+            
+            <div className="flex-1 flex flex-col bg-base-200 rounded-lg p-4 overflow-auto">
+              {pdfLoading ? (
+                <div className="flex flex-col items-center justify-center flex-1">
+                  <Loader2 className="animate-spin mb-4" size={32} />
+                  <span>Loading preview...</span>
                 </div>
-              </div>
-            ) : pdfUrl ? (
-              <iframe
-                src={pdfUrl}
-                title="PDF Preview"
-                className="w-full h-[70vh] border rounded-lg"
-                style={{ minHeight: 400 }}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center min-h-[300px]">
-                <span>No PDF to display or an error occurred.</span>
-              </div>
-            )}
+              ) : pdfError ? (
+                <div className="alert alert-error mb-4">
+                  <div className="flex-1">
+                    <X size={18} className="mr-2"/>
+                    <label>{pdfError}</label>
+                  </div>
+                </div>
+              ) : previewTemplate?.template_type === 'document' && pdfUrl ? (
+                <iframe
+                  src={pdfUrl}
+                  title="Document Preview"
+                  className="w-full h-full min-h-[70vh] border rounded-lg bg-white"
+                  style={{ minHeight: '500px' }}
+                />
+              ) : previewTemplate?.template_type === 'email' ? (
+                <div className="bg-white p-6 rounded-lg shadow-lg flex-1 overflow-auto">
+                  <div className="border-b border-base-300 pb-4 mb-4">
+                    <h4 className="font-bold text-lg">{previewTemplate.subject || 'No Subject'}</h4>
+                  </div>
+                  <div 
+                    className="prose max-w-none"
+                    dangerouslySetInnerHTML={{ __html: previewTemplate.body || '<p>No content available</p>' }}
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center flex-1">
+                  <FileText size={48} className="text-base-content/30 mb-4" />
+                  <p className="text-base-content/70">No preview available for this template type.</p>
+                </div>
+              )}
+            </div>
           </div>
         </dialog>
       )}
