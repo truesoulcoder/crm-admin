@@ -313,20 +313,54 @@ export async function PUT(request: NextRequest) {
     }
 
     // Prepare update data
-    const updateData = {
-      name: validation.data.name,
-      type: validation.data.type,
-      subject: validation.data.subject || null,
-      content: validation.data.content,
-      is_active: validation.data.is_active ?? true,
-      updated_at: new Date().toISOString()
+    const updatePayload: Partial<UpdateDocumentTemplate> = {
+      ...validation.data, // Start with all validated data from the client
+      updated_at: new Date().toISOString(),
     };
+
+    // Remove fields that should not be updated directly or are managed by DB/triggers
+    // or should not be changed by this operation.
+    // Type assertion needed as 'created_by' and 'user_id' might not be in Partial<UpdateDocumentTemplate>
+    delete (updatePayload as any).created_by; 
+    delete (updatePayload as any).user_id;   
+
+    // If validation.data.file_path is undefined (client didn't send it),
+    // and it's a document template, this implies the client intends to keep the existing file_path.
+    // If validation.data.file_path is explicitly null, it means client wants to clear it.
+    // If validation.data.file_path is a string, client wants to update it.
+    // The current client logic in TemplatesView.tsx always sends a new pdfFile for document edits,
+    // which means validation.data.file_path will contain the new filename.
+    // If it's an email template, file_path might not be relevant or sent.
+    if (validation.data.type === 'document') {
+      if (typeof validation.data.file_path === 'string') {
+        updatePayload.file_path = validation.data.file_path;
+        updatePayload.file_type = validation.data.file_type || 'application/pdf';
+      } else if (validation.data.file_path === null) {
+        updatePayload.file_path = null;
+        updatePayload.file_type = null;
+      } else {
+        // If file_path is undefined for a document, and client is expected to send it,
+        // we might choose to not update file_path and file_type at all, preserving existing.
+        // However, for this fix, we assume client sends what's intended.
+        // If file_path is not in validation.data, it won't be in updatePayload here unless explicitly handled.
+        // To be safe and preserve existing if not sent:
+        if (validation.data.file_path === undefined) {
+            delete updatePayload.file_path;
+            delete updatePayload.file_type;
+        }
+      }
+    } else {
+        // For email templates, ensure file_path and file_type are not set or are nullified if not applicable
+        updatePayload.file_path = null;
+        updatePayload.file_type = null;
+    }
 
     // Update the template
     const { data: updatedTemplate, error: updateError } = await supabase
       .from('document_templates')
-      .update(updateData)
+      .update(updatePayload)
       .eq('id', id)
+      .eq('created_by', user.id) // Ensure user owns the template for the update operation too
       .select()
       .single();
 

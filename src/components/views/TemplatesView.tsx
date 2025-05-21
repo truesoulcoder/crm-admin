@@ -801,7 +801,16 @@ const TemplatesView: React.FC = () => {
       }
 
       let templateData;
-      const filePath = '';
+      // const filePath = ''; // filePath is determined within the document handling block
+
+      // Scan newTemplateBody for actual placeholders used in the content
+      const foundPlaceholdersSet = new Set<string>();
+      const placeholderRegex = /{{\s*([a-zA-Z0-9_]+)\s*}}/g; // Matches {{placeholder_name}}
+      let match;
+      while ((match = placeholderRegex.exec(newTemplateBody)) !== null) {
+        foundPlaceholdersSet.add(match[0]); // match[0] is the full {{placeholder_name}}
+      }
+      const actualPlaceholdersInContent = Array.from(foundPlaceholdersSet);
 
       if (isEmailTemplate) {
         // Handle email template
@@ -810,7 +819,7 @@ const TemplatesView: React.FC = () => {
           subject: templateSubject,
           body_html: templateBody,
           body_text: templateBody.replace(/<[^>]*>?/gm, ''), // Convert HTML to plain text
-          placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : [],
+          available_placeholders: actualPlaceholdersInContent, // Use placeholders scanned from content
           is_active: true,
           user_id: user.id,
           created_by: user.id
@@ -855,14 +864,14 @@ const TemplatesView: React.FC = () => {
           // Prepare document template data
           templateData = {
             name: templateName,
-            template_type: 'document',
-            body: templateBody,
-            file_path: fileName, // Just store the filename, not the full path
-            available_placeholders: clickablePlaceholders.length > 0 ? clickablePlaceholders : [],
-            is_active: true,
-            subject: null,
-            user_id: user.id,
-            created_by: user.id
+            type: 'document', // Corrected field name for API schema
+            content: templateBody, // Corrected field name for API schema
+            file_path: fileName, // Just store the filename
+            file_type: pdfFile.type || 'application/pdf', // Add file_type for the API
+            available_placeholders: actualPlaceholdersInContent, // Use placeholders scanned from content
+            is_active: true, // Client sets this, server also defaults if not provided
+            subject: null, // Explicitly null for document type
+            // user_id and created_by are set by the server based on the authenticated user session
           };
           
           console.log('Document template data prepared:', templateData);
