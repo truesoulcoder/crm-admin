@@ -2,7 +2,7 @@
 
 import { PlusCircle, Search, Edit3, Trash2, X, Mail, MapPin, ChevronUp, ChevronDown, Map, AlertCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 import { supabase } from '@/lib/supabase/client';
 import { formatAddress } from '@/utils/address';
@@ -72,13 +72,15 @@ const CrmView: React.FC = () => {
   });
 
   // Sorting & pagination state
-  const [sortField, setSortField] = useState<keyof Lead>('first_name');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [sortField, setSortField] = useState<keyof Lead>('updated_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [rowsPerPage, setRowsPerPage] = useState<number>(10);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+
   // Data state
   const [leads, setLeads] = useState<Lead[]>([]);
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
@@ -268,6 +270,87 @@ const CrmView: React.FC = () => {
 
   // Get badge color based on status
   const getStatusBadgeColor = (status: string) => getStatusBadgeClass(status);
+
+  // Load Google Maps Places API and initialize autocomplete
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !window.google) {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`;
+      script.async = true;
+      document.head.appendChild(script);
+      
+      script.onload = () => {
+        if (addressInputRef.current) {
+          initAutocomplete();
+        }
+      };
+      
+      return () => {
+        document.head.removeChild(script);
+      };
+    } else if (window.google && addressInputRef.current) {
+      initAutocomplete();
+    }
+  }, []);
+  
+  // Initialize Google Places Autocomplete
+  const initAutocomplete = () => {
+    if (!addressInputRef.current) return;
+    
+    const autocomplete = new window.google.maps.places.Autocomplete(
+      addressInputRef.current,
+      { types: ['address'] }
+    );
+    
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (!place.address_components) return;
+      
+      interface AddressComponents {
+        address?: string;
+        city?: string;
+        state?: string;
+        zip_code?: string;
+      }
+      
+      const addressObj: AddressComponents = {};
+      
+      place.address_components.forEach(component => {
+        const componentType = component.types[0];
+        
+        switch (componentType) {
+          case 'street_number':
+            addressObj.address = component.long_name;
+            break;
+          case 'route':
+            addressObj.address = `${addressObj.address || ''} ${component.long_name}`.trim();
+            break;
+          case 'locality':
+            addressObj.city = component.long_name;
+            break;
+          case 'administrative_area_level_1':
+            addressObj.state = component.short_name;
+            break;
+          case 'postal_code':
+            addressObj.zip_code = component.long_name;
+            break;
+          default:
+            break;
+        }
+      });
+      
+      setFormData(prev => ({
+        ...prev,
+        ...addressObj,
+        property_address: addressObj.address || prev.property_address,
+        property_city: addressObj.city || prev.property_city,
+        property_state: addressObj.state || prev.property_state,
+        property_postal_code: addressObj.zip_code || prev.property_postal_code
+      }));
+    });
+    
+    autocompleteRef.current = autocomplete;
+  };
 
   // Fetch leads from Supabase
   useEffect(() => {
@@ -521,48 +604,51 @@ const CrmView: React.FC = () => {
       {/* Edit/Add Lead Modal */}
       {isFormOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-base-100 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-base-100 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
+            {/* Close Button - Fixed in top-right corner */}
+            <button 
+              className="btn btn-circle btn-ghost btn-sm absolute right-2 top-2 z-10"
+              onClick={() => {
+                setIsFormOpen(false);
+                setCurrentLead(null);
+                setFormData({
+                  status: 'NEW',
+                  first_name: '',
+                  last_name: '',
+                  email: '',
+                  phone: '',
+                  address: '',
+                  city: '',
+                  state: '',
+                  zip_code: ''
+                });
+              }}
+              aria-label="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
             <div className="p-6">
               {currentLead && (
-                <div className="mb-6 rounded-lg overflow-hidden">
+                <div className="mb-6 rounded-lg overflow-hidden relative">
                   <div className="flex items-center bg-base-200 px-4 py-2">
-                    <Map className="w-5 h-5 mr-2 text-primary" />
-                    <h3 className="font-medium">Property Location</h3>
+                    <MapPin className="w-5 h-5 mr-2 text-primary" />
+                    <h3 className="font-medium">Property Location - {formatAddress(currentLead)}</h3>
                   </div>
                   <StreetViewMap 
                     address={formatAddress(currentLead)} 
                     containerStyle={{
                       width: '100%',
-                      height: '250px',
+                      height: '300px',
                       borderRadius: '0 0 0.5rem 0.5rem',
                     }}
                   />
                 </div>
               )}
-              <div className="flex justify-between items-center mb-6">
+              <div className="mb-6">
                 <h2 className="text-xl font-semibold">
                   {currentLead ? `Edit Lead: ${getDisplayName(currentLead)}` : 'Add New Lead'}
                 </h2>
-                <button 
-                  className="btn btn-circle btn-ghost btn-sm"
-                  onClick={() => {
-                    setIsFormOpen(false);
-                    setCurrentLead(null);
-                    setFormData({
-                      status: 'NEW',
-                      first_name: '',
-                      last_name: '',
-                      email: '',
-                      phone: '',
-                      address: '',
-                      city: '',
-                      state: '',
-                      zip_code: ''
-                    });
-                  }}
-                >
-                  <X className="w-5 h-5" />
-                </button>
               </div>
               
               <form onSubmit={(e) => {
@@ -641,14 +727,18 @@ const CrmView: React.FC = () => {
                   
                   <div className="form-control">
                     <label className="label">
-                      <span className="label-text">Address</span>
+                      <span className="label-text">Property Address</span>
                     </label>
                     <input
+                      ref={addressInputRef}
                       type="text"
-                      name="address"
+                      id="property-address"
+                      name="property_address"
                       className="input input-bordered w-full"
-                      value={formData.address || ''}
+                      value={formData.property_address || ''}
                       onChange={handleInputChange}
+                      placeholder="Start typing an address..."
+                      autoComplete="off"
                     />
                   </div>
                   
