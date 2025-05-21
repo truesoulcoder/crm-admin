@@ -1,16 +1,17 @@
 'use client';
 
 import {
-  useTable,
-  useSortBy,
-  usePagination,
-  Column as ReactTableColumn, // Renamed to avoid conflict
-  CellProps,
-  TableInstance,
-  UsePaginationInstanceProps,
-  UseSortByInstanceProps,
-  UsePaginationState
-} from 'react-table';
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
+  useReactTable,
+  SortingState,
+  PaginationState,
+  ColumnDef,
+  CellContext
+} from '@tanstack/react-table';
 import React, { useState, useEffect, useMemo, useCallback, useRef, ChangeEvent } from 'react';
 import { supabase } from '@/lib/supabase/client';
 
@@ -147,69 +148,103 @@ const CrmView: React.FC = () => {
     return tempLeads;
   }, [leads, searchTerm, marketRegionFilter]);
 
-  const columns = useMemo<ReactTableColumn<Lead>[]>(() => [
+  const columnHelper = createColumnHelper<Lead>();
+
+const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
     {
-      Header: 'Name',
-      accessor: (row: Lead) => getDisplayName(row),
+      header: 'Name',
+      accessorFn: (row: Lead) => getDisplayName(row),
       id: 'name',
     },
     {
-      Header: 'Status',
-      accessor: 'status',
+      header: 'Status',
+      accessorKey: 'status',
       id: 'status',
-      Cell: ({ value }: { value: string }) => (
-        <span className={`badge ${getStatusBadgeClass(value)}`}>
-          {componentStatusOptions.find(s => s.value === value)?.label || value}
-        </span>
-      ),
+      cell: (info: CellContext<Lead, string>) => {
+        const value = info.getValue();
+        return (
+          <span className={`badge ${getStatusBadgeClass(value)}`}>
+            {componentStatusOptions.find(s => s.value === value)?.label || value}
+          </span>
+        );
+      },
     },
     {
-      Header: 'Email',
-      accessor: 'email',
-      Cell: ({ value }: { value?: string }) => value || 'N/A',
+      header: 'Email',
+      accessorKey: 'email',
+      cell: (info: CellContext<Lead, string | undefined>) => info.getValue() || 'N/A',
     },
     {
-      Header: 'Property Address',
-      accessor: (row: Lead) => formatFullAddress(row),
+      header: 'Property Address',
+      accessorFn: (row: Lead) => formatFullAddress(row),
       id: 'property_address_full',
     },
     {
-      Header: 'AVM',
-      accessor: 'avm_value',
+      header: 'AVM',
+      accessorKey: 'avm_value',
       id: 'avm_value',
-      Cell: ({ value }: { value?: number }) => value ? `$${value.toLocaleString()}` : 'N/A',
-      sortType: 'basic',
+      cell: (info: CellContext<Lead, number | undefined>) => {
+        const value = info.getValue();
+        return value ? `$${value.toLocaleString()}` : 'N/A';
+      },
+      enableSorting: true,
     },
     {
-      Header: 'Actions',
+      header: 'Actions',
       id: 'actions',
-      Cell: ({ row }: CellProps<Lead>) => (
-        <button
-          onClick={() => handleEditLead(row.original)}
-          className="btn btn-xs btn-ghost text-primary hover:bg-primary hover:text-primary-content p-1"
-          aria-label={`Edit lead ${getDisplayName(row.original)}`}
-        >
-          <Edit3 size={16} />
-        </button>
-      ),
-      disableSortBy: true,
+      cell: (info: CellContext<Lead, any>) => {
+        const row = info.row;
+        return (
+          <button
+            onClick={() => handleEditLead(info.row.original)}
+            className="btn btn-xs btn-ghost text-primary hover:bg-primary hover:text-primary-content p-1"
+            aria-label={`Edit lead ${getDisplayName(info.row.original)}`}
+          >
+            <Edit3 size={16} />
+          </button>
+        );
+      },
+      enableSorting: false,
     },
-  ], [getStatusBadgeClass, getDisplayName, formatFullAddress]);
+  ], [getStatusBadgeClass, getDisplayName, formatFullAddress, handleEditLead]);
 
-  const tableInstance = useTable<Lead>(
-    {
-      columns,
-      data: filteredLeads,
-      initialState: { pageIndex: 0, pageSize: 25, sortBy: [{ id: 'updated_at', desc: true }] },
-      autoResetPage: false,
-      autoResetSortBy: false,
-      autoResetFilters: false,
-      manualPagination: false, 
-      manualSortBy: false, 
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [pagination, setPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 25,
+  });
+
+  const tableInstance = useReactTable<Lead>({
+    columns,
+    data: filteredLeads,
+    state: {
+      sorting,
+      pagination,
     },
-    useSortBy,
-    usePagination
-  ) as TableInstance<Lead> & UsePaginationInstanceProps<Lead> & UseSortByInstanceProps<Lead> & { state: UsePaginationState<Lead> };
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    manualPagination: false, // client-side pagination
+    debugTable: process.env.NODE_ENV === 'development',
+  });
+
+  const { 
+    getHeaderGroups,
+    getRowModel,
+  } = tableInstance;
+
+  const pageIndex = tableInstance.getState().pagination.pageIndex;
+  const pageSize = tableInstance.getState().pagination.pageSize;
+  const pageCount = tableInstance.getPageCount();
+  const canPreviousPage = tableInstance.getCanPreviousPage();
+  const canNextPage = tableInstance.getCanNextPage();
+  const gotoPage = tableInstance.setPageIndex;
+  const nextPage = tableInstance.nextPage;
+  const previousPage = tableInstance.previousPage;
+  const setPageSize = tableInstance.setPageSize;
+  const pageOptions = Array.from({ length: pageCount }, (_, i) => i + 1);
 
   const handleEditLead = (leadToEdit: Lead) => {
     setCurrentLead(leadToEdit);
@@ -345,4 +380,4 @@ const CrmView: React.FC = () => {
   );
 };
 
-export default CrmView_temp;
+export default CrmView;
