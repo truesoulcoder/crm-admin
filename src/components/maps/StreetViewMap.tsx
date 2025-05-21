@@ -24,26 +24,27 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
     overflow: 'hidden'
   },
 }) => {
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: apiKey || '',
-    libraries: ['places'],
-  });
-
   // State hooks - must be called unconditionally at the top
   const [position, setPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [isGeocoding, setIsGeocoding] = useState<boolean>(false);
   const [hasStreetView, setHasStreetView] = useState<boolean>(false);
   const [showMap, setShowMap] = useState<boolean>(false);
   const [mapLoaded, setMapLoaded] = useState<boolean>(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const { isLoaded: mapsLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: apiKey || 'dummy-key',
+    libraries: ['places'],
+  });
   
   // Handle API key and load errors
   useEffect(() => {
     if (!apiKey) {
       console.error('Google Maps API key is not set. Please set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in your environment variables.');
       setApiError('Google Maps API key is not configured');
+      return;
     }
     
     if (loadError) {
@@ -51,6 +52,11 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
       setApiError('Failed to load Google Maps. Please try again later.');
     }
   }, [apiKey, loadError]);
+  
+  // Handle map loaded state
+  const handleMapLoad = useCallback(() => {
+    setMapLoaded(true);
+  }, []);
 
   // Check if Street View is available at the given position
   const checkStreetView = useCallback((lat: number, lng: number, callback: (hasStreetView: boolean) => void) => {
@@ -160,13 +166,9 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
   }, [address, apiKey, checkStreetView]);
   
   // Toggle between map and street view
-  const toggleView = () => {
+  const toggleView = useCallback(() => {
     setShowMap(prev => !prev);
-  };
-
-  const handleMapLoad = () => {
-    setMapLoaded(true);
-  };
+  }, []);
 
   // Loading state
   if (!apiKey) {
@@ -179,7 +181,7 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
   }
 
   // Handle loading and error states
-  if (!isLoaded) {
+  if (!mapsLoaded) {
     return (
       <div style={containerStyle} className="flex items-center justify-center bg-base-200">
         <div className="flex flex-col items-center">
@@ -243,7 +245,7 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
   };
 
   // Render loading state
-  if (!isLoaded) {
+  if (!mapsLoaded) {
     return (
       <div style={containerStyle} className="flex items-center justify-center bg-base-200">
         <div className="flex flex-col items-center">
