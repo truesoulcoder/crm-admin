@@ -1,11 +1,21 @@
-import fs from 'fs/promises';
-import path from 'path';
+import * as fs from 'fs/promises';
+import * as path from 'path';
 
-import chromium from '@sparticuz/chromium'; // For Vercel deployment
+import chromium from '@sparticuz/chromium';
 import { createClient } from '@supabase/supabase-js';
+import { parse } from 'csv-parse/sync';
 import { google } from 'googleapis';
 import { NextRequest, NextResponse } from 'next/server';
-import { launch as puppeteerLaunch } from 'puppeteer-core';
+import puppeteer from 'puppeteer-core';
+
+import { getEmailTemplate } from '@/services/templateService';
+
+interface SenderInfo {
+    sender_name?: string;
+    sender_email?: string;
+    name?: string;
+    email?: string;
+}
 
 // Environment variables
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -13,7 +23,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const GOOGLE_SERVICE_ACCOUNT_KEY = process.env.GOOGLE_SERVICE_ACCOUNT_KEY!;
 const TEST_RECIPIENT_EMAIL = process.env.TEST_RECIPIENT_EMAIL!;
 
-
+// Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 interface Lead {
@@ -99,7 +109,7 @@ async function generateLoiPdf(leadData: Lead, loiTemplateData: TemplateData): Pr
         
         const renderedHtml = renderLoiTemplate(htmlContent, loiTemplateData);
 
-        const browser = await puppeteerLaunch({
+        const browser = await puppeteer.launch({
             args: chromium.args,
             defaultViewport: chromium.defaultViewport,
             executablePath: await chromium.executablePath(),
@@ -116,7 +126,7 @@ async function generateLoiPdf(leadData: Lead, loiTemplateData: TemplateData): Pr
 
     } catch (error) {
         console.error('Error generating PDF:', error);
-        await logEmailAttempt(leadData, loiTemplateData.contact_name || 'N/A', loiTemplateData.sender_name || TEST_SENDER_NAME, DEFAULT_ADMIN_EMAIL, 'PDF Generation Failed', '', 'FAILED_TO_SEND', `Error generating PDF: ${(error as Error).message}`);
+        await logEmailAttempt(leadData, loiTemplateData.contact_name || 'N/A', loiTemplateData.sender_name || 'N/A', 'N/A', 'PDF Generation Failed', '', 'FAILED_TO_SEND', `Error generating PDF: ${(error as Error).message}`);
         return null;
     }
 }
@@ -158,8 +168,10 @@ async function logEmailAttempt(
 }
 
 export async function POST(req: NextRequest) {
+    console.log('Test email endpoint called');
+    
     if (!GOOGLE_SERVICE_ACCOUNT_KEY) {
-        // This initial check is fine.
+        console.error('Google Service Account Key not configured');
         return NextResponse.json({ error: 'Google Service Account Key not configured' }, { status: 500 });
     }
 
@@ -184,30 +196,86 @@ export async function POST(req: NextRequest) {
         }
         lead = fetchedLeads as Lead;
 
+        // 3. Get email template (using a default template ID or fetch the first available)
+        const DEFAULT_TEMPLATE_ID = 'default-email-template';
+        const emailTemplate = await getEmailTemplate(DEFAULT_TEMPLATE_ID);
+        if (!emailTemplate) {
+            console.warn('No email template found with ID, using default template', DEFAULT_TEMPLATE_ID);
+            // Continue with the rest of the flow which uses the local template file as fallback
+        } else {
+            console.log('Using email template:', emailTemplate.name);
+        }
+
+        // 5. Get sender info from senders.csv
+        const sendersCsvPath = path.join(process.cwd(), 'src', 'app', 'ELI5-ENGINE', 'csv', 'senders.csv');
+        
+        // Read and parse senders.csv
+        let csvContent: string;
+        try {
+            csvContent = await fs.readFile(sendersCsvPath, 'utf-8');
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error('Failed to read senders.csv:', errorMessage);
+            return NextResponse.json({ error: 'Failed to load sender information' }, { status: 500 });
+        }
+
+        const records = parse(csvContent, {
+            columns: true,
+            skip_empty_lines: true,
+            trim: true
+        }) as SenderInfo[];
+        
+        if (records.length === 0) {
+            console.error('No senders found in senders.csv');
+            return NextResponse.json({ error: 'No senders configured' }, { status: 500 });
+        }
+        
+        // Use the first sender from the CSV
+        const sender = records[0];
+        if (!sender.sender_name || !sender.sender_email) {
+            console.error('Invalid sender format in senders.csv');
+            return NextResponse.json({ error: 'Invalid sender format' }, { status: 500 });
+        }
+        
+        const senderInfo = {
+            email: sender.sender_email,
+            name: sender.sender_name
+        };
+
         const contactName = lead.contact1_name!;
 
         // 1. Prepare data for email template
-        const emailTemplateData: TemplateData = {
+        const emailTemplateData = {
             property_address: lead.property_address || 'N/A',
             property_city: lead.property_city || 'N/A',
             property_state: lead.property_state || 'N/A',
             property_postal_code: lead.property_postal_code || 'N/A',
             contact_name: contactName,
-            sender_name: lead.sender_name,
+            sender_name: senderInfo.name,
             sender_title: lead.sender_title,
         };
 
-        // 2. Read and render email template
-        const emailHtmlTemplatePath = path.resolve(process.cwd(), 'src', 'app', 'api', 'test-email', 'email-template.html');
-        const emailHtmlTemplate = await fs.readFile(emailHtmlTemplatePath, 'utf-8');
-        
-        const subjectMatch = emailHtmlTemplate.match(/<!--\s*SUBJECT:\s*(.+?)\s*-->/);
+        // 2. Use template from database if available, otherwise fall back to local file
         let emailSubjectTemplate = "Your Property at {{property_address}}";
-        if (subjectMatch && subjectMatch[1]) {
-            emailSubjectTemplate = subjectMatch[1];
+        let emailBodyHtml: string;
+
+        if (emailTemplate) {
+            // Use template from database
+            emailSubjectTemplate = emailTemplate.subject;
+            emailBodyHtml = renderEmailTemplate(emailTemplate.body_html, emailTemplateData);
+        } else {
+            // Fall back to local template file
+            const emailHtmlTemplatePath = path.resolve(process.cwd(), 'src', 'app', 'api', 'test-email', 'email-template.html');
+            const emailHtmlTemplate = await fs.readFile(emailHtmlTemplatePath, 'utf-8');
+            
+            const subjectMatch = emailHtmlTemplate.match(/<!--\s*SUBJECT:\s*(.+?)\s*-->/);
+            if (subjectMatch && subjectMatch[1]) {
+                emailSubjectTemplate = subjectMatch[1];
+            }
+            emailBodyHtml = renderEmailTemplate(emailHtmlTemplate, emailTemplateData);
         }
+
         const finalEmailSubject = renderEmailTemplate(emailSubjectTemplate, emailTemplateData);
-        const emailBodyHtml = renderEmailTemplate(emailHtmlTemplate, emailTemplateData);
 
         // 3. Prepare data for LOI PDF
         const currentDate = new Date();
@@ -223,9 +291,10 @@ export async function POST(req: NextRequest) {
             property_zip_code: lead.property_postal_code || 'N/A',
         };
 
-        // 4. Generate LOI PDF
+        // 2. Generate PDF (if needed)
         const pdfBuffer = await generateLoiPdf(lead, loiTemplateData);
         if (!pdfBuffer) {
+            await logEmailAttempt(lead, contactName, senderInfo.name, senderInfo.email, 'PDF Generation Failed', '', 'FAILED_TO_SEND', 'Failed to generate PDF');
             return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 });
         }
         
@@ -234,7 +303,7 @@ export async function POST(req: NextRequest) {
         const loiFilename = `LOI_${(lead.property_address || 'property').replace(/\s+/g, '_')}.pdf`;
 
         const messageParts = [
-            `From: "${emailTemplateData.sender_name}" <${sender_email}>`,
+            `From: "${senderInfo.name}" <${senderInfo.email}>`,
             `To: ${TEST_RECIPIENT_EMAIL}`,
             `Subject: ${finalEmailSubject}`,
             'MIME-Version: 1.0',
@@ -261,9 +330,8 @@ export async function POST(req: NextRequest) {
             credentials: JSON.parse(GOOGLE_SERVICE_ACCOUNT_KEY!),
             scopes: ['https://www.googleapis.com/auth/gmail.send'],
         });
-        // Corrected: Use setImpersonatedUser for service account impersonation
-        (auth as any).setImpersonatedUser(sender_email); 
-
+        // Set the sender email for impersonation
+        (auth as any).setImpersonatedUser(senderInfo.email); 
 
         const gmail = google.gmail({ version: 'v1', auth });
         await gmail.users.messages.send({
@@ -273,15 +341,29 @@ export async function POST(req: NextRequest) {
             },
         });
 
-        await logEmailAttempt(lead, contactName, emailTemplateData.sender_name!, sender_email, finalEmailSubject, emailBodyHtml, 'SENT');
-        return NextResponse.json({ message: 'Test email with PDF sent successfully' });
+        // 5. Log successful email attempt
+        await logEmailAttempt(lead, contactName, senderInfo.name, senderInfo.email, finalEmailSubject, emailBodyHtml, 'SENT');
+
+        return NextResponse.json({ message: 'Test email sent successfully' });
 
     } catch (error) {
-        // This is the main catch block for the POST function
-        console.error('Error in POST /api/test-email:', error);
-        const errorMessage = (error instanceof Error) ? error.message : String(error);
-        // Use the lead variable which is defined in the outer scope of this try block
-        await logEmailAttempt(lead, lead?.contact1_name || 'N/A', sender_name, sender_email, 'Test Email Failed', '', 'FAILED_TO_SEND', errorMessage);
-        return NextResponse.json({ error: 'Failed to send test email', details: errorMessage }, { status: 500 });
+        console.error('Error in test email endpoint:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        
+        console.error('Error details:', {
+            message: errorMessage,
+            stack: errorStack,
+            error: error instanceof Error ? JSON.stringify(error, Object.getOwnPropertyNames(error)) : String(error)
+        });
+        
+        return NextResponse.json(
+            { 
+                error: 'Internal server error', 
+                message: errorMessage,
+                ...(process.env.NODE_ENV === 'development' ? { stack: errorStack } : {})
+            },
+            { status: 500 }
+        );
     }
 }

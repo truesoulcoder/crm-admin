@@ -1,9 +1,13 @@
 // src/components/maps/StreetViewMap.tsx
 'use client';
 
-import { GoogleMap, StreetViewPanorama, MarkerF } from '@react-google-maps/api';
+import { GoogleMap, StreetViewPanorama, MarkerF, useJsApiLoader } from '@react-google-maps/api';
 import { MapPin, AlertTriangle, Loader2, RefreshCw, Eye, Map } from 'lucide-react';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+
+// Define the libraries array with the correct type
+type Libraries = ('drawing' | 'geometry' | 'localContext' | 'places' | 'visualization' | 'marker')[];
+const libraries: Libraries = ['places', 'geocoding', 'streetView'];
 
 interface StreetViewMapProps {
   address: string;
@@ -33,40 +37,74 @@ const LoadingDisplay: React.FC<{ message: string; style: React.CSSProperties }> 
   </div>
 );
 
-const StreetViewMap: React.FC<StreetViewMapProps> = ({
+const StreetViewMapContent: React.FC<StreetViewMapProps & { isApiReady: boolean }> = ({
   address,
   containerStyle = defaultContainerStyle,
+  isApiReady,
 }) => {
   const [position, setPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [geocodingError, setGeocodingError] = useState<string | null>(null);
   const [isGeocoding, setIsGeocoding] = useState<boolean>(false);
   const [hasStreetView, setHasStreetView] = useState<boolean>(false);
-  const [showStreetView, setShowStreetView] = useState<boolean>(true); // Prefer Street View if available
-  const [criticalApiError, setCriticalApiError] = useState<string | null>(null);
-  const [isApiReady, setIsApiReady] = useState<boolean>(false);
+  const [showStreetView, setShowStreetView] = useState<boolean>(true);
 
   const geocoderRef = useRef<google.maps.Geocoder | null>(null);
   const streetViewServiceRef = useRef<google.maps.StreetViewService | null>(null);
 
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  // Memoize the geocode function to prevent infinite re-renders
+  const geocodeAddressAndCheckStreetViewMemoized = useCallback(
+    async (addr: string) => {
+      if (!geocoderRef.current) {
+        console.warn('Geocoder not ready.');
+        return;
+      }
 
+      setIsGeocoding(true);
+      setGeocodingError(null);
+      setPosition(null);
+      setHasStreetView(false);
+
+      try {
+        const { results } = await geocoderRef.current.geocode({ address: addr.trim() });
+        if (results && results[0]?.geometry?.location) {
+          const location = results[0].geometry.location;
+          const latLng = { lat: location.lat(), lng: location.lng() };
+          setPosition(latLng);
+          
+          // Check if Street View is available
+          const hasSV = await checkStreetViewAvailability(latLng);
+          setHasStreetView(hasSV);
+        } else {
+          setGeocodingError('No results found for this address.');
+        }
+      } catch (error) {
+        console.error('Geocoding error:', error);
+        setGeocodingError('Failed to find this location. Please try another address.');
+      } finally {
+        setIsGeocoding(false);
+      }
+    },
+    [checkStreetViewAvailability]
+  );
+
+  // Initialize services when component mounts or when API is ready
   useEffect(() => {
-    if (!apiKey) {
-      setCriticalApiError('Google Maps API key is not configured.');
-      setIsApiReady(false);
-      return;
-    }
-    if (window.google && window.google.maps && window.google.maps.Geocoder && window.google.maps.StreetViewService) {
+    if (isApiReady && window.google?.maps) {
       geocoderRef.current = new window.google.maps.Geocoder();
       streetViewServiceRef.current = new window.google.maps.StreetViewService();
-      setIsApiReady(true);
-      setCriticalApiError(null);
-    } else {
-      // API not yet loaded by parent (GoogleMapsLoader)
-      setIsApiReady(false);
-      // No critical error here, parent loader should show loading/error
+      
+      // Initial geocode
+      if (address) {
+        void geocodeAddressAndCheckStreetViewMemoized(address);
+      }
     }
-  }, [apiKey]);
+    
+    return () => {
+      // Cleanup
+      geocoderRef.current = null;
+      streetViewServiceRef.current = null;
+    };
+  }, [address, geocodeAddressAndCheckStreetViewMemoized, isApiReady]);
 
   const checkStreetViewAvailability = useCallback(async (latLng: google.maps.LatLngLiteral): Promise<boolean> => {
     if (!streetViewServiceRef.current) return false;
@@ -83,50 +121,14 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
     }
   }, []);
 
-  const geocodeAddressAndCheckStreetView = useCallback(async (currentAddress: string) => {
-    if (!geocoderRef.current) {
-      console.warn('Geocoder not ready.');
-      return;
-    }
-
-    setIsGeocoding(true);
-    setGeocodingError(null);
-    setPosition(null);
-    setHasStreetView(false);
-
-    try {
-      const { results } = await geocoderRef.current.geocode({ address: currentAddress.trim() });
-      if (results && results[0] && results[0].geometry && results[0].geometry.location) {
-        const location = results[0].geometry.location;
-        const latLng = { lat: location.lat(), lng: location.lng() };
-        setPosition(latLng);
-
-        const streetViewAvailable = await checkStreetViewAvailability(latLng);
-        setHasStreetView(streetViewAvailable);
-        setShowStreetView(streetViewAvailable); // Show SV if available, otherwise map
-      } else {
-        setGeocodingError('Could not find location for this address. Please check the address format.');
-      }
-    } catch (error: any) {
-      console.error('Geocoding error:', error);
-      if (error.code === 'ZERO_RESULTS') {
-        setGeocodingError('Address not found. Please try a different address.');
-      } else {
-        setGeocodingError('Error processing the address. Please try again.');
-      }
-    } finally {
-      setIsGeocoding(false);
-    }
-  }, [checkStreetViewAvailability]); // geocoderRef.current is stable after API ready
-
   useEffect(() => {
     if (isApiReady && address) {
       const handler = setTimeout(() => {
-        void geocodeAddressAndCheckStreetView(address);
+        void geocodeAddressAndCheckStreetViewMemoized(address);
       }, 700); // Debounce
       return () => clearTimeout(handler);
     }
-  }, [address, isApiReady, geocodeAddressAndCheckStreetView]);
+  }, [address, isApiReady, geocodeAddressAndCheckStreetViewMemoized]);
 
   const toggleViewMode = useCallback(() => {
     if (hasStreetView) { // Only toggle if Street View is an option
@@ -146,20 +148,19 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
      return <ErrorDisplay message="Google Maps API key not set and API not loaded." style={containerStyle} />;
   }
 
+  // Show loading state while geocoding
   if (isGeocoding) {
     return <LoadingDisplay message="Fetching location data..." style={containerStyle} />;
   }
 
+  // Show error if geocoding failed
   if (geocodingError) {
     return <ErrorDisplay message={geocodingError} style={containerStyle} />;
   }
-
+  
+  // Show message if no position is available
   if (!position) {
-    return (
-      <div style={containerStyle} className="bg-base-200 rounded-lg flex items-center justify-center">
-        <p className="text-base-content/70">Enter an address to see Street View or Map.</p>
-      </div>
-    );
+    return <ErrorDisplay message="No location data available." style={containerStyle} />;
   }
   
   const panoramaOptions = {
@@ -211,6 +212,33 @@ const StreetViewMap: React.FC<StreetViewMapProps> = ({
        )}
     </div>
   );
+};
+
+const StreetViewMap: React.FC<StreetViewMapProps> = (props) => {
+  const { isLoaded: isApiReady, loadError } = useJsApiLoader({
+    id: 'google-maps-script',
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+    libraries,
+  });
+
+  // Memoize the map container style
+  const mapContainerStyle = useMemo(() => ({
+    ...defaultContainerStyle,
+    ...props.containerStyle,
+  }), [props.containerStyle]);
+
+  if (loadError) {
+    return <ErrorDisplay 
+      message="Error loading Google Maps. Please try again later." 
+      style={mapContainerStyle} 
+    />;
+  }
+
+  if (!isApiReady) {
+    return <LoadingDisplay message="Loading map..." style={mapContainerStyle} />;
+  }
+
+  return <StreetViewMapContent {...props} isApiReady={isApiReady} />;
 };
 
 export default StreetViewMap;

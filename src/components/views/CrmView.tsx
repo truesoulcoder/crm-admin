@@ -68,6 +68,7 @@ const componentInitialFormData: Partial<Lead> = {
 };
 
 const CrmView: React.FC = () => {
+  // State hooks must be called at the top level
   const [leads, setLeads] = useState<Lead[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [marketRegionFilter, setMarketRegionFilter] = useState('');
@@ -78,24 +79,24 @@ const CrmView: React.FC = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-
+  const [totalLeads, setTotalLeads] = useState(0);
   const addressInputRef = useRef<HTMLInputElement>(null);
 
   const fetchLeads = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const { data, error: supabaseError } = await supabase
+      const { data, error: supabaseError, count } = await supabase
         .from('crm_leads')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('updated_at', { ascending: false });
 
       if (supabaseError) throw supabaseError;
+      
       setLeads(data || []);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
-      console.error('Failed to fetch leads:', errorMessage);
-      setError(errorMessage);
+      setTotalLeads(count || 0);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch leads');
     } finally {
       setIsLoading(false);
     }
@@ -188,8 +189,7 @@ const CrmView: React.FC = () => {
     };
     setFormData(mappedFormData);
     setIsFormOpen(true);
-  }, [setCurrentLead, setFormData, setIsFormOpen]);
-
+    
   const columnHelper = createColumnHelper<Lead>();
 
   const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
@@ -243,9 +243,9 @@ const CrmView: React.FC = () => {
       },
     },
     {
-      header: 'Assessed Value',
-      accessorKey: 'avm_value',
-      id: 'avm_value',
+      header: 'Assessed Total',
+      accessorKey: 'assessed_total',
+      id: 'assessed_total',
       cell: (info: CellContext<Lead, number | undefined>) => {
         const value = info.getValue();
         return value ? `$${value.toLocaleString()}` : 'N/A';
@@ -253,22 +253,15 @@ const CrmView: React.FC = () => {
       enableSorting: true,
     },
     {
-      header: 'Actions',
-      id: 'actions',
-      cell: (info: CellContext<Lead, any>) => {
-        const row = info.row;
-        return (
-          <button
-            onClick={() => handleEditLead(info.row.original)}
-            className="btn btn-xs btn-ghost text-primary hover:bg-primary hover:text-primary-content p-1"
-            aria-label={`Edit lead ${getDisplayName(info.row.original)}`}
-          >
-            <Edit3 size={16} />
-          </button>
-        );
+      header: 'Assessed Total',
+      accessorKey: 'assessed_total',
+      id: 'assessed_total',
+      cell: (info: CellContext<Lead, number | undefined>) => {
+        const value = info.getValue();
+        return value ? `$${value.toLocaleString()}` : 'N/A';
       },
-      enableSorting: false,
-    },
+      enableSorting: true,
+    }
   ], [getStatusBadgeClass, getDisplayName, formatFullAddress, handleEditLead]);
 
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -387,13 +380,7 @@ const CrmView: React.FC = () => {
     }
   };
 
-  if (isLoading && !isFormOpen && leads.length === 0) { 
-    return (
-      <div className="flex justify-center items-center min-h-screen bg-base-200">
-        <span className="loading loading-lg loading-spinner text-primary"></span>
-      </div>
-    );
-  }
+  // Loading state is now handled in the main return statement
 
   return (
     <div className="flex flex-col space-y-4">

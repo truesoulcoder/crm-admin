@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { logSystemEvent } from './logService';
 import { generatePdfFromHtml, generatePdfFromTemplateWithBranding } from './pdfService';
+import { EmailTemplate } from '@/types';
 
 const BUCKET_NAME = 'pdf-templates';
 
@@ -95,6 +96,38 @@ export async function uploadPdfTemplate({
       },
     });
     throw error;
+  }
+}
+
+/**
+ * Fetches an email template by its ID from the database
+ * @param templateId - The ID of the template to fetch
+ * @returns The email template if found, null otherwise
+ */
+export async function getEmailTemplate(templateId: string): Promise<EmailTemplate | null> {
+  try {
+    const { data, error } = await supabase
+      .from('email_templates')
+      .select('*')
+      .eq('id', templateId)
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return data as EmailTemplate;
+  } catch (error) {
+    console.error('Error fetching email template:', error);
+    await logSystemEvent({
+      event_type: 'TEMPLATE_FETCH_ERROR',
+      message: 'Failed to fetch email template',
+      details: {
+        templateId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
+    return null;
   }
 }
 
