@@ -22,6 +22,7 @@ const GoogleMapsLoader: React.FC<GoogleMapsLoaderProps> = memo(({ children }) =>
 
   return (
     <LoadScript
+      id="google-maps-script-main-loader"
       googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
       libraries={libraries}
       loadingElement={<div>Loading...</div>}
