@@ -1,11 +1,11 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
-import { prepareAndSendOfferEmail } from '@/actions/emailSending.action';
+import { prepareAndSendOfferEmail, Lead } from '@/actions/emailSending.action'; // Imported Lead interface
 import { createAdminServerClient } from '@/lib/supabase/server';
 import { Database } from '@/types/supabase';
 
-type Lead = Database['public']['Tables']['normalized_leads']['Row'];
+// Removed local Lead type alias: type Lead = Database['public']['Tables']['normalized_leads']['Row'];
 
 export const dynamic = 'force-dynamic';
 
@@ -53,18 +53,71 @@ export async function POST(request: Request) {
     
     const adminEmail = session.user.email;
 
-    // 3. Get a test lead with proper type assertion for campaign_id
-    const { data: testLeadData, error: leadError } = await supabase
+    // 3. Get a test lead with a valid email from the campaign's target market region
+    if (!campaign.target_market_region) {
+      return new NextResponse(
+        JSON.stringify({ error: 'Campaign is missing a target market region' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // First, try to find a lead with contact1_email_1 (most common case)
+    let { data: testLeadData, error: leadError } = await supabase
       .from('normalized_leads')
       .select('*')
-      .eq('campaign_id', String(campaignId))
+      .eq('market_region', campaign.target_market_region)
+      .not('contact1_email_1', 'is', null)
+      .not('contact1_email_1', 'eq', '')
       .limit(1)
       .single();
 
+    // If no lead with contact1_email_1, try contact2_email_1
+    if (leadError || !testLeadData) {
+      ({ data: testLeadData, error: leadError } = await supabase
+        .from('normalized_leads')
+        .select('*')
+        .eq('market_region', campaign.target_market_region)
+        .not('contact2_email_1', 'is', null)
+        .not('contact2_email_1', 'eq', '')
+        .limit(1)
+        .single());
+    }
+
+    // If still no lead, try contact3_email_1
+    if (leadError || !testLeadData) {
+      ({ data: testLeadData, error: leadError } = await supabase
+        .from('normalized_leads')
+        .select('*')
+        .eq('market_region', campaign.target_market_region)
+        .not('contact3_email_1', 'is', null)
+        .not('contact3_email_1', 'eq', '')
+        .limit(1)
+        .single());
+    }
+
+    // If still no lead, try mls_curr_list_agent_email
+    if (leadError || !testLeadData) {
+      ({ data: testLeadData, error: leadError } = await supabase
+        .from('normalized_leads')
+        .select('*')
+        .eq('market_region', campaign.target_market_region)
+        .not('mls_curr_list_agent_email', 'is', null)
+        .not('mls_curr_list_agent_email', 'eq', '')
+        .limit(1)
+        .single());
+    }
+
     if (leadError || !testLeadData) {
       return new NextResponse(
-        JSON.stringify({ error: 'No leads found for this campaign' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          error: `No leads with valid email addresses found in market region: ${campaign.target_market_region}`,
+          marketRegion: campaign.target_market_region,
+          details: 'The system looks for leads with any of these email fields populated: contact1_email_1, contact2_email_1, contact3_email_1, or mls_curr_list_agent_email'
+        }),
+        { 
+          status: 400, 
+          headers: { 'Content-Type': 'application/json' } 
+        }
       );
     }
     
@@ -81,7 +134,7 @@ export async function POST(request: Request) {
     const senderId = campaignWithSender.sender_id;
     if (!senderId) {
       return new NextResponse(
-        JSON.stringify({ error: 'Campaign is missing sender ID' }),
+        JSON.stringify({ error: `Campaign (ID: ${campaignId}) is missing sender ID` }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -140,29 +193,40 @@ export async function POST(request: Request) {
         console.error('Error fetching document template:', documentTemplateError.message);
         addLog(`Warning: Could not fetch document template ID ${documentTemplateId}. Proceeding without PDF attachment.`, 'warning');
       } else if (documentTemplate) {
-        documentHtmlContent = documentTemplate.content;
+        documentHtmlContent = documentTemplate.content ?? undefined;
       }
     } else {
         addLog('No document template assigned to this campaign. Test email will not have a PDF attachment.', 'info');
     }
 
     // 8. Prepare lead data for the email
-    // Ensure testLead is cast to the Lead type expected by prepareAndSendOfferEmail
+    // Ensure testLeadData's nullable string properties are converted to undefined for the Lead interface.
     const leadDataForEmail: Lead = {
-      id: testLead.id,
-      contact1_name: testLead.contact1_name ?? 'Test Recipient',
-      contact1_email_1: adminEmail, // For preflight, send to admin
-      contact2_email_1: testLead.contact2_email_1 ?? undefined,
-      contact2_name: testLead.contact2_name ?? undefined,
-      contact3_email_1: testLead.contact3_email_1 ?? undefined,
-      contact3_name: testLead.contact3_name ?? undefined,
-      property_address: testLead.property_address || 'Test Property',
-      wholesale_value: testLead.wholesale_value || 0,
-      assessed_total: testLead.assessed_total || 0,
-      mls_curr_list_agent_name: testLead.mls_curr_list_agent_name || undefined,
-      mls_curr_list_agent_email: testLead.mls_curr_list_agent_email || undefined,
-      // Include any other fields from testLead that are expected by the Lead type or templates
-      ...(testLead as any) // Spread remaining properties, cast to any if necessary for safety
+      id: testLeadData.id, // Assuming testLeadData.id is a non-null number after successful fetch
+      contact1_name: testLeadData.contact1_name ?? undefined,
+      contact1_email_1: adminEmail, // adminEmail is string, compatible with string | undefined
+      contact2_name: testLeadData.contact2_name ?? undefined,
+      contact2_email_1: testLeadData.contact2_email_1 ?? undefined,
+      contact3_name: testLeadData.contact3_name ?? undefined,
+      contact3_email_1: testLeadData.contact3_email_1 ?? undefined,
+      property_address: testLeadData.property_address ?? undefined,
+      wholesale_value: testLeadData.wholesale_value ?? null,
+      assessed_total: testLeadData.assessed_total ?? null,
+      mls_curr_list_agent_name: testLeadData.mls_curr_list_agent_name ?? undefined,
+      mls_curr_list_agent_email: testLeadData.mls_curr_list_agent_email ?? undefined,
+
+      // Fields for [key: string]: any, mapped from testLeadData
+      // Ensure correct null to undefined conversion if template expects undefined for empty/null strings
+      property_city: testLeadData.property_city ?? undefined,
+      property_state: testLeadData.property_state ?? undefined,
+      market_region: testLeadData.market_region ?? undefined,
+      // avm_value: if testLeadData.avm_value is number | null, and 'any' can take it.
+      // If it must be number or undefined for template, then more specific mapping is needed.
+      // Assuming testLeadData.avm_value can be passed as is if it's number | null for 'any'.
+      // Or, to be safe and align with string optional fields:
+      avm_value: typeof testLeadData.avm_value === 'number' ? testLeadData.avm_value : null,
+      // Other fields like property_zip_code, sq_ft, etc., are omitted as they previously caused 'property does not exist' errors
+      // or are not explicitly part of the Lead interface and their existence on testLeadData is unconfirmed for this mapping.
     };
 
     // 9. Prepare sender info
@@ -212,7 +276,8 @@ export async function POST(request: Request) {
           is_preflight: true,
           admin_email: adminEmail,
           timestamp: new Date().toISOString(),
-          gmail_message_id: result.messageId || null
+          gmail_message_id: result.messageId ?? undefined,
+          gmail_thread_id: result.threadId ?? undefined
         }),
         campaign_job_id: `preflight-${Date.now()}`,
         // Add any other required fields for your email_tasks table
@@ -230,7 +295,7 @@ export async function POST(request: Request) {
       message: 'Preflight check completed successfully',
       details: JSON.stringify({
         admin_email: adminEmail,
-        test_lead_id: testLead.id,
+        test_lead_id: testLead.id ?? undefined,
         sender_id: sender.id,
         timestamp: new Date().toISOString()
       }),

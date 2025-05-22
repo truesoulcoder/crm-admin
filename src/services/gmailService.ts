@@ -37,7 +37,7 @@ async function sendEmail(
   subject: string,
   htmlBody: string,
   attachments?: { filename: string; content: Buffer }[]
-): Promise<{ success: boolean; messageId?: string; error?: unknown }> {
+): Promise<{ success: boolean; messageId?: string; threadId?: string; error?: unknown }> {
   try {
     authClient.subject = impersonatedUserEmail;
 
@@ -76,7 +76,7 @@ async function sendEmail(
       requestBody: { raw: rawMessage },
     });
 
-    return { success: true, messageId: res.data.id! };
+    return { success: true, messageId: res.data.id!, threadId: res.data.threadId! };
   } catch (error) {
     console.error('sendEmail error:', error);
     return { success: false, error };

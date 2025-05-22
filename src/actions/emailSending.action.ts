@@ -5,6 +5,7 @@ import path from 'path'; // Import path module
 
 import { google, gmail_v1 } from 'googleapis';
 
+import { sendEmail as sendEmailViaGmail } from '@/services/gmailService';
 import { generatePdfFromHtml } from '@/services/pdfService';
 import { getAdminSupabaseClient } from '@/services/supabaseAdminService';
 import { renderTemplate } from '@/services/templateService';
@@ -30,20 +31,23 @@ if (!TEST_RECIPIENT_EMAIL) {
 
 export interface Lead {
   id: number;  // Changed to number to match database type
-  contact1_name?: string | null;
-  contact1_email_1?: string | null;
-  contact2_email_1?: string | null;
-  contact3_email_1?: string | null;
-  property_address?: string | null;
-  wholesale_value?: number | null;
-  assessed_total?: number | null;
-  mls_curr_list_agent_name?: string | null;
-  mls_curr_list_agent_email?: string | null;
+  contact1_name?: string | undefined;
+  contact1_email_1?: string | undefined;
+  contact2_name?: string | undefined; // Added contact2_name for consistency
+  contact2_email_1?: string | undefined;
+  contact3_name?: string | undefined; // Added contact3_name for consistency
+  contact3_email_1?: string | undefined;
+  property_address?: string | undefined;
+  wholesale_value?: number | null; // Keep as number | null if 0 is a valid value but null means not set
+  assessed_total?: number | null; // Keep as number | null
+  mls_curr_list_agent_name?: string | undefined;
+  mls_curr_list_agent_email?: string | undefined;
   // Other lead properties that might be used in templates
   [key: string]: any;  // Allow additional properties for template rendering
 }
 
 export interface SenderInfo {
+  id?: string; // Database ID of the sender
   fullName: string;
   title: string;
   email: string; // Email of the employee to impersonate for sending
@@ -52,7 +56,8 @@ export interface SenderInfo {
 export interface EmailSendingResult {
   success: boolean;
   message: string;
-  messageId?: string | null; // Message ID from Gmail API if successful
+  messageId?: string | undefined; // Message ID from Gmail API if successful
+  threadId?: string | undefined; // Thread ID from Gmail API if successful
   error?: any; // To store any error encountered
   offerDetails?: OfferDetails; 
   sender?: SenderInfo; 
@@ -184,89 +189,48 @@ export async function prepareAndSendOfferEmail(
     property_address: lead.property_address || 'Your Property'
   });
 
-  const boundary = `boundary_${Date.now()}`;
-  const messageParts = [
-    `From: ${sender.fullName} <${sender.email}>`,
-    `To: ${recipient}`,
-    `Subject: ${subject}`,
-    'MIME-Version: 1.0',
-    `Content-Type: multipart/mixed; boundary="${boundary}"`,
-    '',
-    `--${boundary}`,
-    'Content-Type: text/plain; charset=utf-8',
-    'Content-Transfer-Encoding: 7bit',
-    '',
-    emailBody.replace(/\n/g, '\r\n'),
-    ''
-  ];
+    // Prepare attachments
+    const attachments: { filename: string; content: Buffer }[] = [];
+    if (pdfBuffer) {
+      attachments.push({
+        filename: 'OfferLetter.pdf', // Consider making filename dynamic or configurable
+        content: pdfBuffer,
+      });
+    }
+    // Add any other attachments from options.attachments if provided
+    if (options.attachments) {
+        attachments.push(...options.attachments);
+    }
 
-  // Add PDF attachment if provided
-  if (options.pdfBuffer) {
-    const filename = `offer_${lead.id || 'document'}.pdf`;
-    const content = options.pdfBuffer.toString('base64');
-    
-    messageParts.push(
-      `--${boundary}`,
-      'Content-Type: application/pdf',
-      `Content-Disposition: attachment; filename="${filename}"`,
-      'Content-Transfer-Encoding: base64',
-      '',
-      content,
-      ''
+    // Call the centralized Gmail sending service
+    // Assuming emailBody is HTML, as gmailService.sendEmail expects htmlBody
+    const sendResult = await sendEmailViaGmail(
+      sender.email, // Impersonated user email
+      recipient,    // Recipient's email address
+      subject,      // Rendered subject
+      emailBody,    // Rendered HTML email body. Ensure this is HTML.
+      attachments   // Array of attachments
     );
-  }
-  
-  // Close the message
-  messageParts.push(`--${boundary}--`);
-  
-  const email = messageParts.join('\r\n');
 
-    // Encode message for Gmail API (Base64Url)
-    const encodedMessage = Buffer.from(email)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=/g, '');
-
-    try {
-      console.log('[emailSending.action.ts] Attempting to authenticate with Google...');
-      const auth = new google.auth.GoogleAuth({
-        credentials: JSON.parse(serviceAccountKey),
-        scopes: ['https://www.googleapis.com/auth/gmail.send'],
-      });
-
-      // const authClient = await auth.getClient(); // This step might not be necessary if passing `auth` instance directly
-      // google.options({ auth: authClient }); // This line causes a type error and is not strictly necessary
-
-      const gmail = google.gmail({ version: 'v1', auth }); // Pass the GoogleAuth instance `auth` directly
-
-      console.log(`[emailSending.action.ts] Attempting to send email via Gmail API to: ${recipient}, impersonating: ${sender.email}`);
-      const response = await gmail.users.messages.send({
-        userId: sender.email, // The user to impersonate (must match service account delegation)
-        requestBody: {
-          raw: encodedMessage,
-        },
-      });
-
-      console.log('[emailSending.action.ts] Gmail API Response:', response.data);
+    if (sendResult.success) {
+      console.log(`[emailSending.action.ts] Email sent successfully via gmailService. Message ID: ${sendResult.messageId}, Thread ID: ${sendResult.threadId}`);
       return {
         success: true,
-        message: `Offer email successfully sent to ${recipient} (impersonating ${sender.email}). Message ID: ${response.data.id}`,
-        messageId: response.data.id,
+        message: `Offer email successfully sent to ${recipient} (impersonating ${sender.email}).`,
+        messageId: sendResult.messageId,
+        threadId: sendResult.threadId,
         offerDetails,
         sender,
       };
-    } catch (error: any) {
-      console.error('[emailSending.action.ts] Error sending email via Gmail API:', error.message);
-      console.error('[emailSending.action.ts] Full error object:', error);
-      let errorMessage = 'Failed to send email via Gmail API.';
-      if (error.response && error.response.data && error.response.data.error) {
-        errorMessage += ` Details: ${error.response.data.error.message} (Code: ${error.response.data.error.code})`;
-      }
+    } else {
+      console.error('[emailSending.action.ts] Error sending email via gmailService:', sendResult.error);
+      const errorMessage = sendResult.error instanceof Error ? sendResult.error.message : String(sendResult.error);
       return {
         success: false,
-        message: errorMessage,
-        error: error.message || error, // Store the error message or the whole error
+        message: `Failed to send email via Gmail API. Details: ${errorMessage}`,
+        error: sendResult.error,
+        offerDetails,
+        sender,
       };
     }
   } catch (error) {

@@ -16,20 +16,21 @@ const renderTemplate = (template: string, data: Record<string, unknown>): string
   });
 };
 
-// Type for the lead data used in email sending
-interface EmailLead extends Omit<Lead, 'id'> {
+// Type for the lead data used in email sending, aligned with Lead interface
+interface EmailLead {
   id: number;
-  contact1_name: string;
-  contact1_email_1: string;
-  contact2_name?: string | null;
-  contact2_email_1?: string | null;
-  contact3_name?: string | null;
-  contact3_email_1?: string | null;
-  property_address: string;
-  assessed_total: number;
-  mls_curr_list_agent_name?: string | null;
-  mls_curr_list_agent_email?: string | null;
-  [key: string]: any; // Allow additional properties for template rendering
+  contact1_name: string; // Assuming contact1 is always present for an EmailLead
+  contact1_email_1: string; // Assuming contact1_email_1 is always present
+  contact2_name?: string | undefined;
+  contact2_email_1?: string | undefined;
+  contact3_name?: string | undefined;
+  contact3_email_1?: string | undefined;
+  property_address: string; // Assuming property_address is always present
+  assessed_total: number; // Assuming assessed_total is always present
+  mls_curr_list_agent_name?: string | undefined;
+  mls_curr_list_agent_email?: string | undefined;
+  // Add other fields from Lead if they are used by prepareAndSendOfferEmail or templates
+  [key: string]: any; // To match Lead interface for flexibility if needed
 }
 
 // Database types
@@ -39,14 +40,24 @@ type CampaignJob = Tables<'campaign_jobs'> & {
 };
 
 type NormalizedLead = Tables<'normalized_leads'> & {
-  contact1_email_1?: string | null;
-  contact2_email_1?: string | null;
-  contact3_email_1?: string | null;
+  id: number;
+  contact1_name?: string | undefined;
+  contact1_email_1?: string | undefined;
+  contact2_name?: string | undefined;
+  contact2_email_1?: string | undefined;
+  contact3_name?: string | undefined;
+  contact3_email_1?: string | undefined;
   wholesale_value?: number | null;
-  property_address?: string | null;
-  contact1_name?: string | null;
-  mls_curr_list_agent_name?: string | null;
-  mls_curr_list_agent_email?: string | null;
+  property_address?: string | undefined;
+  property_city?: string | undefined; // Added for denormalization
+  property_state?: string | undefined; // Added for denormalization
+  property_zip_code?: string | undefined; // Added for denormalization
+  market_region?: string | undefined; // Added for denormalization
+  assessed_total?: number | null; // Added for consistency with EmailLead/Lead
+  mls_curr_list_agent_name?: string | undefined;
+  mls_curr_list_agent_email?: string | undefined;
+  // Add other fields as necessary from your normalized_leads table
+  [key: string]: any; // For flexibility if other fields are fetched
 };
 
 type CampaignSenderAllocation = Tables<'campaign_sender_allocations'> & {
@@ -237,6 +248,7 @@ export async function processCampaign(campaignId: string) {
 
       // This is the sender for email sending (impersonation details)
       const senderForEmail: SenderInfo = {
+        id: allocData.senders.id, // The database ID of the sender
         fullName: allocData.senders.full_name,
         title: allocData.senders.title,
         email: allocData.senders.email_address,
@@ -316,7 +328,7 @@ export async function processCampaign(campaignId: string) {
       }
 
       // Draft email task
-      const subject = renderTemplate(campaign.template?.subject || '', effectiveLead as Record<string, unknown>);
+      const emailSubject = renderTemplate(campaign.template?.subject || '', effectiveLead as Record<string, unknown>);
       const body = renderTemplate(campaign.template?.content || '', effectiveLead as Record<string, unknown>);
       
       // Create email task in database
@@ -326,7 +338,7 @@ export async function processCampaign(campaignId: string) {
           campaign_job_id: jobId, 
           assigned_sender_id: alloc.sender_id, 
           contact_email: recipient.email, 
-          subject, 
+          subject: emailSubject, 
           body, 
           status: 'SENDING' 
         })
@@ -364,20 +376,108 @@ export async function processCampaign(campaignId: string) {
               leadData,
               senderForEmail, // Use the correctly typed SenderInfo
               {
-                subject,
+                subject: emailSubject,
                 body,
                 attachments,
                 pdfBuffer: attachments?.[0]?.content, // Pass buffer if available
                 leadData: effectiveLead, // Pass full lead data for template rendering in action
               }
             );
+            // Determine contact_type
+            let contactType = 'unknown';
+            if (recipient.email === lead.contact1_email_1) contactType = 'contact1';
+            else if (recipient.email === lead.contact2_email_1) contactType = 'contact2';
+            else if (recipient.email === lead.contact3_email_1) contactType = 'contact3';
+            else if (recipient.email === lead.mls_curr_list_agent_email) contactType = 'agent';
+
+            // Insert into campaign_leads
+            if (result.messageId && result.threadId) {
+              if (!campaign.user_id) {
+                console.error(`Campaign user_id is missing for campaign ${campaign.id}, cannot insert into campaign_leads for lead ${lead.id}`);
+                await logSystemEvent({
+                  event_type: 'ERROR',
+                  message: 'Campaign user_id is missing, cannot insert campaign_lead',
+                  details: { campaignId: String(campaign.id), leadId: String(lead.id) },
+                  campaign_id: String(campaign.id)
+                });
+                // Potentially skip this lead or handle error more gracefully
+              } else {
+                const campaignLeadEntry: TablesInsert<'campaign_leads'> = {
+                  campaign_id: String(campaign.id),
+                  normalized_lead_id: String(lead.id),
+                  user_id: campaign.user_id, // Now confirmed to be present
+                  added_at: new Date().toISOString(),
+                  status: 'NEW', // Initial status for a new lead in a campaign
+                  // id (PK) will be auto-generated by Supabase or a DB trigger if not provided
+                };
+
+                const { data: newCampaignLead, error: campaignLeadError } = await supabase
+                  .from('campaign_leads')
+                  .insert(campaignLeadEntry)
+                  .select()
+                  .single(); // Assuming you want the inserted row back
+
+                if (campaignLeadError) {
+                  console.error('Error inserting into campaign_leads:', campaignLeadError);
+                  await logSystemEvent({
+                    event_type: 'ERROR',
+                    message: 'Failed to insert into campaign_leads',
+                    details: { campaignId: String(campaign.id), leadId: String(lead.id), error: campaignLeadError },
+                    campaign_id: String(campaign.id)
+                  });
+                  // Decide if this error should mark the job as failed or just log
+                } else if (newCampaignLead) {
+                  // Successfully inserted, newCampaignLead.id can be used if needed for campaign_log
+                  console.log(`Successfully inserted campaign_lead for campaign ${campaign.id}, lead ${lead.id}. CampaignLeadID: ${newCampaignLead.id}`);
+
+                  // Now, log the email sending event to campaign_log
+                  const campaignLogEntry: TablesInsert<'campaign_log'> = {
+                    campaign_id: String(campaign.id),
+                    campaign_lead_id: newCampaignLead.id, // Link to the campaign_leads entry
+                    user_id: campaign.user_id, // Already checked for presence
+                    event_type: 'EMAIL_SENT',
+                    message: `Email sent to ${contactType}: ${recipient.email}`,
+                    status: 'SUCCESS',
+                    external_message_id: result.messageId, // Store Gmail message ID
+                    target_identifier: recipient.email,
+                    sender_id: senderForEmail.id, // Use senderForEmail from the prepareAndSendOfferEmail call
+                    details_json: {
+                      threadId: result.threadId,
+                      contactName: recipient.name, // Original recipient name
+                      leadId: String(lead.id),
+                      emailSubject, // Use the 'emailSubject' variable defined earlier
+                      // any other details deemed useful
+                    },
+                    logged_at: new Date().toISOString(),
+                  };
+
+                  const { error: campaignLogError } = await supabase
+                    .from('campaign_log')
+                    .insert(campaignLogEntry);
+
+                  if (campaignLogError) {
+                    console.error('Error inserting into campaign_log:', campaignLogError);
+                    await logSystemEvent({
+                      event_type: 'ERROR',
+                      message: 'Failed to insert into campaign_log for EMAIL_SENT event',
+                      details: { campaignId: String(campaign.id), leadId: String(lead.id), campaignLeadId: newCampaignLead.id, error: campaignLogError },
+                      campaign_id: String(campaign.id)
+                    });
+                  } else {
+                    console.log(`Successfully logged EMAIL_SENT event for campaign_lead ${newCampaignLead.id}`);
+                  }
+                }
+              }
+            }
+
             await supabase
               .from('email_tasks')
               .update({ 
                 status: 'SENT',
                 sent_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
-                gmail_message_id: result.messageId || null,
+                gmail_message_id: result.messageId || undefined,
+                gmail_thread_id: result.threadId || undefined, // Added thread_id
                 contact_email: recipient.email
               })
               .eq('id', task.id)
