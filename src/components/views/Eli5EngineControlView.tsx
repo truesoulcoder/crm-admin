@@ -3,6 +3,7 @@
 import { PlayCircle, StopCircle, Mail, AlertTriangle, Info, CheckCircle, RefreshCw } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Card, Alert } from 'react-daisyui';
+
 import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/supabase';
 

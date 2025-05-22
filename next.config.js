@@ -12,10 +12,11 @@ const nextConfig = {
   experimental: {
     // Add any experimental features here
   },
-  // Configure webpack to handle Node.js modules
-  webpack: (config, { isServer }) => {
+  // Configure webpack to handle Node.js modules and optimize builds
+  webpack: (config, { isServer, dev }) => {
     // Only add these configurations for server-side bundles
     if (isServer) {
+      // Exclude puppeteer and chromium from bundling in production
       config.externals = [...(config.externals || []), {
         'puppeteer-core': 'commonjs puppeteer-core',
         '@sparticuz/chromium': 'commonjs @sparticuz/chromium'
@@ -33,6 +34,14 @@ const nextConfig = {
         module: false,
         dgram: false,
       };
+    }
+
+    // Exclude .map files from production builds
+    if (!dev) {
+      config.module.rules.push({
+        test: /\.map$/, 
+        use: 'ignore-loader'
+      });
     }
     
     // Add path aliases

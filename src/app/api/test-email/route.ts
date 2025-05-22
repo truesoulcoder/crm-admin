@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import { createClient } from '@supabase/supabase-js';
-import chromium from 'chrome-aws-lambda'; // For Vercel deployment
+import chromium from '@sparticuz/chromium'; // For Vercel deployment
 import { google } from 'googleapis';
 import { NextRequest, NextResponse } from 'next/server';
 import puppeteer from 'puppeteer-core';
