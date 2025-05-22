@@ -208,14 +208,9 @@ const LeadsView: React.FC = () => {
     }
   }, [setMarketRegions]); // Fix variable scope issue by adding setMarketRegions to the dependency array
 
-  // Check if a lead has any valid email address
+  // Check if a lead has any valid email address (kept for backward compatibility)
   const hasValidEmail = (lead: NormalizedLead) => {
-    return (
-      (lead.contact1_email_1 && lead.contact1_email_1.includes('@')) ||
-      (lead.contact2_email_1 && lead.contact2_email_1.includes('@')) ||
-      (lead.contact3_email_1 && lead.contact3_email_1.includes('@')) ||
-      (lead.mls_curr_list_agent_email && lead.mls_curr_list_agent_email.includes('@'))
-    );
+    return true; // useful_leads view already contains only leads with valid emails
   };
 
   // Get status badge color based on status
@@ -245,7 +240,7 @@ const LeadsView: React.FC = () => {
       return {
         name: lead.contact1_name,
         email: lead.contact1_email_1,
-        type: 'Owner 1',
+        type: 'Owner',
         contactType: 'owner1',
         status: lead.status || 'UNCONTACTED'
       };
@@ -254,7 +249,7 @@ const LeadsView: React.FC = () => {
       return {
         name: lead.contact2_name,
         email: lead.contact2_email_1,
-        type: 'Owner 2',
+        type: 'Owner',
         contactType: 'owner2',
         status: lead.status || 'UNCONTACTED'
       };
@@ -263,7 +258,7 @@ const LeadsView: React.FC = () => {
       return {
         name: lead.contact3_name,
         email: lead.contact3_email_1,
-        type: 'Owner 3',
+        type: 'Owner',
         contactType: 'owner3'
       };
     }
@@ -309,13 +304,13 @@ const LeadsView: React.FC = () => {
     return result;
   }, [leads, filterMarketRegion, tableSearchTerm]);
 
-  // Fetch Leads
+  // Fetch Leads from useful_leads view
   const fetchNormalizedLeads = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       let query = supabase
-        .from('normalized_leads')
+        .from('useful_leads')
         .select('*', { count: 'exact' });
 
       // Apply market region filter if one is selected
@@ -369,13 +364,11 @@ const LeadsView: React.FC = () => {
 
       if (supabaseError) throw supabaseError;
 
-      // Filter out leads without valid emails and enhance with contact info
-      const validLeads = (data || [])
-        .filter(lead => hasValidEmail(lead))
-        .map(lead => ({
-          ...lead,
-          _primaryContact: getPrimaryContact(lead)
-        }));
+      // Enhance leads with contact info (no need to filter as useful_leads already has valid emails)
+      const validLeads = (data || []).map(lead => ({
+        ...lead,
+        _primaryContact: getPrimaryContact(lead)
+      }));
 
       // Client-side re-sorting if tableSearchTerm looks like a name and is not an email
       if (tableSearchTerm && tableSearchTerm.trim() !== '' && !tableSearchTerm.includes('@') && isNaN(Number(tableSearchTerm))) {

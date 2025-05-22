@@ -23,10 +23,7 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   { view: 'dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
-  { view: 'leads', icon: <Users size={20} />, label: 'Lead Management' },
-  { view: 'campaigns', icon: <Send size={20} />, label: 'Campaigns' },
-  { view: 'templates', icon: <FileText size={20} />, label: 'Templates' },
-  { view: 'senders', icon: <UserCog size={20} />, label: 'Senders' },
+  { view: 'leads', icon: <Users size={20} />, label: 'Upload Leads' },
   { view: 'crm', icon: <Contact size={20} />, label: 'CRM' },
   { view: 'settings', icon: <Settings size={20} />, label: 'Settings' },
 ];

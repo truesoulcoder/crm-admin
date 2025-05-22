@@ -12,7 +12,7 @@ import {
   ColumnDef,
   CellContext
 } from '@tanstack/react-table';
-import { Edit3 } from 'lucide-react';
+import { Edit3, PlusCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useMemo, useCallback, useRef, ChangeEvent } from 'react';
 
@@ -20,8 +20,15 @@ import CrmTable, { Lead as LeadType, StatusOption as StatusOptionType } from '@/
 import { supabase } from '@/lib/supabase/client';
 
 
-// Use imported types
-export type Lead = LeadType;
+// Extend the imported LeadType to include optional address fields
+export interface Lead extends Omit<LeadType, 'address' | 'city' | 'state' | 'zip_code'> {
+  address?: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+  [key: string]: any; // For any other dynamic properties
+}
+
 export type StatusOption = StatusOptionType;
 
 // Constants defined in CrmView_temp
@@ -152,25 +159,32 @@ const CrmView: React.FC = () => {
 
   const handleEditLead = useCallback((leadToEdit: Lead) => {
     setCurrentLead(leadToEdit);
+    
+    // Safely handle potentially undefined address fields
+    const address = leadToEdit.address || '';
+    const city = leadToEdit.city || '';
+    const state = leadToEdit.state || '';
+    const zip_code = leadToEdit.zip_code || '';
+    
     const addressParts = [
-      leadToEdit.property_address_street || leadToEdit.address,
-      leadToEdit.property_address_city || leadToEdit.city,
-      leadToEdit.property_address_state || leadToEdit.state,
-      leadToEdit.property_address_zip || leadToEdit.zip_code
+      leadToEdit.property_address_street || address,
+      leadToEdit.property_address_city || city,
+      leadToEdit.property_address_state || state,
+      leadToEdit.property_address_zip || zip_code
     ].filter(Boolean);
     
     const mappedFormData: Partial<Lead> = {
       ...componentInitialFormData,
       ...leadToEdit,
-      property_address_street: leadToEdit.property_address_street || leadToEdit.address || '',
-      property_address_city: leadToEdit.property_address_city || leadToEdit.city || '',
-      property_address_state: leadToEdit.property_address_state || leadToEdit.state || '',
-      property_address_zip: leadToEdit.property_address_zip || leadToEdit.zip_code || '',
+      property_address_street: leadToEdit.property_address_street || address,
+      property_address_city: leadToEdit.property_address_city || city,
+      property_address_state: leadToEdit.property_address_state || state,
+      property_address_zip: leadToEdit.property_address_zip || zip_code,
       property_address_full: leadToEdit.property_address_full || addressParts.join(', ') || '',
-      assessed_value: leadToEdit.assessed_value !== null && leadToEdit.assessed_value !== undefined ? Number(leadToEdit.assessed_value) : undefined,
-      beds: leadToEdit.beds !== null && leadToEdit.beds !== undefined ? Number(leadToEdit.beds) : undefined,
-      baths: leadToEdit.baths !== null && leadToEdit.baths !== undefined ? Number(leadToEdit.baths) : undefined,
-      sq_ft: leadToEdit.sq_ft !== null && leadToEdit.sq_ft !== undefined ? Number(leadToEdit.sq_ft) : undefined,
+      assessed_value: leadToEdit.assessed_value != null ? Number(leadToEdit.assessed_value) : undefined,
+      beds: leadToEdit.beds != null ? Number(leadToEdit.beds) : undefined,
+      baths: leadToEdit.baths != null ? Number(leadToEdit.baths) : undefined,
+      sq_ft: leadToEdit.sq_ft != null ? Number(leadToEdit.sq_ft) : undefined,
     };
     setFormData(mappedFormData);
     setIsFormOpen(true);
@@ -382,31 +396,47 @@ const CrmView: React.FC = () => {
   }
 
   return (
+    <div className="flex flex-col space-y-4">
+      <div className="flex justify-end">
+        <button
+          onClick={() => {
+            setCurrentLead(null);
+            setFormData(componentInitialFormData);
+            setIsFormOpen(true);
+          }}
+          className="btn btn-primary gap-2"
+        >
+          <PlusCircle size={18} />
+          Create New Lead
+        </button>
+      </div>
+      
       <CrmTable
-      leads={leads} // Pass raw leads for market region filter population
-      isLoading={isLoading}
-      error={error}
-      searchTerm={searchTerm}
-      setSearchTerm={setSearchTerm}
-      tableInstance={tableInstance}
-      filteredLeadsCount={filteredLeads.length}
-      isFormOpen={isFormOpen}
-      setIsFormOpen={setIsFormOpen}
-      currentLead={currentLead}
-      setCurrentLead={setCurrentLead} // Pass down setCurrentLead
-      formData={formData}
-      setFormData={setFormData} // Pass down setFormData
-      handleFormChange={handleViewFormChange} 
-      handleSubmit={handleSubmitForTable}
-      handleDeleteLead={handleDeleteLeadForTable}
-      formError={formError} 
-      isSubmitting={isSubmitting}
-      addressInputRef={addressInputRef}
-      getDisplayName={getDisplayName}
-      handleEditLead={handleEditLead}
-      initialFormData={componentInitialFormData}
-      statusOptions={componentStatusOptions}
-    />
+        leads={leads} // Pass raw leads for market region filter population
+        isLoading={isLoading}
+        error={error}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        tableInstance={tableInstance}
+        filteredLeadsCount={filteredLeads.length}
+        isFormOpen={isFormOpen}
+        setIsFormOpen={setIsFormOpen}
+        currentLead={currentLead}
+        setCurrentLead={setCurrentLead} // Pass down setCurrentLead
+        formData={formData}
+        setFormData={setFormData} // Pass down setFormData
+        handleFormChange={handleViewFormChange} 
+        handleSubmit={handleSubmitForTable}
+        handleDeleteLead={handleDeleteLeadForTable}
+        formError={formError} 
+        isSubmitting={isSubmitting}
+        addressInputRef={addressInputRef}
+        getDisplayName={getDisplayName}
+        handleEditLead={handleEditLead}
+        initialFormData={componentInitialFormData}
+        statusOptions={componentStatusOptions}
+      />
+    </div>
   );
 };
 
