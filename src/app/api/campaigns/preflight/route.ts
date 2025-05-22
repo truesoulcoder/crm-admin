@@ -145,7 +145,8 @@ export async function POST(request: Request) {
         )
       `)
       .eq('campaign_id', campaignId)
-      .limit(1); // Get the first one for pre-flight
+      .order('name', { foreignTable: 'senders', ascending: true })
+      .limit(1); // Get the alphabetically first allocated active sender
 
     if (allocationError) {
       addLog(`Error fetching sender allocations: ${allocationError.message}`, 'error');
@@ -156,22 +157,59 @@ export async function POST(request: Request) {
     }
 
     // allocatedSenderData is of type ({ senders: SenderRow | null }[] | null)
-    const foundAllocation = allocatedSenderData?.find(
-      // Type guard to ensure alloc and alloc.senders are not null and sender is active
+    let sender: SenderRow;
+
+    const activeAllocatedSender = allocatedSenderData?.find(
       (alloc): alloc is { senders: SenderRow } => 
-        alloc !== null && alloc.senders !== null && alloc.senders.is_active !== false
-    );
+        alloc?.senders?.is_active !== false
+    )?.senders;
 
-    if (!foundAllocation || !foundAllocation.senders) { // Check both allocation and nested senders
-      addLog(`No active sender found for campaign ID: ${campaignId}`, 'warning');
-      return new NextResponse(
-        JSON.stringify({ error: `No active sender is assigned to campaign (ID: ${campaignId}). Please assign and activate a sender.` }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
+    if (activeAllocatedSender) {
+      sender = activeAllocatedSender;
+      addLog(`Using existing active allocated sender ID: ${sender.id} (${sender.email}) for pre-flight test.`);
+    } else {
+      addLog(`No active sender currently allocated for campaign ID: ${campaignId}. Attempting to allocate a default sender.`, 'warning');
+
+      const { data: availableActiveSenders, error: activeSendersError } = await supabase
+        .from('senders')
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+        .limit(1);
+
+      if (activeSendersError) {
+        addLog(`Error fetching available active senders: ${activeSendersError.message}`, 'error');
+        return new NextResponse(JSON.stringify({ error: 'Could not fetch available senders to create default allocation.' }), { status: 500 });
+      }
+
+      if (!availableActiveSenders || availableActiveSenders.length === 0) {
+        addLog('No active senders available in the system to create a default allocation.', 'error');
+        return new NextResponse(JSON.stringify({ error: 'No active senders in system to allocate.' }), { status: 400 });
+      }
+
+      const defaultSenderToAllocate = availableActiveSenders[0];
+      const DEFAULT_DAILY_QUOTA = 50; // Define a default quota
+
+      const newAllocation: Database['public']['Tables']['campaign_sender_allocations']['Insert'] = {
+        campaign_id: campaignId,
+        sender_id: defaultSenderToAllocate.id,
+        daily_quota: DEFAULT_DAILY_QUOTA,
+        sent_today: 0,
+        total_sent: 0,
+      };
+
+      const { error: insertError } = await supabase
+        .from('campaign_sender_allocations')
+        .insert(newAllocation);
+
+      if (insertError) {
+        addLog(`Failed to insert default sender allocation: ${insertError.message}`, 'error');
+        return new NextResponse(JSON.stringify({ error: 'Failed to create default sender allocation.' }), { status: 500 });
+      }
+
+      sender = defaultSenderToAllocate; // Use the newly allocated sender
+      addLog(`Successfully allocated sender ID: ${sender.id} (${sender.email}) with quota ${DEFAULT_DAILY_QUOTA} as default for campaign ID: ${campaignId}.`);
     }
-
-    // Now, foundAllocation.senders is definitely SenderRow due to the type guard and checks
-    const sender: SenderRow = foundAllocation.senders;
 
     // sender.id and sender.email are non-nullable strings as per SenderRow type
     const logMessage: string = `Using sender ID: ${sender.id} (${sender.email}) for pre-flight test.`;
