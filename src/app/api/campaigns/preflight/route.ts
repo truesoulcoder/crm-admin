@@ -9,10 +9,14 @@ type Lead = Database['public']['Tables']['normalized_leads']['Row'];
 
 export const dynamic = 'force-dynamic';
 
-// Helper to add logs (if you adapt the Dashboard's addLog or similar for server-side)
-const addLog = (message: string, type: string = 'info') => console.log(`[Preflight API][${type.toUpperCase()}]: ${message}`);
+// Helper to add logs
+const addLog = (message: string, type: string = 'info') => 
+  console.log(`[Preflight API][${type.toUpperCase()}]: ${message}`);
 
 export async function POST(request: Request) {
+  // Initialize Supabase client inside the function
+  const supabase = await createAdminServerClient();
+  
   try {
     const { campaignId } = await request.json();
     
@@ -38,7 +42,6 @@ export async function POST(request: Request) {
     }
 
     // 2. Get admin user's email from session
-    const supabase = await createAdminServerClient();
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session?.user?.email || !session.user.id) {
@@ -149,24 +152,24 @@ export async function POST(request: Request) {
       id: testLead.id,
       contact1_name: testLead.contact1_name ?? 'Test Recipient',
       contact1_email_1: adminEmail, // For preflight, send to admin
-      contact2_email_1: testLead.contact2_email_1 ?? null,
-      contact2_name: testLead.contact2_name ?? null,
-      contact3_email_1: testLead.contact3_email_1 ?? null,
-      contact3_name: testLead.contact3_name ?? null,
+      contact2_email_1: testLead.contact2_email_1 ?? undefined,
+      contact2_name: testLead.contact2_name ?? undefined,
+      contact3_email_1: testLead.contact3_email_1 ?? undefined,
+      contact3_name: testLead.contact3_name ?? undefined,
       property_address: testLead.property_address || 'Test Property',
       wholesale_value: testLead.wholesale_value || 0,
       assessed_total: testLead.assessed_total || 0,
-      mls_curr_list_agent_name: testLead.mls_curr_list_agent_name,
-      mls_curr_list_agent_email: testLead.mls_curr_list_agent_email,
+      mls_curr_list_agent_name: testLead.mls_curr_list_agent_name || undefined,
+      mls_curr_list_agent_email: testLead.mls_curr_list_agent_email || undefined,
       // Include any other fields from testLead that are expected by the Lead type or templates
       ...(testLead as any) // Spread remaining properties, cast to any if necessary for safety
     };
 
     // 9. Prepare sender info
     const senderInfo = {
-      fullName: sender.full_name,
-      title: sender.title || 'Acquisitions Specialist',
-      email: sender.email_address, // The actual sender email to impersonate
+      fullName: sender.name, // Changed from full_name to name
+      title: 'Acquisitions Specialist', // Removed sender.title as it doesn't exist
+      email: sender.email, // Changed from email_address to email
       // Add other sender fields if your templates use them, e.g., companyAddress, phone
       // companyAddress: sender.company_address || 'Default Company Address',
       // phone: sender.phone_number || 'Default Phone'
@@ -176,12 +179,12 @@ export async function POST(request: Request) {
     const result = await prepareAndSendOfferEmail(
       leadDataForEmail,
       senderInfo,
-{
-  subject: emailTemplate.subject,
-  body: emailTemplate.body,
-  documentHtmlContent,  // Shorthand
-  leadData: leadDataForEmail  // Keep this one as is since the variable name is different
-}
+      {
+        subject: emailTemplate.subject,
+        body: emailTemplate.body_html || emailTemplate.body_text || '',
+        documentHtmlContent,  // Shorthand
+        leadData: leadDataForEmail  // Keep this one as is since the variable name is different
+      }
     );
 
     if (!result.success) {
@@ -198,21 +201,23 @@ export async function POST(request: Request) {
     const { data: emailTask, error: taskError } = await supabase
       .from('email_tasks')
       .insert({
-        campaign_id: campaignId,
-        lead_id: testLead.id,
-        recipient_email: adminEmail,
+        assigned_sender_id: sender.id,
+        contact_email: adminEmail,
         status: 'sent',
-        sender_id: sender.id,
         is_test: true,
         subject: `[TEST] ${emailTemplate?.subject || 'Test Email'}`,
         body: emailTemplate?.body_html || emailTemplate?.body_text || '',
         sent_at: new Date().toISOString(),
-        metadata: {
+        attachments: JSON.stringify({
           is_preflight: true,
           admin_email: adminEmail,
           timestamp: new Date().toISOString(),
           gmail_message_id: result.messageId || null
-        }
+        }),
+        campaign_job_id: `preflight-${Date.now()}`,
+        // Add any other required fields for your email_tasks table
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       .select()
       .single();
