@@ -19,11 +19,6 @@ import React, { useState, useEffect, useMemo, useCallback, useRef, ChangeEvent }
 import CrmTable, { Lead as LeadType, StatusOption as StatusOptionType } from '@/components/crm/CrmTable'; // Import CrmTable and types // Import CrmTable and types
 import { supabase } from '@/lib/supabase/client';
 
-// Dynamically import the GoogleMapsLoader with SSR disabled
-const GoogleMapsLoader = dynamic(
-  () => import('@/components/maps/GoogleMapsLoader'),
-  { ssr: false }
-);
 
 // Use imported types
 export type Lead = LeadType;
@@ -157,6 +152,13 @@ const CrmView: React.FC = () => {
 
   const handleEditLead = useCallback((leadToEdit: Lead) => {
     setCurrentLead(leadToEdit);
+    const addressParts = [
+      leadToEdit.property_address_street || leadToEdit.address,
+      leadToEdit.property_address_city || leadToEdit.city,
+      leadToEdit.property_address_state || leadToEdit.state,
+      leadToEdit.property_address_zip || leadToEdit.zip_code
+    ].filter(Boolean);
+    
     const mappedFormData: Partial<Lead> = {
       ...componentInitialFormData,
       ...leadToEdit,
@@ -164,6 +166,7 @@ const CrmView: React.FC = () => {
       property_address_city: leadToEdit.property_address_city || leadToEdit.city || '',
       property_address_state: leadToEdit.property_address_state || leadToEdit.state || '',
       property_address_zip: leadToEdit.property_address_zip || leadToEdit.zip_code || '',
+      property_address_full: leadToEdit.property_address_full || addressParts.join(', ') || '',
       avm_value: leadToEdit.avm_value !== null && leadToEdit.avm_value !== undefined ? Number(leadToEdit.avm_value) : undefined,
       beds: leadToEdit.beds !== null && leadToEdit.beds !== undefined ? Number(leadToEdit.beds) : undefined,
       baths: leadToEdit.baths !== null && leadToEdit.baths !== undefined ? Number(leadToEdit.baths) : undefined,
@@ -358,7 +361,6 @@ const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
   }
 
   return (
-    <GoogleMapsLoader>
       <CrmTable
       leads={leads} // Pass raw leads for market region filter population
       isLoading={isLoading}
@@ -386,7 +388,6 @@ const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
       initialFormData={componentInitialFormData}
       statusOptions={componentStatusOptions}
     />
-    </GoogleMapsLoader>
   );
 };
 

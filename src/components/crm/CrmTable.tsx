@@ -6,6 +6,8 @@ import { Table, flexRender } from '@tanstack/react-table';
 import { ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
 import React, { useState } from 'react';
 
+import StreetViewMap from '@/components/maps/StreetViewMap';
+
 // Re-export Lead and StatusOption if they are defined here and used by CrmView
 // Otherwise, CrmView should import them from their original source (e.g., a types file)
 export interface Lead {
@@ -22,7 +24,7 @@ export interface Lead {
   property_address_city?: string;
   property_address_state?: string;
   property_address_zip?: string;
-  avm_value?: number;
+  assessed_value?: number;
   beds?: number;
   baths?: number;
   sq_ft?: number;
@@ -53,8 +55,6 @@ interface CrmTableProps {
   error: string | null;
   searchTerm: string;
   setSearchTerm: React.Dispatch<React.SetStateAction<string>>;
-  marketRegionFilter: string;
-  setMarketRegionFilter: React.Dispatch<React.SetStateAction<string>>;
   filteredLeadsCount: number;
   isFormOpen: boolean;
   setIsFormOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -97,6 +97,26 @@ const CrmTable: React.FC<CrmTableProps> = ({
   // leads, searchTerm, setSearchTerm, marketRegionFilter, setMarketRegionFilter, filteredLeadsCount, setCurrentLead 
 }) => {
   const [autocompleteInstance, setAutocompleteInstance] = useState<google.maps.places.Autocomplete | null>(null);
+
+  const getFullAddress = (lead: Partial<Lead> | null): string => {
+    if (!lead) {
+      return '';
+    }
+    // Prioritize the Autocomplete-derived full address if available
+    if (lead.property_address_full) {
+      return lead.property_address_full;
+    }
+    // Fallback to constructing from parts if property_address_full is not populated
+    const parts = [
+      lead.property_address_street,
+      lead.property_address_city,
+      lead.property_address_state,
+      lead.property_address_zip,
+    ];
+    const addressString = parts.filter(Boolean).join(', ');
+    // console.log('Constructed Address:', addressString);
+    return addressString;
+  };
 
   const onLoadAutocomplete = (autocomplete: google.maps.places.Autocomplete) => {
     setAutocompleteInstance(autocomplete);
@@ -239,10 +259,28 @@ const CrmTable: React.FC<CrmTableProps> = ({
       {/* Lead Edit/Add Modal Form */}
       {isFormOpen && (
         <dialog id="lead_form_modal" className={`modal modal-open`}>
-          <form method="dialog" className="modal-box w-11/12 max-w-3xl" onSubmit={(e) => { e.preventDefault(); void handleSubmit(e); }}>
-            <h3 className="font-bold text-lg mb-4">
-              {currentLead ? `Edit Lead: ${getDisplayName(currentLead)}` : 'Add New Lead'}
-            </h3>
+          <form 
+            method="dialog" 
+            className="modal-box w-11/12 max-w-3xl" 
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSubmit(e).catch(error => {
+                console.error('Error submitting form:', error);
+              });
+            }}
+          >
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-bold text-lg">
+                {currentLead ? `CONTACT: ${getDisplayName(currentLead)}` : 'Add New Lead'}
+              </h3>
+              <button
+                type="button"
+                className="btn btn-sm btn-circle btn-ghost"
+                onClick={() => setIsFormOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
 
             {formError && (
               <div className="alert alert-error shadow-lg mb-4">
@@ -253,7 +291,7 @@ const CrmTable: React.FC<CrmTableProps> = ({
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {/* First Name */}
               <div>
                 <label htmlFor="first_name" className="label">
@@ -313,6 +351,19 @@ const CrmTable: React.FC<CrmTableProps> = ({
                   className="input input-bordered w-full"
                 />
               </div>
+
+
+              {/* StreetViewMap Integration */}
+              {formData.property_address_full && (
+                <div className="md:col-span-2 mb-4">
+                  <label className="label">
+                    <h3 className="font-bold text-lg">
+                     {currentLead ? `LOCATION: ${getFullAddress(currentLead)}` : 'Add New Lead'}
+                    </h3>
+                  </label>
+                  <StreetViewMap address={formData.property_address_full} />
+                </div>
+              )}
 
               {/* Full Property Address with Autocomplete */}
               <div className="md:col-span-2">
@@ -418,39 +469,27 @@ const CrmTable: React.FC<CrmTableProps> = ({
                 </select>
               </div>
 
-              {/* Market Region */}
+              {/* Assessed Value (Moved from below) */}
               <div>
-                <label htmlFor="market_region" className="label">
-                  <span className="label-text">Market Region</span>
-                </label>
-                <input
-                  type="text"
-                  name="market_region"
-                  id="market_region"
-                  value={formData.market_region || ''}
-                  onChange={handleFormChange}
-                  className="input input-bordered w-full"
-                />
-              </div>
-
-              {/* AVM Value */}
-              <div>
-                <label htmlFor="avm_value" className="label">
-                  <span className="label-text">AVM ($)</span>
+                <label htmlFor="assessed_value" className="label">
+                  <span className="label-text">Assessed Value ($)</span>
                 </label>
                 <input
                   type="number"
-                  name="avm_value"
-                  id="avm_value"
-                  value={formData.avm_value === undefined ? '' : formData.avm_value}
+                  name="assessed_value"
+                  id="assessed_value"
+                  value={formData.assessed_value === null || formData.assessed_value === undefined ? '' : formData.assessed_value}
                   onChange={handleFormChange}
                   className="input input-bordered w-full"
                   step="any"
                 />
               </div>
               
-              {/* Beds */}
-              <div>
+              {/* Beds, Baths, Sq Ft Row */}
+              <div className="md:col-span-2">
+                <div className="grid grid-cols-3 gap-2">
+                  {/* Beds */}
+                  <div>
                 <label htmlFor="beds" className="label">
                   <span className="label-text">Beds</span>
                 </label>
@@ -458,15 +497,14 @@ const CrmTable: React.FC<CrmTableProps> = ({
                   type="number"
                   name="beds"
                   id="beds"
-                  value={formData.beds === undefined ? '' : formData.beds}
+                  value={formData.beds === null || formData.beds === undefined ? '' : formData.beds}
                   onChange={handleFormChange}
                   className="input input-bordered w-full"
                   step="1"
                 />
               </div>
-
-              {/* Baths */}
-              <div>
+                  {/* Baths */}
+                  <div>
                 <label htmlFor="baths" className="label">
                   <span className="label-text">Baths</span>
                 </label>
@@ -474,15 +512,14 @@ const CrmTable: React.FC<CrmTableProps> = ({
                   type="number"
                   name="baths"
                   id="baths"
-                  value={formData.baths === undefined ? '' : formData.baths}
+                  value={formData.baths === null || formData.baths === undefined ? '' : formData.baths}
                   onChange={handleFormChange}
                   className="input input-bordered w-full"
                   step="0.1"
                 />
               </div>
-
-              {/* Square Feet */}
-              <div>
+                  {/* Square Feet */}
+                  <div>
                 <label htmlFor="sq_ft" className="label">
                   <span className="label-text">Sq Ft</span>
                 </label>
@@ -490,11 +527,13 @@ const CrmTable: React.FC<CrmTableProps> = ({
                   type="number"
                   name="sq_ft"
                   id="sq_ft"
-                  value={formData.sq_ft === undefined ? '' : formData.sq_ft}
+                  value={formData.sq_ft === null || formData.sq_ft === undefined ? '' : formData.sq_ft}
                   onChange={handleFormChange}
                   className="input input-bordered w-full"
                   step="1"
                 />
+              </div>
+                </div>
               </div>
 
               {/* Notes */}
@@ -510,7 +549,7 @@ const CrmTable: React.FC<CrmTableProps> = ({
                   className="textarea textarea-bordered w-full h-24"
                 ></textarea>
               </div>
-            </div>
+            </div> {/* Closes the main 'grid grid-cols-1 md:grid-cols-2 gap-4' */}
 
             <div className="modal-action mt-6">
               <button 
