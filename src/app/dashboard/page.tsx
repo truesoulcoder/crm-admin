@@ -1,12 +1,12 @@
 'use client';
 
 import RequireAuth from '@/components/RequireAuth';
-import DashboardView from '@/components/views/DashboardView';
+import Eli5EngineControlView from '@/components/views/Eli5EngineControlView';
 
 export default function DashboardPage() {
   return (
     <RequireAuth>
-      <DashboardView />
+      <Eli5EngineControlView />
     </RequireAuth>
   );
 }

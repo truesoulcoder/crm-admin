@@ -47,17 +47,26 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Get admin user's email from session
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session?.user?.email || !session.user.id) {
+    // 2. Get admin user's email using getUser for server-side authentication
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      addLog(`Error fetching authenticated user: ${userError?.message || 'No user found'}`, 'error');
       return new NextResponse(
-        JSON.stringify({ error: 'Could not get admin user details. Please sign in again.' }),
+        JSON.stringify({ error: 'Authentication failed. Could not get admin user details.' }),
         { status: 401, headers: { 'Content-Type': 'application/json' } }
       );
     }
+
+    if (!user.email) {
+      addLog('Authenticated user has no email address.', 'error');
+      return new NextResponse(
+        JSON.stringify({ error: 'Authenticated user is missing an email address.' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
     
-    const adminEmail = session.user.email;
+    const adminEmail = user.email;
 
     // 3. Get a test lead with a valid email from the campaign's target market region
     if (!campaign.target_market_region) {
@@ -130,39 +139,43 @@ export async function POST(request: Request) {
     // Create a copy of the test lead and update the email
     const testLead = { ...testLeadData, email: adminEmail };
 
-    // 4. Get an active sender allocated to this campaign
-    const { data: allocatedSenderData, error: allocationError } = await supabase
-      .from('campaign_sender_allocations')
-      .select(`
-        senders (
-          id,
-          email,
-          name,
-          is_active,
-          avatar_url,
-          credentials_json,
-          provider
-        )
-      `)
-      .eq('campaign_id', campaignId)
-      .order('name', { foreignTable: 'senders', ascending: true })
-      .limit(1); // Get the alphabetically first allocated active sender
+    // 4. Get an active sender allocated to this campaign (Two-step query)
+    let sender: SenderRow | undefined;
 
-    if (allocationError) {
-      addLog(`Error fetching sender allocations: ${allocationError.message}`, 'error');
+    // Step 1: Fetch sender_id from campaign_sender_allocations
+    const { data: allocation, error: allocationFetchError } = await supabase
+      .from('campaign_sender_allocations')
+      .select('sender_id')
+      .eq('campaign_id', campaignId)
+      .limit(1)
+      .maybeSingle(); // Use maybeSingle to handle no allocation gracefully
+
+    if (allocationFetchError) {
+      addLog(`Error fetching sender allocation details: ${allocationFetchError.message}`, 'error');
       return new NextResponse(
-        JSON.stringify({ error: 'Error fetching sender allocations for campaign.' }),
+        JSON.stringify({ error: 'Error fetching sender allocation details for campaign.' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    // allocatedSenderData is of type ({ senders: SenderRow | null }[] | null)
-    let sender: SenderRow;
+    if (allocation && allocation.sender_id) {
+      // Step 2: Fetch sender details if sender_id is found and ensure sender is active
+      const { data: senderData, error: senderFetchError } = await supabase
+        .from('senders')
+        .select('*')
+        .eq('id', allocation.sender_id)
+        .eq('is_active', true) // Crucially, check if the sender is active
+        .single();
 
-    const activeAllocatedSender = allocatedSenderData?.find(
-      (alloc): alloc is { senders: SenderRow } => 
-        alloc?.senders?.is_active !== false
-    )?.senders;
+      if (senderFetchError) {
+        // Log error but don't necessarily fail; we might allocate a default one later
+        addLog(`Error fetching details for allocated sender ID ${allocation.sender_id}: ${senderFetchError.message}. Will attempt to find/allocate another.`, 'warning');
+      } else if (senderData) {
+        sender = senderData; // Found an active, allocated sender
+      }
+    }
+
+    const activeAllocatedSender = sender; // sender will be undefined if not found or not active
 
     if (activeAllocatedSender) {
       sender = activeAllocatedSender;
@@ -211,9 +224,15 @@ export async function POST(request: Request) {
       addLog(`Successfully allocated sender ID: ${sender.id} (${sender.email}) with quota ${DEFAULT_DAILY_QUOTA} as default for campaign ID: ${campaignId}.`);
     }
 
-    // sender.id and sender.email are non-nullable strings as per SenderRow type
-    const logMessage: string = `Using sender ID: ${sender.id} (${sender.email}) for pre-flight test.`;
-    addLog(logMessage); // level defaults to 'info'
+    // Ensure sender is defined before logging its details
+    if (sender) {
+      const logMessage: string = `Using sender ID: ${sender.id} (${sender.email}) for pre-flight test.`;
+      addLog(logMessage); // level defaults to 'info'
+    } else {
+      // This case should ideally not be reached if the logic above correctly returns or assigns a sender.
+      // However, adding a log here can help debug if it ever occurs.
+      addLog('Pre-flight check proceeding without a confirmed sender. This might indicate an issue.', 'warning');
+    }
 
       // 5. Send test email immediately
     const { prepareAndSendOfferEmail } = await import('@/actions/emailSending.action');
@@ -362,7 +381,7 @@ export async function POST(request: Request) {
         sender_id: sender.id,
         timestamp: new Date().toISOString()
       }),
-      user_id: session.user.id // Add the user ID from the session
+      user_id: user.id // Use the user ID from the authenticated user object
     };
     
     const { error: logError } = await supabase
