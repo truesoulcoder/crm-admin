@@ -10,8 +10,14 @@ import { Database } from '@/types/supabase';
 export const dynamic = 'force-dynamic';
 
 // Helper to add logs
-const addLog = (message: string, type: string = 'info') => 
-  console.log(`[Preflight API][${type.toUpperCase()}]: ${message}`);
+// Helper function to add logs with consistent formatting
+const addLog = (message: string, level: 'info' | 'error' | 'warning' = 'info') => {
+  console.log(`[CampaignPreflight:${level.toUpperCase()}] ${message}`);
+  // In a real scenario, you might send these logs to a logging service
+};
+
+// Type alias for sender row from Supabase schema
+type SenderRow = Database['public']['Tables']['senders']['Row'];
 
 export async function POST(request: Request) {
   // Initialize Supabase client inside the function
@@ -124,33 +130,52 @@ export async function POST(request: Request) {
     // Create a copy of the test lead and update the email
     const testLead = { ...testLeadData, email: adminEmail };
 
-    // 4. Get sender details with proper type assertions
-    interface CampaignWithSender extends Record<string, unknown> {
-      sender_id?: string;
-      document_template_id?: string;
-    }
-    
-    const campaignWithSender = campaign as CampaignWithSender;
-    const senderId = campaignWithSender.sender_id;
-    if (!senderId) {
+    // 4. Get an active sender allocated to this campaign
+    const { data: allocatedSenderData, error: allocationError } = await supabase
+      .from('campaign_sender_allocations')
+      .select(`
+        senders (
+          id,
+          email,
+          name,
+          is_active,
+          avatar_url,
+          credentials_json,
+          provider
+        )
+      `)
+      .eq('campaign_id', campaignId)
+      .limit(1); // Get the first one for pre-flight
+
+    if (allocationError) {
+      addLog(`Error fetching sender allocations: ${allocationError.message}`, 'error');
       return new NextResponse(
-        JSON.stringify({ error: `Campaign (ID: ${campaignId}) is missing sender ID` }),
+        JSON.stringify({ error: 'Error fetching sender allocations for campaign.' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // allocatedSenderData is of type ({ senders: SenderRow | null }[] | null)
+    const foundAllocation = allocatedSenderData?.find(
+      // Type guard to ensure alloc and alloc.senders are not null and sender is active
+      (alloc): alloc is { senders: SenderRow } => 
+        alloc !== null && alloc.senders !== null && alloc.senders.is_active !== false
+    );
+
+    if (!foundAllocation || !foundAllocation.senders) { // Check both allocation and nested senders
+      addLog(`No active sender found for campaign ID: ${campaignId}`, 'warning');
+      return new NextResponse(
+        JSON.stringify({ error: `No active sender is assigned to campaign (ID: ${campaignId}). Please assign and activate a sender.` }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
-    
-    const { data: sender, error: senderError } = await supabase
-      .from('senders')
-      .select('*')
-      .eq('id', senderId)
-      .single();
 
-    if (senderError || !sender) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Sender not found' }),
-        { status: 404, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
+    // Now, foundAllocation.senders is definitely SenderRow due to the type guard and checks
+    const sender: SenderRow = foundAllocation.senders;
+
+    // sender.id and sender.email are non-nullable strings as per SenderRow type
+    const logMessage: string = `Using sender ID: ${sender.id} (${sender.email}) for pre-flight test.`;
+    addLog(logMessage); // level defaults to 'info'
 
       // 5. Send test email immediately
     const { prepareAndSendOfferEmail } = await import('@/actions/emailSending.action');
@@ -178,9 +203,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // 7. Fetch Document Template based on campaign.document_template_id (if exists)
+    // 7. Fetch Document Template based on campaign.pdf_template_id (if exists)
     let documentHtmlContent: string | undefined = undefined;
-    const documentTemplateId = campaignWithSender.document_template_id;
+    const documentTemplateId = campaign.pdf_template_id; // Use pdf_template_id from campaign
     if (documentTemplateId) {
       const { data: documentTemplate, error: documentTemplateError } = await supabase
         .from('document_templates')
