@@ -52,7 +52,7 @@ const componentInitialFormData: Partial<Lead> = {
   property_address_zip: '',
   market_region: '',
   notes: '',
-  avm_value: undefined,
+  assessed_value: undefined,
   beds: undefined,
   baths: undefined,
   sq_ft: undefined,
@@ -167,22 +167,26 @@ const CrmView: React.FC = () => {
       property_address_state: leadToEdit.property_address_state || leadToEdit.state || '',
       property_address_zip: leadToEdit.property_address_zip || leadToEdit.zip_code || '',
       property_address_full: leadToEdit.property_address_full || addressParts.join(', ') || '',
-      avm_value: leadToEdit.avm_value !== null && leadToEdit.avm_value !== undefined ? Number(leadToEdit.avm_value) : undefined,
+      assessed_value: leadToEdit.assessed_value !== null && leadToEdit.assessed_value !== undefined ? Number(leadToEdit.assessed_value) : undefined,
       beds: leadToEdit.beds !== null && leadToEdit.beds !== undefined ? Number(leadToEdit.beds) : undefined,
       baths: leadToEdit.baths !== null && leadToEdit.baths !== undefined ? Number(leadToEdit.baths) : undefined,
       sq_ft: leadToEdit.sq_ft !== null && leadToEdit.sq_ft !== undefined ? Number(leadToEdit.sq_ft) : undefined,
     };
     setFormData(mappedFormData);
     setIsFormOpen(true);
-  }, [setCurrentLead, setFormData, setIsFormOpen, componentInitialFormData]);
+  }, [setCurrentLead, setFormData, setIsFormOpen]);
 
   const columnHelper = createColumnHelper<Lead>();
 
-const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
+  const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
     {
       header: 'Name',
       accessorFn: (row: Lead) => getDisplayName(row),
       id: 'name',
+      cell: (info: CellContext<Lead, string>) => {
+        const value = info.getValue();
+        return <span className="font-medium">{value || 'N/A'}</span>;
+      },
     },
     {
       header: 'Status',
@@ -200,15 +204,32 @@ const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
     {
       header: 'Email',
       accessorKey: 'email',
-      cell: (info: CellContext<Lead, string | undefined>) => info.getValue() || 'N/A',
+      cell: (info: CellContext<Lead, string | undefined>) => {
+        const value = info.getValue();
+        return <a href={`mailto:${value}`} className="link link-hover">{value || 'N/A'}</a>;
+      },
     },
     {
       header: 'Property Address',
-      accessorFn: (row: Lead) => formatFullAddress(row),
-      id: 'property_address_full',
+      accessorFn: (row: Lead) => {
+        // Use the property address fields first, fall back to the general address fields
+        const parts = [
+          row.property_address_street || row.address,
+          row.property_address_city || row.city,
+          row.property_address_state || row.state,
+          row.property_address_zip || row.zip_code
+        ].filter(Boolean);
+        
+        return parts.length > 0 ? parts.join(', ') : (row.property_address_full || 'N/A');
+      },
+      id: 'property_address',
+      cell: (info: CellContext<Lead, string>) => {
+        const value = info.getValue();
+        return <span className="whitespace-nowrap">{value}</span>;
+      },
     },
     {
-      header: 'AVM',
+      header: 'Assessed Value',
       accessorKey: 'avm_value',
       id: 'avm_value',
       cell: (info: CellContext<Lead, number | undefined>) => {
@@ -282,7 +303,7 @@ const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
 
     const leadDataToSubmit: Partial<Lead> = {
       ...formData,
-      avm_value: formData.avm_value ? parseFloat(String(formData.avm_value)) : undefined,
+      assessed_value: formData.assessed_value ? parseFloat(String(formData.assessed_value)) : undefined,
       beds: formData.beds ? parseInt(String(formData.beds), 10) : undefined,
       baths: formData.baths ? parseFloat(String(formData.baths)) : undefined,
       sq_ft: formData.sq_ft ? parseInt(String(formData.sq_ft), 10) : undefined,
@@ -367,8 +388,6 @@ const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
       error={error}
       searchTerm={searchTerm}
       setSearchTerm={setSearchTerm}
-      marketRegionFilter={marketRegionFilter}
-      setMarketRegionFilter={setMarketRegionFilter}
       tableInstance={tableInstance}
       filteredLeadsCount={filteredLeads.length}
       isFormOpen={isFormOpen}

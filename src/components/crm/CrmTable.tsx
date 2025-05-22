@@ -11,35 +11,47 @@ import StreetViewMap from '@/components/maps/StreetViewMap';
 // Re-export Lead and StatusOption if they are defined here and used by CrmView
 // Otherwise, CrmView should import them from their original source (e.g., a types file)
 export interface Lead {
-  id: string;
+  // Common fields
+  id: string | number; // string for UUID (crm_leads), number for normalized_leads.id
+  status: string;
+  created_at?: string | Date;
+  updated_at?: string | Date;
+  notes?: string;
+  market_region?: string;
+  
+  // Contact info (crm_leads)
   first_name?: string;
   last_name?: string;
   email?: string;
   phone?: string;
-  status: string;
-  created_at?: string;
-  updated_at?: string;
+  company?: string;
+  
+  // Property info (both schemas, different field names)
   property_address_full?: string;
-  property_address_street?: string;
-  property_address_city?: string;
-  property_address_state?: string;
-  property_address_zip?: string;
-  assessed_value?: number;
-  beds?: number;
-  baths?: number;
-  sq_ft?: number;
-  notes?: string;
+  property_address_street?: string; // crm_leads
+  property_address_city?: string;   // crm_leads
+  property_address_state?: string;  // crm_leads
+  property_address_zip?: string;    // crm_leads
+  property_address?: string;        // normalized_leads
+  property_city?: string;           // normalized_leads
+  property_state?: string;          // normalized_leads
+  property_postal_code?: string;    // normalized_leads
+  
+  // Property details
+  assessed_value?: number;         // crm_leads
+  avm_value?: number;              // normalized_leads
+  beds?: number | string;          // number in crm_leads, string in normalized_leads
+  baths?: number | string;         // number in crm_leads, string in normalized_leads
+  sq_ft?: number;                  // crm_leads
+  square_footage?: string;         // normalized_leads
+  
+  // MLS info
   mls_curr_status?: string;
   mls_curr_days_on_market?: string;
-  market_region?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  zip_code?: string;
-  property_address?: string;
-  property_city?: string;
-  property_state?: string;
-  property_postal_code?: string;
+  
+  // For display purposes (computed)
+  display_name?: string;
+  display_address?: string;
 }
 
 export interface StatusOption { // This might not be needed in CrmTable if CrmView handles status display logic
@@ -566,7 +578,7 @@ const CrmTable: React.FC<CrmTableProps> = ({
                 <button
                   type="button"
                   className="btn btn-error mr-2"
-                  onClick={() => { void handleDeleteLead(currentLead!.id); }}
+                  onClick={() => { void handleDeleteLead(String(currentLead!.id)); }}
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? <span className="loading loading-spinner loading-xs"></span> : 'Delete'}
