@@ -1,23 +1,18 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-import { createClient } from '@supabase/supabase-js';
 import chromium from '@sparticuz/chromium'; // For Vercel deployment
+import { createClient } from '@supabase/supabase-js';
 import { google } from 'googleapis';
 import { NextRequest, NextResponse } from 'next/server';
-import puppeteer from 'puppeteer-core';
+import { launch as puppeteerLaunch } from 'puppeteer-core';
 
 // Environment variables
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const GOOGLE_SERVICE_ACCOUNT_KEY = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-const DEFAULT_ADMIN_EMAIL = process.env.DEFAULT_ADMIN_EMAIL || 'your-default-admin-email@example.com';
-const TEST_RECIPIENT_EMAIL = process.env.TEST_RECIPIENT_EMAIL || 'test-recipient@example.com';
+const GOOGLE_SERVICE_ACCOUNT_KEY = process.env.GOOGLE_SERVICE_ACCOUNT_KEY!;
+const TEST_RECIPIENT_EMAIL = process.env.TEST_RECIPIENT_EMAIL!;
 
-// Placeholders for sender details (can be moved to config or fetched dynamically)
-const TEST_SENDER_NAME = process.env.TEST_SENDER_NAME || 'Test Sender Name';
-const TEST_SENDER_TITLE = process.env.TEST_SENDER_TITLE || 'Acquisitions Manager';
-const TEST_COMPANY_NAME = process.env.TEST_COMPANY_NAME || 'Test Real Estate LLC';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -58,7 +53,8 @@ function renderEmailTemplate(template: string, data: TemplateData): string {
     
     for (const key in data) {
         const regex = new RegExp(`\\{\\{\s*${key}\s*\\}\\}`, 'g');
-        rendered = rendered.replace(regex, (data as any)[key] || '');
+        const value = data[key as keyof TemplateData];
+        rendered = rendered.replace(regex, value !== undefined && value !== null ? String(value) : '');
     }
     return rendered;
 }
@@ -81,7 +77,8 @@ function renderLoiTemplate(template: string, data: TemplateData): string {
     
     for (const key in data) {
         const regex = new RegExp(`\\{\\{\s*${key}\s*\\}\\}`, 'g');
-        rendered = rendered.replace(regex, (data as any)[key] || '');
+        const value = data[key as keyof TemplateData];
+        rendered = rendered.replace(regex, value !== undefined && value !== null ? String(value) : '');
     }
     return rendered;
 }
@@ -102,17 +99,17 @@ async function generateLoiPdf(leadData: Lead, loiTemplateData: TemplateData): Pr
         
         const renderedHtml = renderLoiTemplate(htmlContent, loiTemplateData);
 
-        const browser = await puppeteer.launch({
+        const browser = await puppeteerLaunch({
             args: chromium.args,
             defaultViewport: chromium.defaultViewport,
-            executablePath: await chromium.executablePath,
-            headless: chromium.headless,
+            executablePath: await chromium.executablePath(),
+            headless: true, // Force headless mode
             ignoreHTTPSErrors: true,
         });
 
         const page = await browser.newPage();
         await page.setContent(renderedHtml, { waitUntil: 'networkidle0' });
-        const pdfBuffer = await page.pdf({ format: 'Letter', printBackground: true });
+        const pdfBuffer = await page.pdf({ format: 'letter', printBackground: true });
         await browser.close();
 
         return pdfBuffer;
@@ -174,15 +171,15 @@ export async function POST(req: NextRequest) {
         const { data: fetchedLeads, error: fetchError } = await supabase
             .from('useful_leads')
             .select('*')
-            .not('contact1_name', 'is', null)
-            .not('contact1_email_1', 'is', null)
+            .not('contact_name', 'is', null)
+            .not('contact_email', 'is', null)
             .not('property_address', 'is', null)
             .limit(1)
             .single();
 
         if (fetchError || !fetchedLeads) {
             console.error('Error fetching lead:', fetchError);
-            await logEmailAttempt(null, 'N/A', TEST_SENDER_NAME, DEFAULT_ADMIN_EMAIL, 'Lead Fetch Failed', '', 'FAILED_TO_SEND', 'Failed to fetch lead for test email.');
+            await logEmailAttempt(null, 'N/A', 'N/A', 'N/A', 'Lead Fetch Failed', '', 'FAILED_TO_SEND', 'Failed to fetch lead for test email.');
             return NextResponse.json({ error: 'Failed to fetch lead for test email' }, { status: 500 });
         }
         lead = fetchedLeads as Lead;
@@ -196,9 +193,8 @@ export async function POST(req: NextRequest) {
             property_state: lead.property_state || 'N/A',
             property_postal_code: lead.property_postal_code || 'N/A',
             contact_name: contactName,
-            sender_name: TEST_SENDER_NAME,
-            sender_title: TEST_SENDER_TITLE,
-            company_name: TEST_COMPANY_NAME,
+            sender_name: lead.sender_name,
+            sender_title: lead.sender_title,
         };
 
         // 2. Read and render email template
@@ -234,11 +230,11 @@ export async function POST(req: NextRequest) {
         }
         
         // 5. Construct Multipart MIME message
-        const boundary = "----NextPart" + Math.random().toString(16).substring(2);
+        const boundary = `----NextPart${Math.random().toString(16).substring(2)}`;
         const loiFilename = `LOI_${(lead.property_address || 'property').replace(/\s+/g, '_')}.pdf`;
 
         const messageParts = [
-            `From: "${emailTemplateData.sender_name}" <${DEFAULT_ADMIN_EMAIL}>`,
+            `From: "${emailTemplateData.sender_name}" <${sender_email}>`,
             `To: ${TEST_RECIPIENT_EMAIL}`,
             `Subject: ${finalEmailSubject}`,
             'MIME-Version: 1.0',
@@ -266,7 +262,7 @@ export async function POST(req: NextRequest) {
             scopes: ['https://www.googleapis.com/auth/gmail.send'],
         });
         // Corrected: Use setImpersonatedUser for service account impersonation
-        (auth as any).setImpersonatedUser(DEFAULT_ADMIN_EMAIL); 
+        (auth as any).setImpersonatedUser(sender_email); 
 
 
         const gmail = google.gmail({ version: 'v1', auth });
@@ -277,7 +273,7 @@ export async function POST(req: NextRequest) {
             },
         });
 
-        await logEmailAttempt(lead, contactName, emailTemplateData.sender_name!, DEFAULT_ADMIN_EMAIL, finalEmailSubject, emailBodyHtml, 'SENT');
+        await logEmailAttempt(lead, contactName, emailTemplateData.sender_name!, sender_email, finalEmailSubject, emailBodyHtml, 'SENT');
         return NextResponse.json({ message: 'Test email with PDF sent successfully' });
 
     } catch (error) {
@@ -285,7 +281,7 @@ export async function POST(req: NextRequest) {
         console.error('Error in POST /api/test-email:', error);
         const errorMessage = (error instanceof Error) ? error.message : String(error);
         // Use the lead variable which is defined in the outer scope of this try block
-        await logEmailAttempt(lead, lead?.contact1_name || 'N/A', TEST_SENDER_NAME, DEFAULT_ADMIN_EMAIL, 'Test Email Failed', '', 'FAILED_TO_SEND', errorMessage);
+        await logEmailAttempt(lead, lead?.contact1_name || 'N/A', sender_name, sender_email, 'Test Email Failed', '', 'FAILED_TO_SEND', errorMessage);
         return NextResponse.json({ error: 'Failed to send test email', details: errorMessage }, { status: 500 });
     }
 }
