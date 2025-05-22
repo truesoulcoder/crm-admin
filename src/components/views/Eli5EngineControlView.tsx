@@ -19,7 +19,7 @@ interface LogEntry {
 
 type EngineStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error' | 'test_sending';
 
-const Eli5EngineControlView: React.FC = () => {
+const Eli5EngineControlView: React.FC = (): JSX.Element => {
   const [engineStatus, setEngineStatus] = useState<EngineStatus>('idle');
   const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -87,22 +87,49 @@ const Eli5EngineControlView: React.FC = () => {
   }, [addLog]);
 
   const handleSendTestEmail = async () => {
-    addLog('Attempting to send test email...', 'info');
+    addLog('Attempting to send test email via RPC...', 'info');
     setIsLoading(true);
     setEngineStatus('test_sending');
     setError(null);
+    
     try {
-      // IMPORTANT: Replace 'rpc_send_test_email' with your actual Supabase RPC function name
-      const { data, error: rpcError } = await supabase.rpc('trigger_eli5_test_email'); 
-      if (rpcError) throw rpcError;
-      addLog(`Test email process triggered successfully: ${JSON.stringify(data)}`, 'success');
+      const { data, error: rpcError } = await supabase.rpc('trigger_eli5_test_email');
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      // Assuming the RPC returns a JSON object like:
+      // { status: 'success', message: '...', api_response: { ... } }
+      // or { status: 'error', message: '...', api_response: { ... } }
+      if (data && data.status === 'success') {
+        addLog(`Test email triggered successfully via RPC: ${data.message}`, 'success');
+        if (data.api_response && data.api_response.message) {
+            addLog(`API Response: ${data.api_response.message}`, 'info');
+        } else {
+            addLog('Check your inbox for the test email.', 'info');
+        }
+      } else if (data && data.status === 'error') {
+        let detailedErrorMessage = `RPC Error: ${data.message}`;
+        if (data.api_response && data.api_response.error) {
+            detailedErrorMessage += ` | API Error: ${data.api_response.error}`;
+            if (data.api_response.details) {
+                 detailedErrorMessage += ` - ${data.api_response.details}`;
+            }
+        }
+        throw new Error(detailedErrorMessage);
+      } else {
+        // Fallback for unexpected RPC response structure
+        throw new Error('Unexpected response from trigger_eli5_test_email RPC.');
+      }
+      
     } catch (err: any) {
       const errorMessage = `Error sending test email: ${err.message || 'Unknown RPC error'}`;
       addLog(errorMessage, 'error');
       setError(errorMessage);
     } finally {
       setIsLoading(false);
-      setEngineStatus('idle'); // Or based on actual feedback if available
+      setEngineStatus('idle'); // Reset status regardless of outcome
     }
   };
 
