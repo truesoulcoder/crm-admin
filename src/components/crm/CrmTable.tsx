@@ -67,7 +67,7 @@ interface CrmTableProps {
   handleDeleteLead: (leadId: string) => Promise<void>;
   formError: string | null;
   isSubmitting: boolean;
-  addressInputRef: React.RefObject<HTMLInputElement>;
+  addressInputRef: React.RefObject<HTMLInputElement | null>;
   getDisplayName: (lead: Partial<Lead>) => string;
   handleEditLead: (lead: Lead) => void; 
   initialFormData: Partial<Lead>;

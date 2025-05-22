@@ -12,12 +12,18 @@ import {
   ColumnDef,
   CellContext
 } from '@tanstack/react-table';
-import React, { useState, useEffect, useMemo, useCallback, useRef, ChangeEvent } from 'react';
-import { supabase } from '@/lib/supabase/client';
-
 import { Edit3 } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import React, { useState, useEffect, useMemo, useCallback, useRef, ChangeEvent } from 'react';
 
 import CrmTable, { Lead as LeadType, StatusOption as StatusOptionType } from '@/components/crm/CrmTable'; // Import CrmTable and types // Import CrmTable and types
+import { supabase } from '@/lib/supabase/client';
+
+// Dynamically import the GoogleMapsLoader with SSR disabled
+const GoogleMapsLoader = dynamic(
+  () => import('@/components/maps/GoogleMapsLoader'),
+  { ssr: false }
+);
 
 // Use imported types
 export type Lead = LeadType;
@@ -148,6 +154,25 @@ const CrmView: React.FC = () => {
     return tempLeads;
   }, [leads, searchTerm, marketRegionFilter]);
 
+
+  const handleEditLead = useCallback((leadToEdit: Lead) => {
+    setCurrentLead(leadToEdit);
+    const mappedFormData: Partial<Lead> = {
+      ...componentInitialFormData,
+      ...leadToEdit,
+      property_address_street: leadToEdit.property_address_street || leadToEdit.address || '',
+      property_address_city: leadToEdit.property_address_city || leadToEdit.city || '',
+      property_address_state: leadToEdit.property_address_state || leadToEdit.state || '',
+      property_address_zip: leadToEdit.property_address_zip || leadToEdit.zip_code || '',
+      avm_value: leadToEdit.avm_value !== null && leadToEdit.avm_value !== undefined ? Number(leadToEdit.avm_value) : undefined,
+      beds: leadToEdit.beds !== null && leadToEdit.beds !== undefined ? Number(leadToEdit.beds) : undefined,
+      baths: leadToEdit.baths !== null && leadToEdit.baths !== undefined ? Number(leadToEdit.baths) : undefined,
+      sq_ft: leadToEdit.sq_ft !== null && leadToEdit.sq_ft !== undefined ? Number(leadToEdit.sq_ft) : undefined,
+    };
+    setFormData(mappedFormData);
+    setIsFormOpen(true);
+  }, [setCurrentLead, setFormData, setIsFormOpen, componentInitialFormData]);
+
   const columnHelper = createColumnHelper<Lead>();
 
 const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
@@ -246,23 +271,6 @@ const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
   const setPageSize = tableInstance.setPageSize;
   const pageOptions = Array.from({ length: pageCount }, (_, i) => i + 1);
 
-  const handleEditLead = (leadToEdit: Lead) => {
-    setCurrentLead(leadToEdit);
-    const mappedFormData: Partial<Lead> = {
-      ...componentInitialFormData,
-      ...leadToEdit,
-      property_address_street: leadToEdit.property_address_street || leadToEdit.address || '',
-      property_address_city: leadToEdit.property_address_city || leadToEdit.city || '',
-      property_address_state: leadToEdit.property_address_state || leadToEdit.state || '',
-      property_address_zip: leadToEdit.property_address_zip || leadToEdit.zip_code || '',
-      avm_value: leadToEdit.avm_value !== null && leadToEdit.avm_value !== undefined ? Number(leadToEdit.avm_value) : undefined,
-      beds: leadToEdit.beds !== null && leadToEdit.beds !== undefined ? Number(leadToEdit.beds) : undefined,
-      baths: leadToEdit.baths !== null && leadToEdit.baths !== undefined ? Number(leadToEdit.baths) : undefined,
-      sq_ft: leadToEdit.sq_ft !== null && leadToEdit.sq_ft !== undefined ? Number(leadToEdit.sq_ft) : undefined,
-    };
-    setFormData(mappedFormData);
-    setIsFormOpen(true);
-  };
 
   const handleSubmitForTable = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -350,7 +358,8 @@ const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
   }
 
   return (
-    <CrmTable
+    <GoogleMapsLoader>
+      <CrmTable
       leads={leads} // Pass raw leads for market region filter population
       isLoading={isLoading}
       error={error}
@@ -377,6 +386,7 @@ const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
       initialFormData={componentInitialFormData}
       statusOptions={componentStatusOptions}
     />
+    </GoogleMapsLoader>
   );
 };
 
