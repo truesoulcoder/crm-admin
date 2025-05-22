@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false, // Temporarily disabled for diagnostics
   // External packages for server components
   serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
   experimental: {
