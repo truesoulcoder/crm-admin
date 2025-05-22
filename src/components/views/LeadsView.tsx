@@ -423,7 +423,7 @@ const LeadsView: React.FC = () => {
     if (!contactFields[`contact${contactNum}_name`] /* Add more required field checks based on your modal inputs */) {
       alert('Required field(s) missing.'); // Make this more specific
       return;
-    }
+    };
 
     // Remove id, created_at, updated_at, and _primaryContact from data to be sent to Supabase for update
     // Only update the relevant contact fields for the selected contact
