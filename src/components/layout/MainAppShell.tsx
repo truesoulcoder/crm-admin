@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 
+import GoogleMapsLoader from '@/components/maps/GoogleMapsLoader'; // Import GoogleMapsLoader
 import RequireAuth from '@/components/RequireAuth'; // Assuming RequireAuth is in src/components
 
 import Navbar from './Navbar';
@@ -26,7 +27,8 @@ const MainAppShell: React.FC<MainAppShellProps> = ({ children }) => {
   };
 
   return (
-    <div className="drawer lg:drawer-open">
+    <GoogleMapsLoader>
+      <div className="drawer lg:drawer-open">
       <input id="sidebar-drawer-toggle" type="checkbox" className="drawer-toggle" />
       <div className="drawer-content flex flex-col">
         {/* Navbar */}
@@ -44,6 +46,7 @@ const MainAppShell: React.FC<MainAppShellProps> = ({ children }) => {
         <Sidebar />
       </div>
     </div>
+    </GoogleMapsLoader>
   );
 };
 
