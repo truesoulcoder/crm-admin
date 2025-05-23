@@ -1,125 +1,294 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getSupabaseClient } from './eli5-engine/_utils';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET']);
-    return res.status(405).end(`Method ${req.method} Not Allowed`);
+import { createClient } from '@/lib/supabase/server';
+
+type EmailStatus = 'sent' | 'delivered' | 'bounced' | 'opened' | 'clicked' | 'replied';
+type TimeRange = '24h' | '7d' | '30d';
+
+interface EmailMetric {
+  sender_email_used: string | null;
+  sender_name: string | null;
+  email_status: string | null;
+  count: number;
+}
+
+interface MetricTotals {
+  sent: number;
+  delivered: number;
+  bounced: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+}
+
+interface MetricRates {
+  delivery: number;
+  bounce: number;
+  open: number;
+  click: number;
+  reply: number;
+}
+
+interface SenderMetrics extends MetricTotals {
+  email: string;
+  name: string;
+  deliveryRate: number;
+  bounceRate: number;
+  openRate: number;
+  clickRate: number;
+  replyRate: number;
+}
+
+interface ApiResponse {
+  success: boolean;
+  data?: {
+    totals: MetricTotals;
+    rates: MetricRates;
+    bySender: SenderMetrics[];
+    timeSeries: any[];
+  };
+  error?: string;
+}
+
+class EmailMetricsError extends Error {
+  status: number;
+
+  constructor(message: string, status: number = 500) {
+    super(message);
+    this.name = 'EmailMetricsError';
+    this.status = status;
+  }
+}
+
+const isValidEmailStatus = (status: string | null): status is EmailStatus => {
+  return [
+    'sent', 'delivered', 'bounced', 
+    'opened', 'clicked', 'replied'
+  ].includes(status || '');
+};
+
+const calculateTotals = (metrics: EmailMetric[]): MetricTotals => {
+  const totals: MetricTotals = { 
+    sent: 0, 
+    delivered: 0, 
+    bounced: 0, 
+    opened: 0, 
+    clicked: 0, 
+    replied: 0 
+  };
+
+  for (const metric of metrics) {
+    const status = metric.email_status?.toLowerCase();
+    const count = metric.count || 0;
+    
+    if (status && isValidEmailStatus(status)) {
+      totals[status] = (totals[status] || 0) + count;
+    }
+    totals.sent += count;
   }
 
-  const supabase = getSupabaseClient();
-  const { timeRange = '7d' } = req.query;
+  return totals;
+};
 
-  try {
-    // Calculate date range based on timeRange parameter
-    let dateRange = new Date();
-    switch (timeRange) {
-      case '24h':
-        dateRange.setDate(dateRange.getDate() - 1);
-        break;
-      case '7d':
-        dateRange.setDate(dateRange.getDate() - 7);
-        break;
-      case '30d':
-        dateRange.setDate(dateRange.getDate() - 30);
-        break;
-      case '90d':
-        dateRange.setDate(dateRange.getDate() - 90);
-        break;
-      default:
-        dateRange.setDate(dateRange.getDate() - 7); // Default to 7 days
+const calculateRates = (totals: MetricTotals): MetricRates => ({
+  delivery: totals.sent > 0 ? Number(((totals.delivered / totals.sent) * 100).toFixed(2)) : 0,
+  bounce: totals.sent > 0 ? Number(((totals.bounced / totals.sent) * 100).toFixed(2)) : 0,
+  open: totals.delivered > 0 ? Number(((totals.opened / totals.delivered) * 100).toFixed(2)) : 0,
+  click: totals.delivered > 0 ? Number(((totals.clicked / totals.delivered) * 100).toFixed(2)) : 0,
+  reply: totals.delivered > 0 ? Number(((totals.replied / totals.delivered) * 100).toFixed(2)) : 0
+});
+
+const processSenderMetrics = (metrics: EmailMetric[]): SenderMetrics[] => {
+  const senderMap = new Map<string, SenderMetrics>();
+
+  for (const metric of metrics) {
+    const email = metric.sender_email_used || 'unknown@example.com';
+    const status = metric.email_status?.toLowerCase();
+    const count = metric.count || 0;
+
+    let sender = senderMap.get(email);
+    if (!sender) {
+      sender = {
+        email,
+        name: metric.sender_name || email.split('@')[0],
+        sent: 0, 
+        delivered: 0, 
+        bounced: 0,
+        opened: 0, 
+        clicked: 0, 
+        replied: 0,
+        deliveryRate: 0, 
+        bounceRate: 0, 
+        openRate: 0,
+        clickRate: 0, 
+        replyRate: 0
+      };
+      senderMap.set(email, sender);
     }
 
-    // Get email metrics by sender
-    const { data: senderMetrics, error: senderError } = await supabase
-      .from('eli5_email_log')
-      .select(`
-        sender_email_used,
-        sender_name,
-        email_status,
-        count:count(*)
-      `)
-      .gte('created_at', dateRange.toISOString())
-      .group('sender_email_used, sender_name, email_status');
+    if (status && isValidEmailStatus(status)) {
+      sender[status] = (sender[status] || 0) + count;
+    }
+    sender.sent += count;
+  }
 
-    if (senderError) throw senderError;
+  return Array.from(senderMap.values()).map(sender => {
+    const { sent, delivered, bounced, opened, clicked, replied } = sender;
+    const rates = calculateRates({ sent, delivered, bounced, opened, clicked, replied });
+    
+    return {
+      ...sender,
+      ...rates,
+      deliveryRate: rates.delivery,
+      bounceRate: rates.bounce,
+      openRate: rates.open,
+      clickRate: rates.click,
+      replyRate: rates.reply
+    };
+  });
+};
 
-    // Get time-series data for the chart
-    const { data: timeSeriesData, error: timeSeriesError } = await supabase
-      .rpc('get_email_metrics_time_series', {
-        start_date: dateRange.toISOString(),
-        end_date: new Date().toISOString(),
-        interval_days: timeRange === '24h' ? 1 : timeRange === '7d' ? 1 : 7
+const getDateRange = (timeRange: string): Date => {
+  const date = new Date();
+  const days = timeRange === '24h' ? 1 : timeRange === '30d' ? 30 : 7;
+  date.setDate(date.getDate() - days);
+  return date;
+};
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<ApiResponse>
+) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', ['GET']);
+    return res.status(405).json({ 
+      success: false, 
+      error: `Method ${req.method} Not Allowed` 
+    });
+  }
+
+  try {
+    const { timeRange = '7d' } = req.query as { timeRange?: string };
+    const startDate = getDateRange(timeRange);
+    const supabase = createClient();
+
+    // Define types for our metrics
+    type SenderMetric = {
+      sender_email_used: string | null;
+      sender_name: string | null;
+      email_status: string | null;
+      count: number;
+    };
+
+    type TimeSeriesPoint = any; // Replace with actual type if known
+
+    try {
+      // Get the Supabase client instance
+      const client = await supabase;
+      
+      // Type assertions for Supabase client methods
+      const supabaseClient = client as unknown as {
+        from: (table: string) => {
+          select: (fields: string) => {
+            gte: (field: string, value: string) => {
+              group: (...fields: string[]) => Promise<{
+                data: SenderMetric[] | null;
+                error: any;
+              }>;
+            };
+          };
+        };
+        rpc: (fn: string, params: any) => Promise<{
+          data: any[] | null;
+          error: any;
+        }>;
+      };
+      
+      // Execute queries in parallel
+      const [
+        { data: senderData, error: senderError },
+        { data: timeSeriesData, error: timeSeriesError }
+      ] = await Promise.all([
+        supabaseClient
+          .from('eli5_email_log')
+          .select('sender_email_used, sender_name, email_status, count(*)')
+          .gte('created_at', startDate.toISOString())
+          .group('sender_email_used', 'sender_name', 'email_status'),
+        
+        supabaseClient.rpc('get_email_metrics_time_series', {
+          start_date: startDate.toISOString(),
+          end_date: new Date().toISOString(),
+          interval_days: timeRange === '24h' ? 1 : timeRange === '7d' ? 1 : 7
+        })
+      ]);
+
+      if (senderError) {
+        throw new EmailMetricsError(
+          `Failed to fetch sender metrics: ${senderError.message}`, 
+          500
+        );
+      }
+
+      // Handle time series error without failing the whole request
+      if (timeSeriesError) {
+        console.warn('Time series data not available:', timeSeriesError.message);
+      }
+
+      // Process the data
+      const metrics = senderData || [];
+      const bySender = processSenderMetrics(metrics as unknown as EmailMetric[]);
+      const totals = calculateTotals(metrics as unknown as EmailMetric[]);
+      const rates = calculateRates(totals);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          totals,
+          rates,
+          bySender,
+          timeSeries: timeSeriesData || []
+        }
       });
-
-    if (timeSeriesError) throw timeSeriesError;
-
-    // Calculate totals
-    const totals = {
-      sent: 0,
-      delivered: 0,
-      bounced: 0,
-      opened: 0,
-      clicked: 0,
-      replied: 0
-    };
-
-    const bySender: Record<string, typeof totals> = {};
-
-    // Process sender metrics
-    senderMetrics?.forEach(metric => {
-      const status = metric.email_status?.toLowerCase();
-      const sender = metric.sender_email_used || 'unknown';
+    } catch (error) {
+      // Safely handle the error with proper type checking
+      let status = 500;
+      let message = 'An unknown error occurred';
       
-      // Initialize sender if not exists
-      if (!bySender[sender]) {
-        bySender[sender] = { sent: 0, delivered: 0, bounced: 0, opened: 0, clicked: 0, replied: 0 };
+      if (error instanceof EmailMetricsError) {
+        status = error.status;
+        message = error.message;
+      } else if (error instanceof Error) {
+        message = error.message;
+      } else if (typeof error === 'object' && error !== null) {
+        // Handle plain error objects that might not be instances of Error
+        message = String((error as { message?: unknown }).message || 'An unknown error occurred');
       }
-
-      const count = metric.count || 0;
       
-      // Update sender metrics
-      bySender[sender][status] = count;
-      bySender[sender].sent += count;
-      
-      // Update totals
-      if (['sent', 'delivered', 'bounced', 'opened', 'clicked', 'replied'].includes(status)) {
-        totals[status] += count;
-      }
-    });
-
-    // Calculate rates
-    const rates = {
-      delivery: totals.sent > 0 ? (totals.delivered / totals.sent) * 100 : 0,
-      bounce: totals.sent > 0 ? (totals.bounced / totals.sent) * 100 : 0,
-      open: totals.delivered > 0 ? (totals.opened / totals.delivered) * 100 : 0,
-      click: totals.delivered > 0 ? (totals.clicked / totals.delivered) * 100 : 0,
-      reply: totals.delivered > 0 ? (totals.replied / totals.delivered) * 100 : 0
-    };
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        totals,
-        rates,
-        bySender: Object.entries(bySender).map(([email, metrics]) => ({
-          email,
-          name: senderMetrics?.find(m => m.sender_email_used === email)?.sender_name || email.split('@')[0],
-          ...metrics,
-          deliveryRate: metrics.sent > 0 ? (metrics.delivered / metrics.sent) * 100 : 0,
-          bounceRate: metrics.sent > 0 ? (metrics.bounced / metrics.sent) * 100 : 0,
-          openRate: metrics.delivered > 0 ? (metrics.opened / metrics.delivered) * 100 : 0,
-          clickRate: metrics.delivered > 0 ? (metrics.clicked / metrics.delivered) * 100 : 0,
-          replyRate: metrics.delivered > 0 ? (metrics.replied / metrics.delivered) * 100 : 0
-        })),
-        timeSeries: timeSeriesData || []
-      }
-    });
-  } catch (error: any) {
-    console.error('Error fetching email metrics:', error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to fetch email metrics'
+      console.error('Email metrics API error:', error);
+      return res.status(status).json({ 
+        success: false, 
+        error: message 
+      });
+    }
+  } catch (error) {
+    // Safely handle the error with proper type checking
+    let status = 500;
+    let message = 'An unknown error occurred';
+    
+    if (error instanceof EmailMetricsError) {
+      status = error.status;
+      message = error.message;
+    } else if (error instanceof Error) {
+      message = error.message;
+    } else if (typeof error === 'object' && error !== null) {
+      // Handle plain error objects that might not be instances of Error
+      message = String((error as { message?: unknown }).message || 'An unknown error occurred');
+    }
+    
+    console.error('Email metrics API error:', error);
+    return res.status(status).json({ 
+      success: false, 
+      error: message 
     });
   }
 }
