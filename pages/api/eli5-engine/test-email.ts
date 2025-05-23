@@ -104,10 +104,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (leadError) throw new Error(`Error fetching lead from useful_leads: ${leadError.message}`);
     if (!lead) throw new Error('No lead found in useful_leads table for testing.');
 
-    // Use the lead's ID (assuming 'id' or 'uuid' exists) for logging and other purposes
-    // For this example, let's assume 'id' is the primary key in 'useful_leads'
-    // If 'useful_leads' uses 'uuid', change 'lead.id' to 'lead.uuid' accordingly.
-    const leadIdForLogging = lead.id; // Or lead.uuid if that's the identifier
+    // Definitive Nunjucks contact_name fix:
+    // Ensure lead.contact_name is a string (empty if null/undefined)
+    // This mutates the lead object directly.
+    if (lead && (lead.contact_name === null || typeof lead.contact_name === 'undefined')) {
+      lead.contact_name = ""; 
+    }
+    // The useful_leads query uses select('*'), so normalized_lead_id should be available.
+
+    // Use the lead's ID from useful_leads for the API response. For logging, normalized_lead_id will be used.
+    const leadIdForApiResponse = lead.id; 
 
     // Field Compatibility:
     // 1. Essential Lead Fields & Validation
@@ -121,12 +127,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const missingOrInvalidFields: string[] = [];
 
     essentialLeadFieldKeys.forEach(field => {
-      let value = lead[field];
-      // Nunjucks `contact_name` Fix: Convert null/undefined to "" before validation
-      if (field === 'contact_name' && (value === null || typeof value === 'undefined')) {
-        lead.contact_name = ""; // Modify lead object directly or use a temporary validated object
-        value = ""; 
-      }
+      const value = lead[field]; // lead.contact_name is now guaranteed to be a string here
       if (value === null || value === undefined || String(value).trim() === '') {
         missingOrInvalidFields.push(String(field));
       }
@@ -151,7 +152,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (missingOrInvalidFields.length > 0) {
       const errorMessage = `Missing/invalid essential lead data: ${missingOrInvalidFields.join(', ')}`;
       await logToSupabase({
-        original_lead_id: leadIdForLogging,
+        original_lead_id: lead.normalized_lead_id, // Corrected original_lead_id
         contact_email: intendedRecipientEmail,
         // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
         email_status: 'FAILED_PREPARATION',
@@ -181,7 +182,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (offerPriceNumeric <= 0) { // Should be rare due to prior assessed_total check, but good to be safe
         const offerCalcErrorMessage = `Calculated offer_price_numeric is not positive: ${offerPriceNumeric}`;
         await logToSupabase({
-            original_lead_id: leadIdForLogging,
+            original_lead_id: lead.normalized_lead_id, // Corrected original_lead_id
             contact_email: intendedRecipientEmail,
             // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
             email_status: 'FAILED_PREPARATION',
@@ -201,7 +202,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!isValidEmail(actualTestRecipientEmail)) {
         await logToSupabase({
-            original_lead_id: leadIdForLogging,
+            original_lead_id: lead.normalized_lead_id, // Corrected original_lead_id
             contact_email: intendedRecipientEmail,
             // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
             email_status: 'FAILED_TO_SEND',
@@ -257,10 +258,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const emailBodyHtml = nunjucks.renderString(rawBodyTemplate, templateData);
 
     // 6. Generate PDF
-    const pdfBuffer = await generateLoiPdf(pdfPersonalizationData, leadIdForLogging, intendedRecipientEmail || actualTestRecipientEmail);
+    const pdfBuffer = await generateLoiPdf(pdfPersonalizationData, lead.normalized_lead_id, intendedRecipientEmail || actualTestRecipientEmail); // Using normalized_lead_id for PDF context if appropriate
     if (!pdfBuffer) {
       await logToSupabase({
-        original_lead_id: leadIdForLogging,
+        original_lead_id: lead.normalized_lead_id, // Corrected original_lead_id
         contact_name: sharedData.contact_name, // Use from sharedData for consistency
         contact_email: intendedRecipientEmail,
         // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
@@ -311,7 +312,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 10. Logging Success (adjusted numbering)
     await logToSupabase({
-      original_lead_id: leadIdForLogging,
+      original_lead_id: lead.normalized_lead_id, // Corrected original_lead_id
       contact_name: sharedData.contact_name, // Use from sharedData
       contact_email: intendedRecipientEmail, 
       // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
@@ -329,20 +330,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({
         success: true,
         message: `Test email successfully sent to ${actualTestRecipientEmail} (personalized for ${intendedRecipientEmail || 'N/A'}) from ${activeSenderEmail}.`,
-        lead_id: leadIdForLogging,
+        lead_id: leadIdForApiResponse, // Using lead.id from useful_leads for API response
         subject: emailSubject,
     });
 
   } catch (error: any) {
     console.error('Error in test-email handler:', error);
-    // Ensure leadIdForLogging is available for logging if the error happens after lead fetching
-    // If lead fetching failed, leadIdForLogging would not be set.
-    // Fallback to a generic placeholder if lead is not defined.
-    const errorLeadId = typeof lead !== 'undefined' && lead ? (lead.id || lead.uuid) : `test-lead-fetch-failed-${Date.now()}`;
+    // Use lead?.normalized_lead_id or lead?.id for error logging if lead object is available
+    const errorLeadIdForLogging = lead?.normalized_lead_id || lead?.id || `test-lead-fetch-failed-${Date.now()}`;
     await logToSupabase({
-      original_lead_id: errorLeadId,
+      original_lead_id: errorLeadIdForLogging, // Corrected original_lead_id
       contact_email: typeof intendedRecipientEmail !== 'undefined' ? intendedRecipientEmail : 'unknown_intended', // Log intended if available
-      // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed. This was already commented out in the source, but ensuring it stays removed.
+      // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed.
       email_status: 'FAILED_TO_SEND',
       email_error_message: `Test email failed: ${error.message}`,
       // stack_trace: error.stack, // Optional: log stack trace
