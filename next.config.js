@@ -11,6 +11,9 @@ const nextConfig = {
   serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
   experimental: {
     // Add any experimental features here
+    serverActions: {
+      allowedOrigins: ['localhost:3000']
+    }
   },
   // Configure webpack to handle Node.js modules and optimize builds
   webpack: (config, { isServer, dev }) => {
@@ -69,13 +72,18 @@ const nextConfig = {
     ],
   },
 
-  webpack: (config, { isServer }) => {
-    // Add path aliases
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      '@': path.resolve(__dirname, 'src'),
-    };
-    return config;
+  output: 'standalone',
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:3001/api/:path*',
+      },
+      {
+        source: '/dashboard/:path*',
+        destination: '/api/dashboard/:path*',
+      },
+    ]
   },
   // For TypeScript path aliases
   typescript: {

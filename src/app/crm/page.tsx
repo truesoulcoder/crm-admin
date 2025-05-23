@@ -1,22 +1,20 @@
-// app/crm-leads/page.tsx
 import React from 'react';
+
+import CrmView from '@/components/crm/CrmTable';
 
 import type { Metadata } from 'next';
 
-import CrmLeads from '@/components/views/CrmLeads'; // Adjust path if necessary
-
-
 export const metadata: Metadata = {
-  title: 'CRM Leads Management',
+  title: 'Seller Management',
   description: 'Manage CRM leads including adding, editing, and viewing details.',
 };
 
-const CrmLeadsPage: React.FC = () => {
+const CrmPage: React.FC = () => {
   return (
     <>
-      <CrmLeads />
+      <CrmTable />
     </>
   );
 };
 
-export default CrmLeadsPage;
+export default CrmPage;

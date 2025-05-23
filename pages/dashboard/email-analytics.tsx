@@ -70,75 +70,22 @@ export default function EmailAnalytics() {
   useEffect(() => {
     // Simulate API call
     const fetchData = async () => {
-      // In a real app, you would fetch this from your API
-      // const response = await fetch(`/api/email-metrics?range=${timeRange}`);
-      // const data = await response.json();
-      
-      // Mock data
-      const mockData: EmailMetrics = {
-        totals: {
-          sent: 1245,
-          delivered: 1200,
-          bounced: 45,
-          opened: 850,
-          clicked: 420,
-          replied: 210,
-        },
-        rates: {
-          delivery: 96.4,
-          open: 70.8,
-          click: 35.0,
-          reply: 17.5,
-        },
-        timeSeries: Array.from({ length: 7 }, (_, i) => ({
-          date_group: `${i + 1} day${i > 0 ? 's' : ''} ago`,
-          sent: Math.floor(Math.random() * 200) + 100,
-          delivered: Math.floor(Math.random() * 190) + 90,
-          opened: Math.floor(Math.random() * 150) + 70,
-          clicked: Math.floor(Math.random() * 100) + 30,
-          replied: Math.floor(Math.random() * 50) + 10,
-        })),
-        bySender: [
-          {
-            sender: 'sender1@example.com',
-            sent: 450,
-            delivered: 440,
-            opened: 320,
-            clicked: 180,
-            replied: 90,
-            openRate: 72.7,
-            clickRate: 40.9,
-            replyRate: 20.5,
-          },
-          {
-            sender: 'sender2@example.com',
-            sent: 400,
-            delivered: 390,
-            opened: 280,
-            clicked: 120,
-            replied: 60,
-            openRate: 71.8,
-            clickRate: 30.8,
-            replyRate: 15.4,
-          },
-          {
-            sender: 'sender3@example.com',
-            sent: 395,
-            delivered: 380,
-            opened: 250,
-            clicked: 120,
-            replied: 60,
-            openRate: 65.8,
-            clickRate: 31.6,
-            replyRate: 15.8,
-          },
-        ],
-      };
-
-      setMetrics(mockData);
+      try {
+        // In a real app, you would fetch this from your API
+        const { kpidata, error } = await supabase.rpc('get_email_analytics', { range: timeRange });
+        
+        if (error) {
+          console.error(error);
+          return;
+        }
+        
+        setMetrics(kpidata);
+      } catch (error) {
+        console.error(error);
+      }
     };
 
-    fetchData();
+    void fetchData();
   }, [timeRange]);
 
   // KPI data for the top cards
