@@ -33,8 +33,69 @@ interface Eli5EmailLogEntry {
 const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
 nunjucks.configure(templateDir, { autoescape: true });
 
-const DEFAULT_SENDER_EMAIL = process.env.ELI5_DEFAULT_SENDER_EMAIL || 'chrisphillips@truesoulpartners.com';
-const DEFAULT_SENDER_NAME = process.env.ELI5_DEFAULT_SENDER_NAME || 'Chris Phillips';
+// Sender management
+let senders: Array<{id: string, name: string, email: string, daily_limit: number, sent_today: number}> = [];
+let currentSenderIndex = 0;
+
+// Function to fetch and update senders from the database
+async function updateSendersFromDB(supabase: SupabaseClient) {
+  try {
+    const { data, error } = await supabase
+      .from('senders')
+      .select('id, name, email, daily_limit, sent_today')
+      .eq('is_active', true)
+      .order('sent_today', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching senders:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Exception when fetching senders:', error);
+    return [];
+  }
+}
+
+// Function to get the next available sender
+async function getNextSender(supabase: SupabaseClient) {
+  // Refresh senders from DB to get latest counts
+  senders = await updateSendersFromDB(supabase);
+  
+  if (senders.length === 0) {
+    throw new Error('No active senders found in the database');
+  }
+
+  // Find a sender that hasn't exceeded their daily limit
+  for (let i = 0; i < senders.length; i++) {
+    const sender = senders[currentSenderIndex % senders.length];
+    currentSenderIndex++;
+    
+    if (sender.sent_today < sender.daily_limit) {
+      return sender;
+    }
+  }
+
+  // If all senders have hit their daily limit, return the one with the least sends
+  senders.sort((a, b) => (a.sent_today || 0) - (b.sent_today || 0));
+  return senders[0];
+}
+
+// Function to increment the sent count for a sender
+async function incrementSenderSentCount(supabase: SupabaseClient, senderId: string) {
+  try {
+    const { error } = await supabase.rpc('increment_sender_sent_count', {
+      sender_id: senderId
+    });
+
+    if (error) {
+      console.error('Error incrementing sender sent count:', error);
+    }
+  } catch (error) {
+    console.error('Exception when incrementing sender sent count:', error);
+  }
+}
 
 async function logInitialAttempt(
   supabase: SupabaseClient,
@@ -161,18 +222,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           try {
             await logInitialAttempt(supabase, {
               original_lead_id: lead.id, contact_name: lead.contact_name || 'N/A',
-              contact_email: lead.contact_email || 'N/A', sender_email_used: DEFAULT_SENDER_EMAIL,
-              sender_name: DEFAULT_SENDER_NAME, campaign_id: campaign_id, campaign_run_id: campaign_run_id,
+              contact_email: lead.contact_email || 'N/A', sender_email_used: 'sender@example.com',
+              sender_name: 'Sender Name', campaign_id: campaign_id, campaign_run_id: campaign_run_id,
               email_status: 'VALIDATION_FAILED', email_error_message: errMsg,
             });
           } catch (logErr: any) { console.error(`Lead ID ${lead.id}: Failed to log validation failure: ${logErr.message}`); }
           continue;
         }
 
+        // Get the next available sender
+        const sender = await getNextSender(supabase);
+        if (!sender) {
+          throw new Error('No available senders');
+        }
+
         logId = await logInitialAttempt(supabase, {
-          original_lead_id: lead.id, contact_name: lead.contact_name || 'N/A',
-          contact_email: lead.contact_email, sender_email_used: DEFAULT_SENDER_EMAIL,
-          sender_name: DEFAULT_SENDER_NAME, campaign_id: campaign_id, campaign_run_id: campaign_run_id,
+          original_lead_id: lead.id, 
+          contact_name: lead.contact_name || 'N/A',
+          contact_email: lead.contact_email, 
+          sender_email_used: sender.email,
+          sender_name: sender.name, 
+          campaign_id: campaign_id, 
+          campaign_run_id: campaign_run_id,
         });
 
         if (!logId) throw new Error("Failed to create initial log entry."); // Should be caught by outer lead try-catch
@@ -183,7 +254,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const rawSubjectTemplate = subjectMatch ? subjectMatch[1].trim() : 'Following Up on Your Property';
         const rawBodyTemplate = emailHtmlContent.replace(/<!-- SUBJECT: (.*?) -->/, '').trim();
 
-        const templateData = { ...lead, contact_name: lead.contact_name || 'Valued Contact', sender_name: DEFAULT_SENDER_NAME, sender_email: DEFAULT_SENDER_EMAIL };
+        const templateData = { 
+          ...lead, 
+          contact_name: lead.contact_name || 'Valued Contact', 
+          sender_name: sender.name, 
+          sender_email: sender.email 
+        };
         const emailSubject = nunjucks.renderString(rawSubjectTemplate, templateData);
         const emailBodyHtml = nunjucks.renderString(rawBodyTemplate, templateData);
 
@@ -210,13 +286,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         };
         
         const rawEmail = createMimeMessage(
-          lead.contact_email, DEFAULT_SENDER_EMAIL, DEFAULT_SENDER_NAME, emailSubject, emailBodyHtml,
+          lead.contact_email,
+          sender.email,
+          sender.name,
+          emailSubject,
+          emailBodyHtml,
           { filename: `Letter_of_Intent_${lead.property_address?.replace(/\s+/g, '_') || lead.id}.pdf`, content: pdfBuffer }
         );
-        const base64EncodedEmail = Buffer.from(rawEmail).toString('base64url');
+        const base64EncodedEmail = Buffer.from(rawEmail).toString('base64');
 
+        // Increment the sender's sent count before sending
+        await incrementSenderSentCount(supabase, sender.id);
+        
         try {
-          const gmail = getGmailService(DEFAULT_SENDER_EMAIL);
+          const gmail = getGmailService(sender.email);
           await gmail.users.messages.send({ userId: 'me', requestBody: { raw: base64EncodedEmail } });
           
           const sentAt = new Date().toISOString();
@@ -238,8 +321,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           try { // Attempt to log if initial logId wasn't even created
             await logInitialAttempt(supabase, {
               original_lead_id: lead.id, contact_name: lead.contact_name || 'N/A',
-              contact_email: lead.contact_email || 'N/A', sender_email_used: DEFAULT_SENDER_EMAIL,
-              sender_name: DEFAULT_SENDER_NAME, campaign_id: campaign_id, campaign_run_id: campaign_run_id,
+              contact_email: lead.contact_email || 'N/A', sender_email_used: 'system@example.com',
+              sender_name: 'System', campaign_id: campaign_id, campaign_run_id: campaign_run_id,
               email_status: 'PROCESSING_FAILED', email_error_message: leadProcessingError.message,
             });
           } catch (logErr: any) { console.error(`Lead ID ${lead.id}: Critical - Failed to log processing failure: ${logErr.message}`); }
