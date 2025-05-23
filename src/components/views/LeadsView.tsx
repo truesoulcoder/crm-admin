@@ -6,80 +6,57 @@ import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEven
 // Using shared Supabase client
 import { supabase } from '@/lib/supabase/client';
 
-// Define types (adjust based on your actual schema)
+// Define types based on useful_leads schema
+export interface Lead {
+  id: string; // Assuming UUID string
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_type: string; // Not null
+  market_region: string | null;
+  property_address: string | null;
+  property_city: string | null;
+  property_state: string | null;
+  property_postal_code: string | null;
+  property_type: string | null;
+  baths: string | null;
+  beds: string | null;
+  year_built: string | null;
+  square_footage: string | null;
+  lot_size_sqft: string | null;
+  assessed_total: number | null; // numeric
+  mls_curr_status: string | null;
+  mls_curr_days_on_market: string | null;
+  converted: boolean; // Not null, default false
+  status: string | null;
+  notes: string | null;
+  email_sent: boolean | null; // Nullable, default false
+  created_at: string; // timestamp with time zone
+  updated_at: string; // timestamp with time zone
+  // Supabase might return additional fields like `source` or other metadata if present in `useful_leads`
+  // For now, only including explicitly mentioned fields. Add others if needed from the view.
+  // Removed _primaryContact as useful_leads is expected to have flattened contact details.
+}
+
 interface ColumnConfig {
-  key: keyof NormalizedLead | string; // Allow string for keys not directly in NormalizedLead if needed, but prefer keyof for type safety
+  key: keyof Lead | string; // Use keyof Lead
   label: string;
   sortable?: boolean;
 }
 
-export interface NormalizedLead {
-  id: string;
-  market_region?: string | null;
-  contact_name?: string | null;
-  contact_email?: string | null;
-  mls_curr_list_agent_name?: string | null;
-  mls_curr_list_agent_email?: string | null;
-  property_address?: string | null;
-  property_city?: string | null;
-  property_state?: string | null;
-  property_postal_code?: string | null;
-  property_type?: string | null;
-  beds?: string | null; // Assuming text, adjust if numeric
-  baths?: string | null; // Assuming text, adjust if numeric
-  year_built?: string | null; // Assuming text, adjust if numeric
-  square_footage?: string | null; // Assuming text, adjust if numeric (schema has it as 'text')
-  lot_size_sqft?: string | null; // Assuming text, adjust if numeric
-  wholesale_value?: number | null; // numeric
-  assessed_total?: number | null; // numeric
-  avm_value?: number | null; // numeric
-  price_per_sq_ft?: number | null; // numeric
-  mls_curr_status?: string | null;
-  mls_curr_days_on_market?: string | null;
-  converted: boolean; // not null default false
-  status?: string | null; // This is lead_status in table view, aligning with 'status' field in schema
-  source?: string | null; // This is lead_source in table view
-  notes?: string | null;
-  created_at: string; // timestamp with time zone
-  updated_at: string; // timestamp with time zone
-  // Fields from previous interface not directly in new schema but kept for potential future use or if schema expands:
-  company_name?: string | null;
-  company_industry?: string | null;
-  company_website?: string | null;
-  company_notes?: string | null;
-  county?: string | null;
-  country?: string | null;
-  lead_score?: number | null;
-  assigned_to?: string | null;
-  last_contacted_date?: string | null; // separate from updated_at
-  next_follow_up_date?: string | null;
-  conversion_date?: string | null;
-  lost_reason?: string | null;
-  tags?: string[] | null;
-  custom_fields?: Record<string, any> | null;
-  property_sf?: number | null; // old name for square_footage, kept if used in old data
-  // The 'lead_status' and 'lead_source' used in UI might map to 'status' and 'source' from the schema respectively.
-  // For clarity, the UI will use lead.status and lead.source which map to these schema fields.
-  // The table column header 'lead_status' will display data from 'lead.status'.
-  _primaryContact?: {
-    name: string | null;
-    email: string;
-    type: string;
-    contactType: 'owner' | 'agent';
-  } | null;
-}
-
-const initialNewLeadData: Partial<NormalizedLead> = {
+const initialNewLeadData: Partial<Lead> = {
   contact_name: '',
   contact_email: '',
-  notes: '',
+  contact_type: 'Unknown', // Default for not null field
   market_region: '',
   status: 'UNQUALIFIED', // Default status for new leads
-  // Add other fields as necessary for editing/creation
+  notes: '',
+  converted: false, // Default for not null field
+  email_sent: false, // Default for nullable field with default in DB
+  // Add other fields as necessary for editing/creation, matching Lead interface
 };
 
 const LeadsView: React.FC = () => {
-  const [leads, setLeads] = useState<NormalizedLead[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [marketRegions, setMarketRegions] = useState<string[]>([]);
   const [filterMarketRegion, setFilterMarketRegion] = useState<string>('All');
   const [tableSearchTerm, setTableSearchTerm] = useState('');
@@ -90,13 +67,13 @@ const LeadsView: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [rowsPerPage, setRowsPerPage] = useState<number>(25);
   const [totalLeads, setTotalLeads] = useState<number>(0);
-  const [sortField, setSortField] = useState<keyof NormalizedLead>('created_at');
+  const [sortField, setSortField] = useState<keyof Lead>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-  const [selectedLead, setSelectedLead] = useState<NormalizedLead | null>(null);
-  const [editFormData, setEditFormData] = useState<Partial<NormalizedLead>>(initialNewLeadData);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [editFormData, setEditFormData] = useState<Partial<Lead>>(initialNewLeadData);
 
   // CSV Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -106,13 +83,17 @@ const LeadsView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const columnConfigurations: ColumnConfig[] = [
-    { key: 'contact_name', label: 'Contact Info', sortable: true },
-    { key: 'property_address', label: 'Property Address', sortable: true }, 
+    { key: 'contact_name', label: 'Contact Info', sortable: true }, // Key is keyof Lead
+    { key: 'property_address', label: 'Property Address', sortable: true },
     { key: 'market_region', label: 'Market Region', sortable: true },
     { key: 'status', label: 'Lead Status', sortable: true },
+    { key: 'contact_type', label: 'Contact Type', sortable: true },
     { key: 'assessed_total', label: 'Assessed Value', sortable: true },
     { key: 'mls_curr_status', label: 'MLS Status', sortable: true },
     { key: 'mls_curr_days_on_market', label: 'Days on Market', sortable: true },
+    // Add 'converted' and 'email_sent' if they need to be displayed as columns
+    // { key: 'converted', label: 'Converted', sortable: true },
+    // { key: 'email_sent', label: 'Email Sent', sortable: true },
   ];
 
   // Fetch Market Regions
@@ -121,7 +102,7 @@ const LeadsView: React.FC = () => {
     try {
       // First, get a count of distinct market regions to decide on the best approach
       const { count, error: countError } = await supabase
-        .from('normalized_leads')
+        .from('useful_leads') // Updated to useful_leads
         .select('market_region', { count: 'exact', head: true })
         .not('market_region', 'is', null);
 
@@ -132,7 +113,8 @@ const LeadsView: React.FC = () => {
       // If we have a reasonable number of distinct values, fetch them directly
       if (count && count <= 1000) {
         const { data, error } = await supabase
-          .from('normalized_leads')
+          .from('useful_leads') // Updated to useful_leads
+          .from('useful_leads') // Updated to useful_leads
           .select('market_region')
           .not('market_region', 'is', null)
           .order('market_region', { ascending: true });
@@ -155,7 +137,7 @@ const LeadsView: React.FC = () => {
         
         while (hasMore) {
           const { data, error } = await supabase
-            .from('normalized_leads')
+            .from('useful_leads') // Corrected to useful_leads
             .select('market_region')
             .not('market_region', 'is', null)
             .order('market_region', { ascending: true })
@@ -192,9 +174,10 @@ const LeadsView: React.FC = () => {
     }
   }, [setMarketRegions]); // Fix variable scope issue by adding setMarketRegions to the dependency array
 
-  // Check if a lead has any valid email address
-  const hasValidEmail = (lead: NormalizedLead) => {
-    return !!lead.contact1_email_1 || !!lead.contact2_email_1 || !!lead.contact3_email_1 || !!lead.mls_curr_list_agent_email;
+  // Check if a lead has any valid email address - updated to use Lead interface
+  const hasValidEmail = (lead: Lead) => {
+    // useful_leads schema has contact_email. If there are other email fields, they should be in Lead interface.
+    return !!lead.contact_email; 
   };
 
   // Get status badge color based on status
@@ -235,20 +218,22 @@ const LeadsView: React.FC = () => {
       // Apply search term filter
       if (tableSearchTerm && tableSearchTerm.trim() !== '') {
         const searchTermQuery = `%${tableSearchTerm.trim()}%`;
+        // Update search fields to match Lead interface and useful_leads schema
         query = query.or(
-          `contact1_name.ilike.${searchTermQuery},` +
-          `contact1_email_1.ilike.${searchTermQuery},` +
+          `contact_name.ilike.${searchTermQuery},` +
+          `contact_email.ilike.${searchTermQuery},` +
           `property_address.ilike.${searchTermQuery},` +
           `property_city.ilike.${searchTermQuery},` +
           `property_state.ilike.${searchTermQuery},` +
           `property_postal_code.ilike.${searchTermQuery},` +
           `notes.ilike.${searchTermQuery},` +
-          `status.ilike.${searchTermQuery}`
+          `status.ilike.${searchTermQuery},` +
+          `contact_type.ilike.${searchTermQuery}` // Added contact_type to search
         );
       }
 
-      // Apply sorting
-      query = query.order(sortField, { ascending: sortDirection === 'asc' });
+      // Apply sorting - sortField is now keyof Lead
+      query = query.order(sortField as string, { ascending: sortDirection === 'asc' });
 
       const from = (currentPage - 1) * rowsPerPage;
       const to = from + rowsPerPage - 1;
@@ -297,19 +282,19 @@ const LeadsView: React.FC = () => {
   }, [tableSearchTerm, filterMarketRegion]);
 
   // Handlers
-  const handleSort = (field: keyof NormalizedLead) => {
+  const handleSort = (field: keyof Lead) => { // Updated to keyof Lead
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
-      setSortField(field);
+      setSortField(field); // field is already keyof Lead
       setSortDirection('asc');
     }
     setCurrentPage(1); // Reset to first page on sort change
   };
 
-  const handleOpenModal = (lead: NormalizedLead) => {
+  const handleOpenModal = (lead: Lead) => { // Updated to Lead
     setSelectedLead(lead);
-    setEditFormData(lead);
+    setEditFormData(lead); // lead is of type Lead, editFormData is Partial<Lead>
     setIsModalOpen(true);
   };
 
@@ -323,33 +308,10 @@ const LeadsView: React.FC = () => {
     const { name, value } = e.target;
     const target = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
     
-    // Special handling for custom_fields to parse JSON
-    if (name === 'custom_fields') {
-      const updateCustomFields = (prev: Partial<NormalizedLead>) => {
-        try {
-          // If it's valid JSON, parse it, otherwise use empty object
-          const parsedValue = value.trim() ? JSON.parse(value) : {};
-          return {
-            ...prev,
-            custom_fields: parsedValue
-          };
-        } catch (e) {
-          // If JSON is invalid, keep the previous value or use empty object
-          return {
-            ...prev,
-            custom_fields: (prev.custom_fields && typeof prev.custom_fields === 'object') 
-              ? prev.custom_fields 
-              : {}
-          };
-        }
-      };
-      
-      setEditFormData(prev => updateCustomFields(prev));
-      return;
-    }
+    // Removed special handling for custom_fields as it's not in the Lead interface.
+    // If custom_fields are needed, they should be added to the Lead interface and handled.
     
-    // Handle other input types
-    let processedValue: string | boolean | number | string[] | Record<string, any> | null = value;
+    let processedValue: string | boolean | number | string[] | null = value;
     
     if (target.type === 'checkbox') {
       processedValue = (target as HTMLInputElement).checked;
@@ -366,51 +328,44 @@ const LeadsView: React.FC = () => {
   const handleSaveLead = async () => {
     if (!selectedLead?.id) return;
 
-    // Map modal fields to correct contact fields
-    const contactNum = contactType === 'owner1' ? '1' : contactType === 'owner2' ? '2' : contactType === 'owner3' ? '3' : '1';
-    const contactFields = {
-      [`contact${contactNum}_name`]: editFormData[`contact${contactNum}_name`],
-      [`contact${contactNum}_email_1`]: editFormData[`contact${contactNum}_email_1`],
-    };
-
-    // Basic validation example (expand as needed)
-    if (!contactFields[`contact${contactNum}_name`] /* Add more required field checks based on your modal inputs */) {
-      alert('Required field(s) missing.'); // Make this more specific
+    // Validate required fields based on the Lead schema
+    if (!editFormData.contact_type) { // contact_type is not null
+      alert('Contact Type is required.');
       return;
-    };
-
-    // Remove id, created_at, updated_at, and _primaryContact from data to be sent to Supabase for update
-    // Only update the relevant contact fields for the selected contact
-    const { id, created_at, updated_at, _primaryContact, ...rest } = editFormData;
-    const updateData: Partial<NormalizedLead> = {};
-    // Only update the name/email for the selected contact
-    if (contactType === 'owner1') {
-      updateData.contact1_name = rest.contact1_name;
-      updateData.contact1_email_1 = rest.contact1_email_1;
-    } else if (contactType === 'owner2') {
-      updateData.contact2_name = rest.contact2_name;
-      updateData.contact2_email_1 = rest.contact2_email_1;
-    } else if (contactType === 'owner3') {
-      updateData.contact3_name = rest.contact3_name;
-      updateData.contact3_email_1 = rest.contact3_email_1;
-    } else if (contactType === 'agent') {
-      updateData.mls_curr_list_agent_name = rest.mls_curr_list_agent_name;
-      updateData.mls_curr_list_agent_email = rest.mls_curr_list_agent_email;
     }
+    // Add other validations as needed, e.g., for contact_name if it's effectively required by business logic
+
+    // Prepare data for update. Only include fields that are part of the Lead interface.
+    // Exclude id, created_at, updated_at as these are typically managed by Supabase or not directly editable.
+    const { id, created_at, updated_at, ...updateDataFields } = editFormData;
+    
+    // Ensure updateData is Partial<Lead> and only contains fields present in Lead
+    const updateData: Partial<Lead> = {};
+    for (const key in updateDataFields) {
+      if (Object.prototype.hasOwnProperty.call(updateDataFields, key)) {
+        // This check ensures that we only try to assign properties that are actual keys of Lead
+        // However, editFormData is already Partial<Lead>, so its keys should be valid.
+        (updateData as any)[key] = (updateDataFields as any)[key];
+      }
+    }
+    // Explicitly set `updated_at` for good practice, though Supabase might handle it.
+    updateData.updated_at = new Date().toISOString();
+
 
     setIsLoading(true); // Consider a more specific loading state like isSaving
     try {
       const { error: updateError } = await supabase
-        .from('normalized_leads')
+        .from('useful_leads') // Target useful_leads table
         .update(updateData)
         .eq('id', selectedLead.id);
+
       if (updateError) throw updateError;
 
-      await fetchNormalizedLeads(); // Refresh data
+      await fetchLeads(); // Refresh data by calling the renamed/refactored fetchLeads
       handleCloseModal();
     } catch (err: any) {
       console.error('Error saving lead:', err);
-      alert(`Failed to save lead: ${err?.message || JSON.stringify(err) || 'Unknown error'}`);
+      alert(`Failed to save lead: ${err?.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -424,19 +379,22 @@ const LeadsView: React.FC = () => {
     setIsLoading(true);
     try {
       const { error } = await supabase
-        .from('normalized_leads')
+        .from('useful_leads') // Target useful_leads table
         .delete()
         .eq('id', selectedLead.id);
 
       if (error) throw error;
 
-      setLeads(prev => prev.filter(l => l.id !== selectedLead.id));
+      // Update local state
+      setLeads(prevLeads => prevLeads.filter(l => l.id !== selectedLead.id));
+      setTotalLeads(prevTotal => prevTotal -1); // Decrement total leads
+
       alert('Lead deleted successfully!');
       handleCloseModal();
     } catch (err: any) {
       console.error('Error deleting lead:', err);
-      alert(`Failed to delete lead: ${err.message}`);
-      setError(`Failed to delete lead: ${err.message}`);
+      alert(`Failed to delete lead: ${err.message || 'Unknown error'}`);
+      setError(`Failed to delete lead: ${err.message || 'Unknown error'}`);
     }
     setIsLoading(false);
   };
@@ -480,7 +438,7 @@ const LeadsView: React.FC = () => {
       setUploadStatus(`Successfully uploaded ${result.count || 0} leads.`);
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
-      await fetchNormalizedLeads(); // Refresh leads list
+      await fetchLeads(); // Refresh leads list
     } catch (err: any) {
       console.error('Upload error:', err);
       setUploadStatus(`Upload failed: ${err.message}`);
@@ -489,12 +447,12 @@ const LeadsView: React.FC = () => {
   };
 
   // Sort Indicator Component
-  const SortIndicator = ({ field }: { field: keyof NormalizedLead | '' }) => {
+  const SortIndicator = ({ field }: { field: keyof Lead | '' }) => { // Updated to keyof Lead
     if (sortField !== field) return null;
     return sortDirection === 'asc' ? <ChevronUp size={16} className="inline ml-1" /> : <ChevronDown size={16} className="inline ml-1" />;
   };
   
-  const totalPages = Math.ceil(totalLeads / rowsPerPage) || 1;
+  const totalPages = totalLeads > 0 ? Math.ceil(totalLeads / rowsPerPage) : 1;
 
   const getStatusBadgeClass = (status: string | null | undefined): string => {
     if (!status) return 'badge-ghost';
@@ -546,6 +504,7 @@ const LeadsView: React.FC = () => {
               accept=".csv"
               className="file-input file-input-bordered file-input-sm w-full max-w-xs hidden"
               id="csvFile"
+              data-testid="csvFile-input" // Add this line
             />
             <button 
               type="button" 
@@ -651,36 +610,45 @@ const LeadsView: React.FC = () => {
             <tr className="text-base-content">
               {columnConfigurations.map(col => (
                 <th 
-                  key={col.key} 
-                  onClick={() => col.sortable !== false && handleSort(col.key as keyof NormalizedLead)}
+                  key={col.key as string} // Use string for key prop
+                  onClick={() => col.sortable !== false && handleSort(col.key as keyof Lead)}
                   className={col.sortable !== false ? 'cursor-pointer hover:bg-base-300' : ''}
                 >
-                  {col.label} {col.sortable !== false && <SortIndicator field={col.key as keyof NormalizedLead} />}
+                  {col.label} {col.sortable !== false && <SortIndicator field={col.key as keyof Lead} />}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {isLoading && !leads.length ? (
-              <tr><td colSpan={5} className="text-center py-10">Loading leads...</td></tr>
+              <tr><td colSpan={columnConfigurations.length} className="text-center py-10">Loading leads...</td></tr>
             ) : !isLoading && !leads.length ? (
-              <tr><td colSpan={5} className="text-center py-10">No leads found.</td></tr>
+              <tr><td colSpan={columnConfigurations.length} className="text-center py-10">No leads found.</td></tr>
             ) : (
-              leads.map(lead => (
+              leads.map((lead: Lead) => ( // Explicitly type lead as Lead
                     <tr key={lead.id} className="hover:bg-base-200 cursor-pointer transition-colors" onClick={() => handleOpenModal(lead)}>
                       <td className="py-4">
                         <div className="flex items-center space-x-3">
                           <div>
                             <div className="flex items-center">
-                              <span className="font-medium">{lead.first_name || 'No Name'}</span>
-                              <span className={`badge badge-xs ml-2 ${lead.contact_type.startsWith('owner') ? 'badge-info' : lead.contact_type === 'agent' ? 'badge-secondary' : 'badge-outline'}`} title={`Contact Type: ${lead.contact_type}`}>
-                                {lead.contact_type}
-                              </span>
+                              <span className="font-medium">{lead.contact_name || 'No Name'}</span>
+                              {/* Display contact_type directly from lead object */}
+                              {lead.contact_type && (
+                                <span className={`badge badge-xs ml-2 ${
+                                  lead.contact_type.toLowerCase().startsWith('owner') 
+                                    ? 'badge-info' 
+                                    : lead.contact_type.toLowerCase() === 'agent' 
+                                      ? 'badge-secondary' 
+                                      : 'badge-outline'
+                                  }`} title={`Contact Type: ${lead.contact_type}`}>
+                                  {lead.contact_type}
+                                </span>
+                              )}
                             </div>
                             <div className="text-sm opacity-70 flex items-center mt-1">
                               <Mail className="w-3 h-3 mr-1 flex-shrink-0" />
-                              <span className="truncate max-w-xs" title={getCleanEmailDisplay(contact.email)}>
-                                {getCleanEmailDisplay(contact.email)}
+                              <span className="truncate max-w-xs" title={getCleanEmailDisplay(lead.contact_email)}>
+                                {getCleanEmailDisplay(lead.contact_email)}
                               </span>
                             </div>
                           </div>
@@ -699,14 +667,14 @@ const LeadsView: React.FC = () => {
                       </td>
                       <td>{displayValue(lead.market_region)}</td>
                       <td>
-                        <span className={getStatusBadge(lead.status || 'UNCONTACTED')}>
+                        <span className={getStatusBadge(lead.status)}> {/* Pass lead.status directly */}
                           {lead.status || 'UNCONTACTED'}
                         </span>
                       </td>
+                      <td>{displayValue(lead.contact_type)}</td>
                       <td className="whitespace-nowrap">{lead.assessed_total ? `$${Number(lead.assessed_total).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '-'}</td>
                       <td>{displayValue(lead.mls_curr_status)}</td>
-                      <td>{displayValue(lead.mls_curr_days_on_market)}
-                      </td>
+                      <td>{displayValue(lead.mls_curr_days_on_market)}</td>
                     </tr>
                   );
                 })
@@ -756,16 +724,21 @@ const LeadsView: React.FC = () => {
         <dialog open className="modal modal-open modal-bottom sm:modal-middle">
           <div className="modal-box w-11/12 max-w-3xl">
             <button onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"><XCircle size={20}/></button>
-            <h3 className="font-bold text-xl mb-4">Edit Lead: {editFormData.contact_name || 'N/A'}</h3>
+            <h3 className="font-bold text-xl mb-4">Edit Lead: {editFormData.contact_name || selectedLead?.contact_name || 'N/A'}</h3>
             
             <form onSubmit={(e) => { e.preventDefault(); void handleSaveLead(); }} className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+              {/* Ensure all form fields map to the Lead interface */}
               <div>
                 <label htmlFor="modal-contact_name" className="label"><span className="label-text">Contact Name</span></label>
-                <input type="text" id="modal-contact_name" name={`contact_name`} value={editFormData[`contact_name`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                <input type="text" id="modal-contact_name" name="contact_name" value={editFormData.contact_name || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div>
                 <label htmlFor="modal-contact_email" className="label"><span className="label-text">Contact Email</span></label>
-                <input type="email" id="modal-contact_email" name={`contact_email`} value={editFormData[`contact_email`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                <input type="email" id="modal-contact_email" name="contact_email" value={editFormData.contact_email || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-contact_type" className="label"><span className="label-text">Contact Type*</span></label>
+                <input type="text" id="modal-contact_type" name="contact_type" value={editFormData.contact_type || ''} onChange={handleModalInputChange} className="input input-bordered w-full" required />
               </div>
               <div>
                 <label htmlFor="modal-market_region" className="label"><span className="label-text">Market Region</span></label>
@@ -821,7 +794,7 @@ const LeadsView: React.FC = () => {
               </div>
               <div>
                 <label htmlFor="modal-assessed_total" className="label"><span className="label-text">Assessed Total</span></label>
-                <input type="number" id="modal-assessed_total" name="assessed_total" value={editFormData.assessed_total || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                <input type="number" id="modal-assessed_total" name="assessed_total" value={editFormData.assessed_total === null ? '' : editFormData.assessed_total} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div>
                 <label htmlFor="modal-mls_curr_status" className="label"><span className="label-text">MLS Current Status</span></label>
@@ -831,7 +804,19 @@ const LeadsView: React.FC = () => {
                 <label htmlFor="modal-mls_curr_days_on_market" className="label"><span className="label-text">MLS Current Days on Market</span></label>
                 <input type="text" id="modal-mls_curr_days_on_market" name="mls_curr_days_on_market" value={editFormData.mls_curr_days_on_market || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
-              <div className="modal-action mt-6">
+              <div className="form-control">
+                <label className="label cursor-pointer">
+                  <span className="label-text">Converted</span> 
+                  <input type="checkbox" name="converted" checked={!!editFormData.converted} onChange={handleModalInputChange} className="checkbox checkbox-primary" />
+                </label>
+              </div>
+              <div className="form-control">
+                <label className="label cursor-pointer">
+                  <span className="label-text">Email Sent</span> 
+                  <input type="checkbox" name="email_sent" checked={!!editFormData.email_sent} onChange={handleModalInputChange} className="checkbox checkbox-primary" />
+                </label>
+              </div>
+               <div className="modal-action mt-6">
                 <button type="button" onClick={() => void handleDeleteLead()} className="btn btn-error btn-outline mr-auto" disabled={isLoading}>
                   <Trash2 size={16}/> Delete Lead
                 </button>
