@@ -242,8 +242,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 4. Populate templateData and pdfPersonalizationData
     console.log('DEBUG: lead.contact_name value just before adding to template data obj:', JSON.stringify(lead.contact_name), typeof lead.contact_name);
+    
+    // Implement greeting_name logic
+    let greeting_name_for_template;
+    const contactNameValue = lead.contact_name; // This is the string (possibly empty due to prior fix)
+
+    if (contactNameValue && contactNameValue.trim() !== "") {
+      greeting_name_for_template = contactNameValue.split(' ')[0];
+    } else {
+      greeting_name_for_template = "Sir/Madam";
+    }
+    console.log('DEBUG: Calculated greeting_name_for_template:', greeting_name_for_template);
+
     const sharedData = {
       contact_name: lead.contact_name as string, // lead.contact_name is now guaranteed string
+      greeting_name: greeting_name_for_template, // Add the new pre-processed greeting
       sender_name: activeSenderName,
       property_address: lead.property_address as string, // Validated
       property_city: lead.property_city as string, // Validated

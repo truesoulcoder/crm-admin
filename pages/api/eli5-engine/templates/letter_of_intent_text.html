@@ -17,7 +17,7 @@
     {{current_date}}
 </p>
 <p style="font-family: Arial, sans-serif; font-size: 11pt;">
-    Dear {{ (contact_name.split(' ')[0] if contact_name and contact_name.strip() else 'Sir/Madam') | title }},
+    Dear {{greeting_name}},
 </p>
 <p style="font-family: Arial, sans-serif; font-size: 11pt;">
     I am writing to express my interest in structuring an <strong>all-cash</strong> offer on the property located at {{property_address}} {{property_city}}, {{property_state}} {{property_zip_code}}.
