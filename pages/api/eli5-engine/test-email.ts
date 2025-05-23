@@ -110,26 +110,71 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const leadIdForLogging = lead.id; // Or lead.uuid if that's the identifier
 
     // Field Compatibility:
-    // Assuming useful_leads has: contact_email, contact_name, property_address, property_type
-    // If not, these will need mapping. For now, using them directly as per subtask instructions.
-    const actualTestRecipientEmail = process.env.TEST_RECIPIENT_EMAIL || 'test-recipient@example.com';
+    // Define essential lead fields for validation
+    const essentialLeadFields: (keyof typeof lead)[] = [
+      'property_address',
+      'property_city',
+      'property_state',
+      // 'property_zip_code' is derived, handled separately
+      'contact_name',
+      'offer_price',
+      'emd_amount',
+      'closing_date',
+      'title_company',
+    ];
+
+    const missingFields: string[] = [];
+
+    // Validate essential fields
+    essentialLeadFields.forEach(field => {
+      if (!lead[field] || String(lead[field]).trim() === '') {
+        missingFields.push(field);
+      }
+    });
+
+    // Validate derived property_zip_code
+    const derivedPropertyZipCode = lead.property_postal_code || lead.zip_code || lead.property_zipcode;
+    if (!derivedPropertyZipCode || String(derivedPropertyZipCode).trim() === '') {
+      missingFields.push('property_zip_code');
+    }
+    
     const intendedRecipientEmail = lead.contact_email; // For personalization & logging
-    const recipientName = lead.contact_name || 'Valued Contact'; // For personalization
+    const recipientName = lead.contact_name; // Will be validated by essentialLeadFields check
+
+    // Conditional Processing: If essential fields are missing
+    if (missingFields.length > 0) {
+      const errorMessage = `Missing essential lead data for processing: ${missingFields.join(', ')}`;
+      await logToSupabase({
+        original_lead_id: leadIdForLogging,
+        contact_email: intendedRecipientEmail,
+        email_status: 'FAILED_PREPARATION',
+        email_error_message: errorMessage,
+        campaign_id: 'test-campaign',
+      });
+      return res.status(400).json({ 
+        success: false, 
+        error: "Missing essential lead data for processing. Please ensure the lead record in 'useful_leads' is complete.", 
+        missing_fields: missingFields 
+      });
+    }
+
+    // If all essential fields are present, proceed with script logic
+    const actualTestRecipientEmail = process.env.TEST_RECIPIENT_EMAIL || 'test-recipient@example.com';
 
     if (!isValidEmail(actualTestRecipientEmail)) {
+        // This log remains as it's about the test recipient email, not lead data
         await logToSupabase({
-            original_lead_id: leadIdForLogging, // Use fetched lead's ID
-            contact_email: intendedRecipientEmail, // Log who it was intended for
-            actual_recipient_email_sent_to: actualTestRecipientEmail, // Log actual recipient
-            email_status: 'FAILED_TO_SEND',
+            original_lead_id: leadIdForLogging,
+            contact_email: intendedRecipientEmail,
+            actual_recipient_email_sent_to: actualTestRecipientEmail,
+            email_status: 'FAILED_TO_SEND', // Or a more specific status like 'FAILED_INVALID_TEST_RECIPIENT'
             email_error_message: `Invalid TEST_RECIPIENT_EMAIL address: ${actualTestRecipientEmail}. Check environment variable.`,
             campaign_id: 'test-campaign',
         });
         return res.status(400).json({ success: false, error: `Invalid TEST_RECIPIENT_EMAIL: ${actualTestRecipientEmail}. Check environment variable.` });
     }
 
-
-    // 3. Load Email Templates (Subject and Body) (adjusted numbering)
+    // 3. Load Email Templates (adjusted numbering)
     const emailTemplatePath = path.join(templateDir, 'email_body_with_subject.html');
     let emailHtmlContent: string;
     try {
@@ -139,19 +184,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     
     const subjectMatch = emailHtmlContent.match(/<!-- SUBJECT: (.*?) -->/);
-    const rawSubjectTemplate = subjectMatch ? subjectMatch[1].trim() : 'Follow Up'; // Default subject
+    const rawSubjectTemplate = subjectMatch ? subjectMatch[1].trim() : 'Follow Up';
     const rawBodyTemplate = emailHtmlContent.replace(/<!-- SUBJECT: (.*?) -->/, '').trim();
 
-    // Personalization data for email templates
+    // Construct templateData using validated lead fields and hardcoded sender details
     const templateData = {
-      contact_name: recipientName, // Personalized for the lead
+      // Essential lead fields (already validated)
+      contact_name: lead.contact_name,
+      property_address: lead.property_address,
+      property_city: lead.property_city,
+      property_state: lead.property_state,
+      property_zip_code: derivedPropertyZipCode,
+      offer_price: lead.offer_price,
+      emd_amount: lead.emd_amount,
+      closing_date: lead.closing_date,
+      title_company: lead.title_company,
+      
+      // Other lead fields (can be spread carefully, or selected individually)
+      // For safety, explicitly list other fields needed by the template if any.
+      // property_type: lead.property_type, // Example if needed
+      // ... (add other specific lead fields as required by email template)
+
+      // Sender details (fetched and hardcoded)
       sender_name: activeSenderName,
-      property_address: lead.property_address, // Assuming field exists in useful_leads
-      property_type: lead.property_type, // Assuming field exists in useful_leads
-      // Add other fields from the lead as needed by the template
-      ...lead, // Spread all lead fields from useful_leads
-      contact_email: intendedRecipientEmail, // For template personalization if {{ contact_email }} is used
       sender_email: activeSenderEmail,
+      sender_title: "Acquisitions Specialist", // Hardcoded
+      company_name: "True Soul Partners LLC", // Hardcoded
+      
+      // Recipient email for template personalization (e.g., if template uses {{ contact_email }})
+      contact_email: intendedRecipientEmail, 
     };
 
     // 4. Personalize Templates (Subject and Body) (adjusted numbering)
@@ -159,30 +220,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const emailBodyHtml = nunjucks.renderString(rawBodyTemplate, templateData);
 
     // 5. Generate PDF (adjusted numbering)
-    // Personalization data for PDF (might be different or extended)
     const pdfPersonalizationData = {
-        ...templateData, // Reuse email data or customize
-        date_generated: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-        // Ensure all fields required by 'letter_of_intent_text.html' are present
+      ...templateData, // Start with email data
+      current_date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+      // Ensure all fields from templateData are suitable for PDF or override/add as needed
+      // sender_title and company_name are already hardcoded in templateData
     };
-    const pdfBuffer = await generateLoiPdf(pdfPersonalizationData, leadIdForLogging, intendedRecipientEmail || actualTestRecipientEmail); // Pass intended or actual for PDF context
+    // No need to delete pdfPersonalizationData.date_generated as it's not added.
+
+    const pdfBuffer = await generateLoiPdf(pdfPersonalizationData, leadIdForLogging, intendedRecipientEmail || actualTestRecipientEmail);
     if (!pdfBuffer) {
       await logToSupabase({
         original_lead_id: leadIdForLogging,
         contact_name: recipientName,
-        contact_email: intendedRecipientEmail, // Log who it was intended for
-        actual_recipient_email_sent_to: actualTestRecipientEmail, // Log actual recipient
+        contact_email: intendedRecipientEmail,
+        actual_recipient_email_sent_to: actualTestRecipientEmail,
         sender_name: activeSenderName,
         sender_email_used: activeSenderEmail,
         email_subject_sent: emailSubject,
         email_status: 'FAILED_TO_SEND',
-        email_error_message: 'PDF generation failed.',
+        email_error_message: 'PDF generation failed. Check pdfPersonalizationData.',
+        // For debugging, optionally log pdfPersonalizationData (be mindful of sensitive info)
+        // pdf_data_debug: JSON.stringify(pdfPersonalizationData).substring(0, 500), 
         campaign_id: 'test-campaign',
       });
-      return res.status(500).json({ success: false, error: 'PDF generation failed.' });
+      return res.status(500).json({ success: false, error: 'PDF generation failed. Ensure all required data is available.' });
     }
 
-    // 5. Create MIME Message
+    // 6. Create MIME Message (adjusted numbering)
     const rawEmail = createMimeMessage(
       actualTestRecipientEmail, // Send to the test recipient
       activeSenderEmail,
