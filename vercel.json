@@ -14,6 +14,10 @@
     "src/app/api/document-templates/**/*.ts": {
       "maxDuration": 30,
       "memory": 1024
+    },
+    "pages/api/**/*.ts": {
+      "maxDuration": 30,
+      "memory": 1024
     }
   }
 }

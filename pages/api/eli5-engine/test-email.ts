@@ -66,7 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const supabase = getSupabaseClient();
-  const leadId = `test-lead-${Date.now()}`; // Placeholder lead ID
+  const leadId = 1; // Using a fixed test lead ID, adjust as needed
 
   try {
     // 1. Fetch Active Sender from Supabase
@@ -99,7 +99,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { data: lead, error: leadError } = await supabase
       .from('normalized_leads')
       .select('*')
-      .eq('uuid', leadId) // Using a placeholder ID logic for now
+      .eq('id', leadId) // Using the lead ID
       .single();
 
     if (leadError) throw new Error(`Error fetching lead: ${leadError.message}`);
