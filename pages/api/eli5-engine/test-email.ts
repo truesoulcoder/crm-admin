@@ -69,23 +69,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     // 1. Fetch Sample Lead
-    // const { data: leads, error: leadsError } = await supabase
-    //   .from('useful_leads')
-    //   .select('*')
-    //   .not('property_type', 'eq', 'Vacant Land') // Example filter
-    //   .limit(1);
+    const { data: lead, error: leadError } = await supabase
+      .from('normalized_leads')
+      .select('*')
+      .eq('uuid', leadId)
+      .single();
 
-    // Forcing a specific lead for testing as per Python example if needed
-     const { data: leads, error: leadsError } = await supabase
-        .from('useful_leads')
-        .select('*')
-        .eq('id', 'e009a334-3139-4252-ae23-830993603458') // Example specific lead ID
-        .limit(1);
-
-
-    if (leadsError) throw new Error(`Error fetching lead: ${leadsError.message}`);
-    if (!leads || leads.length === 0) throw new Error('No suitable lead found.');
-    const lead = leads[0];
+    if (leadError) throw new Error(`Error fetching lead: ${leadError.message}`);
+    if (!lead) throw new Error('No suitable lead found.');
     const recipientEmail = lead.contact_email || TEST_RECIPIENT_EMAIL; // Use lead's email or fallback
     const recipientName = lead.contact_name || 'Valued Contact';
 
