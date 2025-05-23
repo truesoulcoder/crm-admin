@@ -254,7 +254,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!pdfBuffer) {
       await logToSupabase({
         original_lead_id: leadIdForLogging,
-        contact_name: recipientName,
+        contact_name: sharedData.contact_name, // Use from sharedData for consistency
         contact_email: intendedRecipientEmail,
         actual_recipient_email_sent_to: actualTestRecipientEmail,
         sender_name: activeSenderName,
@@ -262,25 +262,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email_subject_sent: emailSubject,
         email_status: 'FAILED_TO_SEND',
         email_error_message: 'PDF generation failed. Check pdfPersonalizationData.',
-        // For debugging, optionally log pdfPersonalizationData (be mindful of sensitive info)
-        // pdf_data_debug: JSON.stringify(pdfPersonalizationData).substring(0, 500), 
         campaign_id: 'test-campaign',
       });
       return res.status(500).json({ success: false, error: 'PDF generation failed. Ensure all required data is available.' });
     }
 
-    // 6. Create MIME Message (adjusted numbering)
+    // 7. Sanitize Property Address and Construct Dynamic PDF Filename
+    const sanitizeFilename = (name: string | undefined | null): string => {
+      if (!name) return 'unknown_address';
+      // Replace spaces with underscores, then remove characters not suitable for filenames.
+      // Allows alphanumeric, underscore, hyphen, dot.
+      return name.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_.-]/g, '');
+    };
+
+    // lead.property_address is validated as an essential field and is present in sharedData.property_address
+    let sanitizedPropertyAddress = sanitizeFilename(sharedData.property_address);
+    if (!sanitizedPropertyAddress) { // Fallback if sanitization results in empty string
+        sanitizedPropertyAddress = 'default_address_name';
+    }
+    const dynamicPdfFilename = `Letter_of_Intent_${sanitizedPropertyAddress}.pdf`;
+
+    // 8. Create MIME Message (adjusted numbering)
     const rawEmail = createMimeMessage(
       actualTestRecipientEmail, // Send to the test recipient
       activeSenderEmail,
       activeSenderName,
       emailSubject,
       emailBodyHtml,
-      { filename: 'Letter_of_Intent.pdf', content: pdfBuffer }
+      { filename: dynamicPdfFilename, content: pdfBuffer } // Updated filename
     );
     const base64EncodedEmail = Buffer.from(rawEmail).toString('base64url');
 
-    // 6. Send Email
+    // 9. Send Email (adjusted numbering)
     const gmail = getGmailService(activeSenderEmail); // Impersonate the sender
     await gmail.users.messages.send({
       userId: 'me', // 'me' refers to the impersonated user (activeSenderEmail)
@@ -289,12 +302,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     });
 
-    // 7. Logging Success (adjusted numbering)
+    // 10. Logging Success (adjusted numbering)
     await logToSupabase({
       original_lead_id: leadIdForLogging,
-      contact_name: recipientName,
-      contact_email: intendedRecipientEmail, // Log who it was intended for
-      actual_recipient_email_sent_to: actualTestRecipientEmail, // Log actual recipient
+      contact_name: sharedData.contact_name, // Use from sharedData
+      contact_email: intendedRecipientEmail, 
+      actual_recipient_email_sent_to: actualTestRecipientEmail, 
       sender_name: activeSenderName,
       sender_email_used: activeSenderEmail,
       email_subject_sent: emailSubject,
