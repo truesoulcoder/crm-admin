@@ -1,6 +1,8 @@
 import fs from 'fs/promises'; // For reading template files
 import path from 'path';
-import puppeteer from 'puppeteer';
+// import puppeteer from 'puppeteer'; // Removed puppeteer
+import puppeteer from 'puppeteer-core'; // Added puppeteer-core
+import chromium from '@sparticuz/chromium-min'; // Switched to @sparticuz/chromium-min
 import nunjucks from 'nunjucks';
 import { PDFDocument } from 'pdf-lib';
 // import { logToSupabase } from './_utils'; // Assuming logToSupabase is available
@@ -34,12 +36,12 @@ export const generateLoiPdf = async (
     let browser = null; 
     try {
       browser = await puppeteer.launch({
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage', 
-          ],
-          headless: 'new' 
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(), // For Vercel, this is usually sufficient.
+                                                        // Alternatively, use process.env.CHROME_EXECUTABLE_PATH if defined.
+        headless: chromium.headless, // This ensures it's 'new' or true as needed for serverless.
+        ignoreHTTPSErrors: true, // Often helpful in serverless.
       });
       const page = await browser.newPage();
       await page.setContent(renderedHtml, { waitUntil: 'networkidle0' });
