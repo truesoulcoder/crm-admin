@@ -667,7 +667,7 @@ const LeadsView: React.FC = () => {
               <tr><td colSpan={5} className="text-center py-10">No leads found.</td></tr>
             ) : (
               leads.map(lead => (
-                    <tr key={lead.id} className="hover:bg-base-200 cursor-pointer transition-colors" onClick={() => handleOpenModal(lead)>
+                    <tr key={lead.id} className="hover:bg-base-200 cursor-pointer transition-colors" onClick={() => handleOpenModal(lead)}>
                       <td className="py-4">
                         <div className="flex items-center space-x-3">
                           <div>
