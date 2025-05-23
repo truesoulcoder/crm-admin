@@ -106,7 +106,7 @@ const LeadsView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const columnConfigurations: ColumnConfig[] = [
-    { key: 'contact1_name', label: 'Contact Info', sortable: true },
+    { key: 'contact_name', label: 'Contact Info', sortable: true },
     { key: 'property_address', label: 'Property Address', sortable: true }, 
     { key: 'market_region', label: 'Market Region', sortable: true },
     { key: 'status', label: 'Lead Status', sortable: true },
