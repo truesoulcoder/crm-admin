@@ -110,40 +110,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const leadIdForLogging = lead.id; // Or lead.uuid if that's the identifier
 
     // Field Compatibility:
-    // Define essential lead fields for validation
-    const essentialLeadFields: (keyof typeof lead)[] = [
+    // 1. Essential Lead Fields & Validation
+    const essentialLeadFieldKeys: (keyof typeof lead)[] = [
       'property_address',
       'property_city',
       'property_state',
-      // 'property_zip_code' is derived, handled separately
       'contact_name',
-      'offer_price',
-      'emd_amount',
-      'closing_date',
-      'title_company',
+      'assessed_total',
     ];
+    const missingOrInvalidFields: string[] = [];
 
-    const missingFields: string[] = [];
-
-    // Validate essential fields
-    essentialLeadFields.forEach(field => {
-      if (!lead[field] || String(lead[field]).trim() === '') {
-        missingFields.push(field);
+    essentialLeadFieldKeys.forEach(field => {
+      const value = lead[field];
+      if (value === null || value === undefined || String(value).trim() === '') {
+        missingOrInvalidFields.push(String(field));
       }
     });
 
-    // Validate derived property_zip_code
-    const derivedPropertyZipCode = lead.property_postal_code || lead.zip_code || lead.property_zipcode;
-    if (!derivedPropertyZipCode || String(derivedPropertyZipCode).trim() === '') {
-      missingFields.push('property_zip_code');
+    // Validate assessed_total as positive number
+    const assessedTotalNumeric = parseFloat(String(lead.assessed_total));
+    if (isNaN(assessedTotalNumeric) || assessedTotalNumeric <= 0) {
+      if (!missingOrInvalidFields.includes('assessed_total')) { // Avoid duplicate
+        missingOrInvalidFields.push('assessed_total (must be a positive number)');
+      }
     }
-    
-    const intendedRecipientEmail = lead.contact_email; // For personalization & logging
-    const recipientName = lead.contact_name; // Will be validated by essentialLeadFields check
 
-    // Conditional Processing: If essential fields are missing
-    if (missingFields.length > 0) {
-      const errorMessage = `Missing essential lead data for processing: ${missingFields.join(', ')}`;
+    // Validate property_zip_code source
+    const propertyZipCodeSource = lead.property_postal_code || lead.zip_code || lead.property_zipcode;
+    if (!propertyZipCodeSource || String(propertyZipCodeSource).trim() === '') {
+      missingOrInvalidFields.push('property_zip_code (source: property_postal_code, zip_code, or property_zipcode)');
+    }
+
+    const intendedRecipientEmail = lead.contact_email; // For personalization & logging
+
+    if (missingOrInvalidFields.length > 0) {
+      const errorMessage = `Missing/invalid essential lead data: ${missingOrInvalidFields.join(', ')}`;
       await logToSupabase({
         original_lead_id: leadIdForLogging,
         contact_email: intendedRecipientEmail,
@@ -151,30 +152,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email_error_message: errorMessage,
         campaign_id: 'test-campaign',
       });
-      return res.status(400).json({ 
-        success: false, 
-        error: "Missing essential lead data for processing. Please ensure the lead record in 'useful_leads' is complete.", 
-        missing_fields: missingFields 
+      return res.status(400).json({
+        success: false,
+        error: "Missing or invalid essential lead data.",
+        missing_fields: missingOrInvalidFields,
       });
     }
+
+    // 2. Calculated and Hardcoded Fields (if lead data validation passes)
+    const currentDateFormatted = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    const closingDateFormatted = thirtyDaysFromNow.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    
+    const titleCompany = "Kristin Blay at Ghrist Law - Patten Title"; // Hardcoded
+
+    // assessedTotalNumeric is already validated to be a positive number
+    const offerPriceNumericRawTotal = assessedTotalNumeric; 
+    const offerPriceNumeric = offerPriceNumericRawTotal * 0.6;
+
+    if (offerPriceNumeric <= 0) { // Should be rare due to prior assessed_total check, but good to be safe
+        const offerCalcErrorMessage = `Calculated offer_price_numeric is not positive: ${offerPriceNumeric}`;
+        await logToSupabase({
+            original_lead_id: leadIdForLogging,
+            contact_email: intendedRecipientEmail,
+            email_status: 'FAILED_PREPARATION',
+            email_error_message: offerCalcErrorMessage,
+            campaign_id: 'test-campaign',
+        });
+        return res.status(400).json({ success: false, error: "Offer price calculation resulted in a non-positive value.", details: offerCalcErrorMessage });
+    }
+
+    const offerPriceFormatted = offerPriceNumeric.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    const emdAmountNumeric = offerPriceNumeric * 0.01;
+    const emdAmountFormatted = emdAmountNumeric.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    const propertyZipCode = propertyZipCodeSource as string; // Already validated to be non-empty
 
     // If all essential fields are present, proceed with script logic
     const actualTestRecipientEmail = process.env.TEST_RECIPIENT_EMAIL || 'test-recipient@example.com';
 
     if (!isValidEmail(actualTestRecipientEmail)) {
-        // This log remains as it's about the test recipient email, not lead data
         await logToSupabase({
             original_lead_id: leadIdForLogging,
             contact_email: intendedRecipientEmail,
             actual_recipient_email_sent_to: actualTestRecipientEmail,
-            email_status: 'FAILED_TO_SEND', // Or a more specific status like 'FAILED_INVALID_TEST_RECIPIENT'
+            email_status: 'FAILED_TO_SEND',
             email_error_message: `Invalid TEST_RECIPIENT_EMAIL address: ${actualTestRecipientEmail}. Check environment variable.`,
             campaign_id: 'test-campaign',
         });
         return res.status(400).json({ success: false, error: `Invalid TEST_RECIPIENT_EMAIL: ${actualTestRecipientEmail}. Check environment variable.` });
     }
 
-    // 3. Load Email Templates (adjusted numbering)
+    // 3. Load Email Templates
     const emailTemplatePath = path.join(templateDir, 'email_body_with_subject.html');
     let emailHtmlContent: string;
     try {
@@ -187,47 +217,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const rawSubjectTemplate = subjectMatch ? subjectMatch[1].trim() : 'Follow Up';
     const rawBodyTemplate = emailHtmlContent.replace(/<!-- SUBJECT: (.*?) -->/, '').trim();
 
-    // Construct templateData using validated lead fields and hardcoded sender details
-    const templateData = {
-      // Essential lead fields (already validated)
-      contact_name: lead.contact_name,
-      property_address: lead.property_address,
-      property_city: lead.property_city,
-      property_state: lead.property_state,
-      property_zip_code: derivedPropertyZipCode,
-      offer_price: lead.offer_price,
-      emd_amount: lead.emd_amount,
-      closing_date: lead.closing_date,
-      title_company: lead.title_company,
-      
-      // Other lead fields (can be spread carefully, or selected individually)
-      // For safety, explicitly list other fields needed by the template if any.
-      // property_type: lead.property_type, // Example if needed
-      // ... (add other specific lead fields as required by email template)
-
-      // Sender details (fetched and hardcoded)
+    // 4. Populate templateData and pdfPersonalizationData
+    const sharedData = {
+      contact_name: lead.contact_name as string, // Validated
       sender_name: activeSenderName,
-      sender_email: activeSenderEmail,
+      property_address: lead.property_address as string, // Validated
+      property_city: lead.property_city as string, // Validated
+      property_state: lead.property_state as string, // Validated
+      property_zip_code: propertyZipCode, // Validated and assigned
+      assessed_total: lead.assessed_total, // For reference
+      current_date: currentDateFormatted,
+      closing_date: closingDateFormatted,
+      title_company: titleCompany,
+      offer_price: offerPriceFormatted,
+      emd_amount: emdAmountFormatted,
       sender_title: "Acquisitions Specialist", // Hardcoded
       company_name: "True Soul Partners LLC", // Hardcoded
-      
-      // Recipient email for template personalization (e.g., if template uses {{ contact_email }})
-      contact_email: intendedRecipientEmail, 
+      contact_email: intendedRecipientEmail,
+      sender_email: activeSenderEmail,
+      // Add any other fields from `lead` that are safe and needed by templates, e.g.,
+      // property_type: lead.property_type, (if it exists and is needed)
     };
 
-    // 4. Personalize Templates (Subject and Body) (adjusted numbering)
+    const templateData = { ...sharedData };
+    const pdfPersonalizationData = { ...sharedData };
+    // Note: current_date is already in sharedData, so it's in both.
+    // No need to delete pdfPersonalizationData.date_generated as it's not used/added.
+
+
+    // 5. Personalize Templates (Subject and Body)
     const emailSubject = nunjucks.renderString(rawSubjectTemplate, templateData);
     const emailBodyHtml = nunjucks.renderString(rawBodyTemplate, templateData);
 
-    // 5. Generate PDF (adjusted numbering)
-    const pdfPersonalizationData = {
-      ...templateData, // Start with email data
-      current_date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-      // Ensure all fields from templateData are suitable for PDF or override/add as needed
-      // sender_title and company_name are already hardcoded in templateData
-    };
-    // No need to delete pdfPersonalizationData.date_generated as it's not added.
-
+    // 6. Generate PDF
     const pdfBuffer = await generateLoiPdf(pdfPersonalizationData, leadIdForLogging, intendedRecipientEmail || actualTestRecipientEmail);
     if (!pdfBuffer) {
       await logToSupabase({
