@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 // @ts-ignore - chromium is a default export
-import chromium from '@sparticuz/chromium';
+import chromium from '@sparticuz/chromium-min';
 import * as fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, rgb } from 'pdf-lib';
 import { Browser, PDFOptions, launch } from 'puppeteer-core';
