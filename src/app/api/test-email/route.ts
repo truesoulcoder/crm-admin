@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-import chromium from '@sparticuz/chromium';
+import chromium from '@sparticuz/chromium-min';
 import { createClient } from '@supabase/supabase-js';
 import { parse } from 'csv-parse/sync';
 import { google } from 'googleapis';
