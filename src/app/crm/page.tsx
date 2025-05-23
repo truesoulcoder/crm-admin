@@ -1,14 +1,22 @@
-'use client';
-
-import dynamic from 'next/dynamic';
+// app/crm-leads/page.tsx
 import React from 'react';
 
-// Import CrmView component
-import CrmView from '@/components/views/CrmView';
+import type { Metadata } from 'next';
+
+import CrmLeads from '@/components/views/CrmLeads'; // Adjust path if necessary
 
 
-export default function CrmPage() {
+export const metadata: Metadata = {
+  title: 'CRM Leads Management',
+  description: 'Manage CRM leads including adding, editing, and viewing details.',
+};
+
+const CrmLeadsPage: React.FC = () => {
   return (
-    <CrmView />
+    <>
+      <CrmLeads />
+    </>
   );
-}
+};
+
+export default CrmLeadsPage;
