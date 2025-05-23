@@ -104,12 +104,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (leadError) throw new Error(`Error fetching lead from useful_leads: ${leadError.message}`);
     if (!lead) throw new Error('No lead found in useful_leads table for testing.');
 
-    // Definitive Nunjucks contact_name fix:
-    // Ensure lead.contact_name is a string (empty if null/undefined)
-    // This mutates the lead object directly.
-    if (lead && (lead.contact_name === null || typeof lead.contact_name === 'undefined')) {
-      lead.contact_name = ""; 
+    // ULTRA CRITICAL FIX: Ensure contact_name is a string immediately after fetch
+    console.log('DEBUG: contact_name BEFORE mutation on lead object:', JSON.stringify(lead.contact_name), typeof lead.contact_name);
+    if (lead.contact_name === null || typeof lead.contact_name === 'undefined') {
+      lead.contact_name = ""; // Directly mutate the lead object's property
     }
+    console.log('DEBUG: contact_name AFTER mutation on lead object:', JSON.stringify(lead.contact_name), typeof lead.contact_name);
     // The useful_leads query uses select('*'), so normalized_lead_id should be available.
 
     // Use the lead's ID from useful_leads for the API response. For logging, normalized_lead_id will be used.
@@ -127,11 +127,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const missingFields: string[] = []; // Renamed for clarity as per instructions
 
     essentialLeadFieldKeys.forEach(key => {
-      const value = lead[key];
+      const value = lead[key]; // lead.contact_name is now guaranteed to be a string here by the above mutation
       if (key === 'contact_name') {
-        // lead.contact_name is already guaranteed to be a string (empty if null/undefined)
-        // by the pre-validation step.
-        if (value.trim() === '') {
+        if (String(value).trim() === '') { // Ensure value is treated as string for trim
           missingFields.push(key);
         }
       } else if (key === 'assessed_total') {
@@ -140,11 +138,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         } else {
           const numValue = parseFloat(String(value));
           if (isNaN(numValue) || numValue <= 0) {
-            missingFields.push(key + ' (must be a positive number)'); // More specific error
+            missingFields.push(key + ' (must be a positive number)');
           }
         }
       } else { // For property_address, property_city, property_state
-        if (value === null || typeof value === 'undefined' || (typeof value === 'string' && value.trim() === '')) {
+        if (value === null || typeof value === 'undefined' || (typeof value === 'string' && String(value).trim() === '')) {
           missingFields.push(key);
         }
       }
@@ -243,8 +241,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const rawBodyTemplate = emailHtmlContent.replace(/<!-- SUBJECT: (.*?) -->/, '').trim();
 
     // 4. Populate templateData and pdfPersonalizationData
+    console.log('DEBUG: lead.contact_name value just before adding to template data obj:', JSON.stringify(lead.contact_name), typeof lead.contact_name);
     const sharedData = {
-      contact_name: lead.contact_name as string, // Validated
+      contact_name: lead.contact_name as string, // lead.contact_name is now guaranteed string
       sender_name: activeSenderName,
       property_address: lead.property_address as string, // Validated
       property_city: lead.property_city as string, // Validated
