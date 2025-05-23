@@ -156,7 +156,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
         email_status: 'FAILED_PREPARATION',
         email_error_message: errorMessage,
-        campaign_id: 'test-campaign',
+        campaign_id: null, // Updated campaign_id
       });
       return res.status(400).json({
         success: false,
@@ -186,7 +186,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
             email_status: 'FAILED_PREPARATION',
             email_error_message: offerCalcErrorMessage,
-            campaign_id: 'test-campaign',
+            campaign_id: null, // Updated campaign_id
         });
         return res.status(400).json({ success: false, error: "Offer price calculation resulted in a non-positive value.", details: offerCalcErrorMessage });
     }
@@ -206,7 +206,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
             email_status: 'FAILED_TO_SEND',
             email_error_message: `Invalid TEST_RECIPIENT_EMAIL address: ${actualTestRecipientEmail}. Check environment variable.`,
-            campaign_id: 'test-campaign',
+            campaign_id: null, // Updated campaign_id
         });
         return res.status(400).json({ success: false, error: `Invalid TEST_RECIPIENT_EMAIL: ${actualTestRecipientEmail}. Check environment variable.` });
     }
@@ -269,7 +269,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email_subject_sent: emailSubject,
         email_status: 'FAILED_TO_SEND',
         email_error_message: 'PDF generation failed. Check pdfPersonalizationData.',
-        campaign_id: 'test-campaign',
+        campaign_id: null, // Updated campaign_id
       });
       return res.status(500).json({ success: false, error: 'PDF generation failed. Ensure all required data is available.' });
     }
@@ -321,7 +321,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       email_body_preview_sent: emailBodyHtml.substring(0, 200), // Preview
       email_status: 'SENT',
       email_sent_at: new Date().toISOString(),
-      campaign_id: 'test-campaign',
+      campaign_id: null, // Updated campaign_id
       // campaign_run_id: 'test-run-id' // If applicable
     });
 
@@ -346,7 +346,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       email_status: 'FAILED_TO_SEND',
       email_error_message: `Test email failed: ${error.message}`,
       // stack_trace: error.stack, // Optional: log stack trace
-      campaign_id: 'test-campaign', // Consider making this dynamic if needed
+      campaign_id: null, // Updated campaign_id
     });
     return res.status(500).json({ success: false, error: error.message || 'An unknown error occurred.' });
   }
