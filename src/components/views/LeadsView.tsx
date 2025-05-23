@@ -14,25 +14,10 @@ interface ColumnConfig {
 }
 
 export interface NormalizedLead {
-  id: string; // Assuming bigserial maps to string or number in frontend, using string for consistency with UUIDs elsewhere.
-  original_lead_id?: string | null; // uuid
+  id: string;
   market_region?: string | null;
-  contact1_name?: string | null;
-  contact1_email_1?: string | null;
-  // contact1_title, contact1_email_2, contact1_phone_1, contact1_phone_2 - assuming these might be needed later based on original interface
-  contact1_title?: string | null; 
-  contact1_email_2?: string | null;
-  contact1_phone_1?: string | null;
-  contact1_phone_2?: string | null;
-  contact2_name?: string | null;
-  contact2_email_1?: string | null;
-  // contact2_title, contact2_email_2, contact2_phone_1, contact2_phone_2 - assuming these might be needed later
-  contact2_title?: string | null;
-  contact2_email_2?: string | null;
-  contact2_phone_1?: string | null;
-  contact2_phone_2?: string | null;
-  contact3_name?: string | null;
-  contact3_email_1?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
   mls_curr_list_agent_name?: string | null;
   mls_curr_list_agent_email?: string | null;
   property_address?: string | null;
@@ -80,22 +65,21 @@ export interface NormalizedLead {
     name: string | null;
     email: string;
     type: string;
-    contactType: 'owner1' | 'owner2' | 'owner3' | 'agent';
+    contactType: 'owner' | 'agent';
   } | null;
 }
 
 const initialNewLeadData: Partial<NormalizedLead> = {
-  contact1_name: '',
-  contact1_email_1: '',
+  contact_name: '',
+  contact_email: '',
   notes: '',
   market_region: '',
-  status: 'UNCONTACTED', // Default status for new leads
+  status: 'UNQUALIFIED', // Default status for new leads
   // Add other fields as necessary for editing/creation
 };
 
 const LeadsView: React.FC = () => {
   const [leads, setLeads] = useState<NormalizedLead[]>([]);
-  const [contactType, setContactType] = useState<'owner1' | 'owner2' | 'owner3' | 'agent'>('owner1');
   const [marketRegions, setMarketRegions] = useState<string[]>([]);
   const [filterMarketRegion, setFilterMarketRegion] = useState<string>('All');
   const [tableSearchTerm, setTableSearchTerm] = useState('');
@@ -106,7 +90,7 @@ const LeadsView: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [rowsPerPage, setRowsPerPage] = useState<number>(25);
   const [totalLeads, setTotalLeads] = useState<number>(0);
-  const [sortField, setSortField] = useState<keyof NormalizedLead | ''>('created_at');
+  const [sortField, setSortField] = useState<keyof NormalizedLead>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Modal State
@@ -208,9 +192,9 @@ const LeadsView: React.FC = () => {
     }
   }, [setMarketRegions]); // Fix variable scope issue by adding setMarketRegions to the dependency array
 
-  // Check if a lead has any valid email address (kept for backward compatibility)
+  // Check if a lead has any valid email address
   const hasValidEmail = (lead: NormalizedLead) => {
-    return true; // useful_leads view already contains only leads with valid emails
+    return !!lead.contact1_email_1 || !!lead.contact2_email_1 || !!lead.contact3_email_1 || !!lead.mls_curr_list_agent_email;
   };
 
   // Get status badge color based on status
@@ -235,7 +219,7 @@ const LeadsView: React.FC = () => {
   };
 
   // Fetch Leads from useful_leads view
-  const fetchNormalizedLeads = useCallback(async () => {
+  const fetchLeads = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -254,12 +238,6 @@ const LeadsView: React.FC = () => {
         query = query.or(
           `contact1_name.ilike.${searchTermQuery},` +
           `contact1_email_1.ilike.${searchTermQuery},` +
-          `contact2_name.ilike.${searchTermQuery},` +
-          `contact2_email_1.ilike.${searchTermQuery},` +
-          `contact3_name.ilike.${searchTermQuery},` +
-          `contact3_email_1.ilike.${searchTermQuery},` +
-          `mls_curr_list_agent_name.ilike.${searchTermQuery},` +
-          `mls_curr_list_agent_email.ilike.${searchTermQuery},` +
           `property_address.ilike.${searchTermQuery},` +
           `property_city.ilike.${searchTermQuery},` +
           `property_state.ilike.${searchTermQuery},` +
@@ -270,27 +248,13 @@ const LeadsView: React.FC = () => {
       }
 
       // Apply sorting
-      if (sortField) {
-        query = query.order(sortField as string, { ascending: sortDirection === 'asc' });
-      } else {
-        query = query.order('created_at', { ascending: false }); // Default sort
-      }
+      query = query.order(sortField, { ascending: sortDirection === 'asc' });
 
       const from = (currentPage - 1) * rowsPerPage;
       const to = from + rowsPerPage - 1;
       query = query.range(from, to);
 
       const { data, error: supabaseError, count } = await query;
-
-      // Log Supabase response
-      console.log('Supabase fetch response:', { data, supabaseError, count });
-      if (data) {
-        console.log(`Fetched ${data.length} leads from Supabase. Total count (from query): ${count}`);
-      }
-      if (supabaseError) {
-        console.error('Supabase error during fetch:', supabaseError);
-      }
-      // End log Supabase response
 
       if (supabaseError) throw supabaseError;
 
@@ -300,9 +264,10 @@ const LeadsView: React.FC = () => {
     } catch (err: any) {
       console.error('Error fetching leads:', err);
       setError(err.message || 'Failed to fetch leads.');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
-  }, [supabase, filterMarketRegion, sortField, sortDirection, currentPage, rowsPerPage, tableSearchTerm]);
+  }, [filterMarketRegion, sortField, sortDirection, currentPage, rowsPerPage, tableSearchTerm]);
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -310,7 +275,7 @@ const LeadsView: React.FC = () => {
       // If fetchNormalizedLeads depends on fetchMarketRegions, they should be awaited sequentially.
       await Promise.all([
         fetchMarketRegions(),
-        fetchNormalizedLeads()
+        fetchLeads()
       ]);
     };
 
@@ -322,7 +287,7 @@ const LeadsView: React.FC = () => {
       // Optionally set a general error state if appropriate
       // setError('Failed to load initial page data.'); 
     });
-  }, [fetchMarketRegions, fetchNormalizedLeads]); // Initial fetch
+  }, [fetchMarketRegions, fetchLeads]); // Initial fetch
 
   // Effect to reset page to 1 when search term or region filter changes
   useEffect(() => {
@@ -332,7 +297,7 @@ const LeadsView: React.FC = () => {
   }, [tableSearchTerm, filterMarketRegion]);
 
   // Handlers
-  const handleSort = (field: keyof NormalizedLead | '') => {
+  const handleSort = (field: keyof NormalizedLead) => {
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
@@ -342,20 +307,9 @@ const LeadsView: React.FC = () => {
     setCurrentPage(1); // Reset to first page on sort change
   };
 
-  const handleOpenModal = (lead: NormalizedLead, contactTypeOverride?: 'owner1' | 'owner2' | 'owner3' | 'agent') => {
-    // Create a copy of the lead with the primary contact info
-    const leadWithPrimaryContact = {
-      ...lead,
-      // Override the contact1 fields with the primary contact info
-      contact1_name: lead._primaryContact?.name || lead.contact1_name,
-      contact1_email_1: lead._primaryContact?.email || lead.contact1_email_1,
-      // Set the contact type in the form data for reference
-      contact1_title: lead._primaryContact?.type || lead.contact1_title
-    };
-    
+  const handleOpenModal = (lead: NormalizedLead) => {
     setSelectedLead(lead);
-    setEditFormData(leadWithPrimaryContact);
-    setContactType(contactTypeOverride || lead._primaryContact?.contactType || 'owner1');
+    setEditFormData(lead);
     setIsModalOpen(true);
   };
 
@@ -712,23 +666,15 @@ const LeadsView: React.FC = () => {
             ) : !isLoading && !leads.length ? (
               <tr><td colSpan={5} className="text-center py-10">No leads found.</td></tr>
             ) : (
-              leads
-                .filter(lead => lead._primaryContact) // Filter out any leads without a primary contact (shouldn't happen due to earlier filtering)
-                .map(lead => {
-                  const contact = lead._primaryContact!; // Non-null assertion since we filtered out nulls
-                  return (
-                    <tr 
-                      key={lead.id} 
-                      className="hover:bg-base-200 cursor-pointer transition-colors"
-                      onClick={() => handleOpenModal(lead, contact.contactType)}
-                    >
+              leads.map(lead => (
+                    <tr key={lead.id} className="hover:bg-base-200 cursor-pointer transition-colors" onClick={() => handleOpenModal(lead)>
                       <td className="py-4">
                         <div className="flex items-center space-x-3">
                           <div>
                             <div className="flex items-center">
-                              <span className="font-medium">{contact.name || 'No Name'}</span>
-                              <span className={`badge badge-xs ml-2 ${contact.contactType.startsWith('owner') ? 'badge-info' : contact.contactType === 'agent' ? 'badge-secondary' : 'badge-outline'}`} title={`Contact Type: ${contact.type}`}>
-                                {contact.type}
+                              <span className="font-medium">{lead.first_name || 'No Name'}</span>
+                              <span className={`badge badge-xs ml-2 ${lead.contact_type.startsWith('owner') ? 'badge-info' : lead.contact_type === 'agent' ? 'badge-secondary' : 'badge-outline'}`} title={`Contact Type: ${lead.contact_type}`}>
+                                {lead.contact_type}
                               </span>
                             </div>
                             <div className="text-sm opacity-70 flex items-center mt-1">
@@ -810,18 +756,16 @@ const LeadsView: React.FC = () => {
         <dialog open className="modal modal-open modal-bottom sm:modal-middle">
           <div className="modal-box w-11/12 max-w-3xl">
             <button onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"><XCircle size={20}/></button>
-            <h3 className="font-bold text-xl mb-4">Edit Lead: {editFormData.contact1_name || 'N/A'}</h3>
+            <h3 className="font-bold text-xl mb-4">Edit Lead: {editFormData.contact_name || 'N/A'}</h3>
             
             <form onSubmit={(e) => { e.preventDefault(); void handleSaveLead(); }} className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-              {/* Dynamically create form fields based on a configuration or list relevant fields explicitly */}
-              {/* For simplicity, listing a few common ones explicitly. Expand as needed. */}
               <div>
-                <label htmlFor="modal-contact1_name" className="label"><span className="label-text">Contact Name</span></label>
-                <input type="text" id="modal-contact_name" name={`contact${contactType === 'owner1' ? '1' : contactType === 'owner2' ? '2' : contactType === 'owner3' ? '3' : '1'}_name`} value={editFormData[`contact${contactType === 'owner1' ? '1' : contactType === 'owner2' ? '2' : contactType === 'owner3' ? '3' : '1'}_name`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                <label htmlFor="modal-contact_name" className="label"><span className="label-text">Contact Name</span></label>
+                <input type="text" id="modal-contact_name" name={`contact_name`} value={editFormData[`contact_name`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div>
-                <label htmlFor="modal-contact1_email_1" className="label"><span className="label-text">Contact Email</span></label>
-                <input type="email" id="modal-contact_email_1" name={`contact${contactType === 'owner1' ? '1' : contactType === 'owner2' ? '2' : contactType === 'owner3' ? '3' : '1'}_email_1`} value={editFormData[`contact${contactType === 'owner1' ? '1' : contactType === 'owner2' ? '2' : contactType === 'owner3' ? '3' : '1'}_email_1`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                <label htmlFor="modal-contact_email" className="label"><span className="label-text">Contact Email</span></label>
+                <input type="email" id="modal-contact_email" name={`contact_email`} value={editFormData[`contact_email`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div>
                 <label htmlFor="modal-market_region" className="label"><span className="label-text">Market Region</span></label>
@@ -851,7 +795,6 @@ const LeadsView: React.FC = () => {
                 <label htmlFor="modal-notes" className="label"><span className="label-text">Notes</span></label>
                 <textarea id="modal-notes" name="notes" value={editFormData.notes || ''} onChange={handleModalInputChange} className="textarea textarea-bordered w-full" rows={3}></textarea>
               </div>
-              {/* Add more fields here as required, e.g., property_type, beds, baths, etc. */}
               <div>
                 <label htmlFor="modal-property_type" className="label"><span className="label-text">Property Type</span></label>
                 <input type="text" id="modal-property_type" name="property_type" value={editFormData.property_type || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
@@ -877,20 +820,8 @@ const LeadsView: React.FC = () => {
                 <input type="text" id="modal-lot_size_sqft" name="lot_size_sqft" value={editFormData.lot_size_sqft || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div>
-                <label htmlFor="modal-wholesale_value" className="label"><span className="label-text">Wholesale Value</span></label>
-                <input type="number" id="modal-wholesale_value" name="wholesale_value" value={editFormData.wholesale_value || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
                 <label htmlFor="modal-assessed_total" className="label"><span className="label-text">Assessed Total</span></label>
                 <input type="number" id="modal-assessed_total" name="assessed_total" value={editFormData.assessed_total || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-avm_value" className="label"><span className="label-text">AVM Value</span></label>
-                <input type="number" id="modal-avm_value" name="avm_value" value={editFormData.avm_value || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-price_per_sq_ft" className="label"><span className="label-text">Price Per Sq Ft</span></label>
-                <input type="number" id="modal-price_per_sq_ft" name="price_per_sq_ft" value={editFormData.price_per_sq_ft || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div>
                 <label htmlFor="modal-mls_curr_status" className="label"><span className="label-text">MLS Current Status</span></label>
@@ -899,57 +830,6 @@ const LeadsView: React.FC = () => {
               <div>
                 <label htmlFor="modal-mls_curr_days_on_market" className="label"><span className="label-text">MLS Current Days on Market</span></label>
                 <input type="text" id="modal-mls_curr_days_on_market" name="mls_curr_days_on_market" value={editFormData.mls_curr_days_on_market || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-converted" className="label"><span className="label-text">Converted</span></label>
-                <input type="checkbox" id="modal-converted" name="converted" checked={!!editFormData.converted} onChange={handleModalInputChange} className="checkbox checkbox-primary" />
-              </div>
-              <div>
-                <label htmlFor="modal-last_contacted_date" className="label"><span className="label-text">Last Contacted Date</span></label>
-                <input type="date" id="modal-last_contacted_date" name="last_contacted_date" value={editFormData.last_contacted_date || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-next_follow_up_date" className="label"><span className="label-text">Next Follow Up Date</span></label>
-                <input type="date" id="modal-next_follow_up_date" name="next_follow_up_date" value={editFormData.next_follow_up_date || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-conversion_date" className="label"><span className="label-text">Conversion Date</span></label>
-                <input type="date" id="modal-conversion_date" name="conversion_date" value={editFormData.conversion_date || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-lost_reason" className="label"><span className="label-text">Lost Reason</span></label>
-                <input type="text" id="modal-lost_reason" name="lost_reason" value={editFormData.lost_reason || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-tags" className="label"><span className="label-text">Tags</span></label>
-                <input type="text" id="modal-tags" name="tags" value={editFormData.tags || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-custom_fields" className="label">
-                  <span className="label-text">Custom Fields</span>
-                </label>
-                <textarea 
-                  id="modal-custom_fields"
-                  name="custom_fields"
-                  value={typeof editFormData.custom_fields === 'object' 
-                    ? JSON.stringify(editFormData.custom_fields, null, 2) 
-                    : editFormData.custom_fields || ''}
-                  onChange={handleModalInputChange} 
-                  className="textarea textarea-bordered w-full h-32 font-mono text-sm"
-                  placeholder="Enter JSON data or leave empty"
-                />
-              </div>
-              <div>
-                <label htmlFor="modal-property_sf" className="label"><span className="label-text">Property SF</span></label>
-                <input type="number" id="modal-property_sf" name="property_sf" value={editFormData.property_sf || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-lead_score" className="label"><span className="label-text">Lead Score</span></label>
-                <input type="number" id="modal-lead_score" name="lead_score" value={editFormData.lead_score || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-assigned_to" className="label"><span className="label-text">Assigned To</span></label>
-                <input type="text" id="modal-assigned_to" name="assigned_to" value={editFormData.assigned_to || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div className="modal-action mt-6">
                 <button type="button" onClick={() => void handleDeleteLead()} className="btn btn-error btn-outline mr-auto" disabled={isLoading}>
