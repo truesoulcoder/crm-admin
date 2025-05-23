@@ -121,7 +121,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const missingOrInvalidFields: string[] = [];
 
     essentialLeadFieldKeys.forEach(field => {
-      const value = lead[field];
+      let value = lead[field];
+      // Nunjucks `contact_name` Fix: Convert null/undefined to "" before validation
+      if (field === 'contact_name' && (value === null || typeof value === 'undefined')) {
+        lead.contact_name = ""; // Modify lead object directly or use a temporary validated object
+        value = ""; 
+      }
       if (value === null || value === undefined || String(value).trim() === '') {
         missingOrInvalidFields.push(String(field));
       }
@@ -148,6 +153,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await logToSupabase({
         original_lead_id: leadIdForLogging,
         contact_email: intendedRecipientEmail,
+        // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
         email_status: 'FAILED_PREPARATION',
         email_error_message: errorMessage,
         campaign_id: 'test-campaign',
@@ -177,6 +183,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await logToSupabase({
             original_lead_id: leadIdForLogging,
             contact_email: intendedRecipientEmail,
+            // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
             email_status: 'FAILED_PREPARATION',
             email_error_message: offerCalcErrorMessage,
             campaign_id: 'test-campaign',
@@ -196,7 +203,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await logToSupabase({
             original_lead_id: leadIdForLogging,
             contact_email: intendedRecipientEmail,
-            actual_recipient_email_sent_to: actualTestRecipientEmail,
+            // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
             email_status: 'FAILED_TO_SEND',
             email_error_message: `Invalid TEST_RECIPIENT_EMAIL address: ${actualTestRecipientEmail}. Check environment variable.`,
             campaign_id: 'test-campaign',
@@ -256,7 +263,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         original_lead_id: leadIdForLogging,
         contact_name: sharedData.contact_name, // Use from sharedData for consistency
         contact_email: intendedRecipientEmail,
-        actual_recipient_email_sent_to: actualTestRecipientEmail,
+        // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
         sender_name: activeSenderName,
         sender_email_used: activeSenderEmail,
         email_subject_sent: emailSubject,
@@ -307,7 +314,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       original_lead_id: leadIdForLogging,
       contact_name: sharedData.contact_name, // Use from sharedData
       contact_email: intendedRecipientEmail, 
-      actual_recipient_email_sent_to: actualTestRecipientEmail, 
+      // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
       sender_name: activeSenderName,
       sender_email_used: activeSenderEmail,
       email_subject_sent: emailSubject,
@@ -335,7 +342,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await logToSupabase({
       original_lead_id: errorLeadId,
       contact_email: typeof intendedRecipientEmail !== 'undefined' ? intendedRecipientEmail : 'unknown_intended', // Log intended if available
-      actual_recipient_email_sent_to: actualTestRecipientEmail, // Log actual if available, otherwise it might be caught by validation
+      // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed. This was already commented out in the source, but ensuring it stays removed.
       email_status: 'FAILED_TO_SEND',
       email_error_message: `Test email failed: ${error.message}`,
       // stack_trace: error.stack, // Optional: log stack trace
