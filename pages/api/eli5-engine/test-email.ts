@@ -124,49 +124,62 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       'contact_name',
       'assessed_total',
     ];
-    const missingOrInvalidFields: string[] = [];
+    const missingFields: string[] = []; // Renamed for clarity as per instructions
 
-    essentialLeadFieldKeys.forEach(field => {
-      const value = lead[field]; // lead.contact_name is now guaranteed to be a string here
-      if (value === null || value === undefined || String(value).trim() === '') {
-        missingOrInvalidFields.push(String(field));
+    essentialLeadFieldKeys.forEach(key => {
+      const value = lead[key];
+      if (key === 'contact_name') {
+        // lead.contact_name is already guaranteed to be a string (empty if null/undefined)
+        // by the pre-validation step.
+        if (value.trim() === '') {
+          missingFields.push(key);
+        }
+      } else if (key === 'assessed_total') {
+        if (value === null || typeof value === 'undefined') {
+          missingFields.push(key);
+        } else {
+          const numValue = parseFloat(String(value));
+          if (isNaN(numValue) || numValue <= 0) {
+            missingFields.push(key + ' (must be a positive number)'); // More specific error
+          }
+        }
+      } else { // For property_address, property_city, property_state
+        if (value === null || typeof value === 'undefined' || (typeof value === 'string' && value.trim() === '')) {
+          missingFields.push(key);
+        }
       }
     });
-
-    // Validate assessed_total as positive number
-    const assessedTotalNumeric = parseFloat(String(lead.assessed_total));
-    if (isNaN(assessedTotalNumeric) || assessedTotalNumeric <= 0) {
-      if (!missingOrInvalidFields.includes('assessed_total')) { // Avoid duplicate
-        missingOrInvalidFields.push('assessed_total (must be a positive number)');
-      }
-    }
-
-    // Validate property_zip_code source
-    const propertyZipCodeSource = lead.property_postal_code || lead.zip_code || lead.property_zipcode;
-    if (!propertyZipCodeSource || String(propertyZipCodeSource).trim() === '') {
-      missingOrInvalidFields.push('property_zip_code (source: property_postal_code, zip_code, or property_zipcode)');
+    
+    // Stricter validation for property_zip_code source
+    const { property_postal_code, zip_code, property_zipcode } = lead;
+    if ((!property_postal_code || String(property_postal_code).trim() === '') && 
+        (!zip_code || String(zip_code).trim() === '') && 
+        (!property_zipcode || String(property_zipcode).trim() === '')) {
+      missingFields.push('property_zip_code (source)');
     }
 
     const intendedRecipientEmail = lead.contact_email; // For personalization & logging
 
-    if (missingOrInvalidFields.length > 0) {
-      const errorMessage = `Missing/invalid essential lead data: ${missingOrInvalidFields.join(', ')}`;
+    if (missingFields.length > 0) {
+      const errorMessage = `Missing/invalid essential lead data: ${missingFields.join(', ')}`;
       await logToSupabase({
-        original_lead_id: lead.normalized_lead_id, // Corrected original_lead_id
+        original_lead_id: lead.normalized_lead_id,
         contact_email: intendedRecipientEmail,
-        // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
         email_status: 'FAILED_PREPARATION',
         email_error_message: errorMessage,
-        campaign_id: null, // Updated campaign_id
+        campaign_id: null,
       });
       return res.status(400).json({
         success: false,
         error: "Missing or invalid essential lead data.",
-        missing_fields: missingOrInvalidFields,
+        missing_fields: missingFields, // Use the collected missingFields
       });
     }
 
     // 2. Calculated and Hardcoded Fields (if lead data validation passes)
+    // Ensure assessed_total is parsed correctly for calculations after validation
+    const assessedTotalNumericValidated = parseFloat(String(lead.assessed_total));
+
     const currentDateFormatted = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     
     const thirtyDaysFromNow = new Date();
@@ -174,9 +187,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const closingDateFormatted = thirtyDaysFromNow.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     
     const titleCompany = "Kristin Blay at Ghrist Law - Patten Title"; // Hardcoded
-
-    // assessedTotalNumeric is already validated to be a positive number
-    const offerPriceNumericRawTotal = assessedTotalNumeric; 
+    
+    const offerPriceNumericRawTotal = assessedTotalNumericValidated; // Use the validated numeric value
     const offerPriceNumeric = offerPriceNumericRawTotal * 0.6;
 
     if (offerPriceNumeric <= 0) { // Should be rare due to prior assessed_total check, but good to be safe
@@ -195,10 +207,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const offerPriceFormatted = offerPriceNumeric.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
     const emdAmountNumeric = offerPriceNumeric * 0.01;
     const emdAmountFormatted = emdAmountNumeric.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-    const propertyZipCode = propertyZipCodeSource as string; // Already validated to be non-empty
+    
+    // Assign validated propertyZipCodeSource to propertyZipCode
+    const propertyZipCode = (lead.property_postal_code || lead.zip_code || lead.property_zipcode) as string;
+
 
     // If all essential fields are present, proceed with script logic
     const actualTestRecipientEmail = process.env.TEST_RECIPIENT_EMAIL || 'test-recipient@example.com';
+    console.log('DEBUG: Initial process.env.TEST_RECIPIENT_EMAIL:', process.env.TEST_RECIPIENT_EMAIL);
+    console.log('DEBUG: Initial actualTestRecipientEmail value:', actualTestRecipientEmail);
 
     if (!isValidEmail(actualTestRecipientEmail)) {
         await logToSupabase({
@@ -291,13 +308,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const dynamicPdfFilename = `Letter_of_Intent_${sanitizedPropertyAddress}.pdf`;
 
     // 8. Create MIME Message (adjusted numbering)
+    console.log('DEBUG: Just before createMimeMessage - intendedRecipientEmail (for personalization):', intendedRecipientEmail);
+    console.log('DEBUG: Just before createMimeMessage - actualTestRecipientEmail (should be To):', actualTestRecipientEmail);
+    console.log('DEBUG: Just before createMimeMessage - direct process.env.TEST_RECIPIENT_EMAIL:', process.env.TEST_RECIPIENT_EMAIL);
+    
+    // Define this right before the createMimeMessage call to ensure the freshest .env read
+    const finalRecipientForSend = process.env.TEST_RECIPIENT_EMAIL || 'test-recipient@example.com'; 
+    console.log('DEBUG: Final recipient being passed to createMimeMessage:', finalRecipientForSend);
+
     const rawEmail = createMimeMessage(
-      actualTestRecipientEmail, // Send to the test recipient
+      finalRecipientForSend, // Ensures the most direct .env var usage
       activeSenderEmail,
       activeSenderName,
       emailSubject,
       emailBodyHtml,
-      { filename: dynamicPdfFilename, content: pdfBuffer } // Updated filename
+      { filename: dynamicPdfFilename, content: pdfBuffer } // Correctly passing PDF details
     );
     const base64EncodedEmail = Buffer.from(rawEmail).toString('base64url');
 
