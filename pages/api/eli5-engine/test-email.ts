@@ -274,6 +274,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const emailBodyHtml = nunjucks.renderString(rawBodyTemplate, templateData);
 
     // 6. Generate PDF
+    console.log('DEBUG_TESTEMAIL: About to call generateLoiPdf.');
+    console.log('DEBUG_TESTEMAIL: pdfPersonalizationData.contact_name being passed:', JSON.stringify(pdfPersonalizationData?.contact_name), typeof pdfPersonalizationData?.contact_name);
+    console.log('DEBUG_TESTEMAIL: Full pdfPersonalizationData being passed:', JSON.stringify(pdfPersonalizationData));
     const pdfBuffer = await generateLoiPdf(pdfPersonalizationData, lead.normalized_lead_id, intendedRecipientEmail || actualTestRecipientEmail); // Using normalized_lead_id for PDF context if appropriate
     if (!pdfBuffer) {
       await logToSupabase({
