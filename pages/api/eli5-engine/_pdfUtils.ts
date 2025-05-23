@@ -19,7 +19,12 @@ export const generateLoiPdf = async (
   leadId: string, // Used for logging or unique naming if saving temporarily
   contactEmail: string // Used for logging, re-added as per current subtask
 ): Promise<Buffer | null> => {
-  // Added contactEmail to log, though it's not used further in this specific function body
+  // <<< NEW LOGS MUST BE THE VERY FIRST LINES HERE >>>
+  console.log('DEBUG_PDFUTILS_ENTRY: generateLoiPdf function started.');
+  console.log('DEBUG_PDFUTILS_DATA_RECEIVED: Raw personalizationData:', JSON.stringify(personalizationData));
+  console.log('DEBUG_PDFUTILS_CONTACT_NAME_RECEIVED: contact_name type:', typeof personalizationData?.contact_name, 'value:', JSON.stringify(personalizationData?.contact_name));
+  
+  // Existing informative log, now after the critical entry logs
   console.log(`Generating LOI PDF for lead ID: ${leadId}, contact: ${contactEmail}`); 
   try {
     // 1. Render HTML content using Nunjucks
