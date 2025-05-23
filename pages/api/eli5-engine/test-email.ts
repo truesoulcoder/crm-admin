@@ -1,23 +1,22 @@
+import type { NextApiRequest, NextApiResponse } from 'next';
 import fs from 'fs/promises';
 import path from 'path';
-
-import * as nunjucks from 'nunjucks';
-
-import { generateLoiPdf } from './_pdfUtils';
+import nunjucks from 'nunjucks';
 import {
   getSupabaseClient,
   getGmailService,
   logToSupabase,
   isValidEmail,
 } from './_utils';
-
-import type { NextApiRequest, NextApiResponse } from 'next';
+import { generateLoiPdf } from './_pdfUtils';
 
 // Nunjucks environment setup (can be shared if multiple routes use Nunjucks)
 const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
 nunjucks.configure(templateDir, { autoescape: true });
 
 // Hardcoded sender details (replace with dynamic loading or env variables later)
+// const TEST_SENDER_EMAIL = process.env.TEST_SENDER_EMAIL || 'chrisphillips@truesoulpartners.com'; // Ensure this is a valid sender for the Gmail service
+// const TEST_SENDER_NAME = process.env.TEST_SENDER_NAME || 'Chris Phillips';
 // Hardcoded recipient for testing (replace with dynamic or lead's email later)
 const TEST_RECIPIENT_EMAIL = process.env.TEST_RECIPIENT_EMAIL || 'test-recipient@example.com';
 
@@ -66,7 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const supabase = getSupabaseClient();
-  const leadId = 1; // Using a fixed test lead ID, adjust as needed
+  // const leadId = `test-lead-${Date.now()}`; // Placeholder lead ID - will be replaced by fetched lead's ID
 
   try {
     // 1. Fetch Active Sender from Supabase
@@ -95,31 +94,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const activeSenderName = fetchedSenderName;
     // const senderCredentials = sender.credentials_json; // Stored for future use if needed for getGmailService
 
-    // 2. Fetch Sample Lead (adjusted numbering)
+    // 2. Fetch Sample Lead from useful_leads (adjusted numbering)
     const { data: lead, error: leadError } = await supabase
-      .from('normalized_leads')
+      .from('useful_leads') // Changed table name
       .select('*')
-      .eq('id', leadId) // Using the lead ID
-      .single();
+      .limit(1) // Fetch the first available lead
+      .maybeSingle(); // Return single row or null, no error if table empty or multiple rows (due to limit)
 
-    if (leadError) throw new Error(`Error fetching lead: ${leadError.message}`);
-    if (!lead) throw new Error('No suitable lead found for testing.'); // Clarified error
-    const recipientEmail = lead.contact_email || TEST_RECIPIENT_EMAIL; // Use lead's email or fallback
-    const recipientName = lead.contact_name || 'Valued Contact';
+    if (leadError) throw new Error(`Error fetching lead from useful_leads: ${leadError.message}`);
+    if (!lead) throw new Error('No lead found in useful_leads table for testing.');
 
-    if (!isValidEmail(recipientEmail)) {
+    // Use the lead's ID (assuming 'id' or 'uuid' exists) for logging and other purposes
+    // For this example, let's assume 'id' is the primary key in 'useful_leads'
+    // If 'useful_leads' uses 'uuid', change 'lead.id' to 'lead.uuid' accordingly.
+    const leadIdForLogging = lead.id; // Or lead.uuid if that's the identifier
+
+    // Field Compatibility:
+    // Assuming useful_leads has: contact_email, contact_name, property_address, property_type
+    // If not, these will need mapping. For now, using them directly as per subtask instructions.
+    const actualTestRecipientEmail = process.env.TEST_RECIPIENT_EMAIL || 'test-recipient@example.com';
+    const intendedRecipientEmail = lead.contact_email; // For personalization & logging
+    const recipientName = lead.contact_name || 'Valued Contact'; // For personalization
+
+    if (!isValidEmail(actualTestRecipientEmail)) {
         await logToSupabase({
-            original_lead_id: lead.id,
-            contact_email: recipientEmail,
+            original_lead_id: leadIdForLogging, // Use fetched lead's ID
+            contact_email: intendedRecipientEmail, // Log who it was intended for
+            actual_recipient_email_sent_to: actualTestRecipientEmail, // Log actual recipient
             email_status: 'FAILED_TO_SEND',
-            email_error_message: 'Invalid recipient email address for testing.',
+            email_error_message: `Invalid TEST_RECIPIENT_EMAIL address: ${actualTestRecipientEmail}. Check environment variable.`,
             campaign_id: 'test-campaign',
         });
-        return res.status(400).json({ success: false, error: `Invalid recipient email: ${recipientEmail}` });
+        return res.status(400).json({ success: false, error: `Invalid TEST_RECIPIENT_EMAIL: ${actualTestRecipientEmail}. Check environment variable.` });
     }
 
 
-    // 2. Load Email Templates (Subject and Body)
+    // 3. Load Email Templates (Subject and Body) (adjusted numbering)
     const emailTemplatePath = path.join(templateDir, 'email_body_with_subject.html');
     let emailHtmlContent: string;
     try {
@@ -134,32 +144,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Personalization data for email templates
     const templateData = {
-      contact_name: recipientName,
+      contact_name: recipientName, // Personalized for the lead
       sender_name: activeSenderName,
-      property_address: lead.property_address,
-      property_type: lead.property_type,
+      property_address: lead.property_address, // Assuming field exists in useful_leads
+      property_type: lead.property_type, // Assuming field exists in useful_leads
       // Add other fields from the lead as needed by the template
-      ...lead, // Spread all lead fields
+      ...lead, // Spread all lead fields from useful_leads
+      contact_email: intendedRecipientEmail, // For template personalization if {{ contact_email }} is used
       sender_email: activeSenderEmail,
     };
 
-    // 3. Personalize Templates (Subject and Body) (adjusted numbering)
+    // 4. Personalize Templates (Subject and Body) (adjusted numbering)
     const emailSubject = nunjucks.renderString(rawSubjectTemplate, templateData);
     const emailBodyHtml = nunjucks.renderString(rawBodyTemplate, templateData);
 
-    // 4. Generate PDF
+    // 5. Generate PDF (adjusted numbering)
     // Personalization data for PDF (might be different or extended)
     const pdfPersonalizationData = {
         ...templateData, // Reuse email data or customize
         date_generated: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
         // Ensure all fields required by 'letter_of_intent_text.html' are present
     };
-    const pdfBuffer = await generateLoiPdf(pdfPersonalizationData, lead.id, recipientEmail);
+    const pdfBuffer = await generateLoiPdf(pdfPersonalizationData, leadIdForLogging, intendedRecipientEmail || actualTestRecipientEmail); // Pass intended or actual for PDF context
     if (!pdfBuffer) {
       await logToSupabase({
-        original_lead_id: lead.id,
+        original_lead_id: leadIdForLogging,
         contact_name: recipientName,
-        contact_email: recipientEmail,
+        contact_email: intendedRecipientEmail, // Log who it was intended for
+        actual_recipient_email_sent_to: actualTestRecipientEmail, // Log actual recipient
         sender_name: activeSenderName,
         sender_email_used: activeSenderEmail,
         email_subject_sent: emailSubject,
@@ -172,7 +184,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 5. Create MIME Message
     const rawEmail = createMimeMessage(
-      recipientEmail,
+      actualTestRecipientEmail, // Send to the test recipient
       activeSenderEmail,
       activeSenderName,
       emailSubject,
@@ -192,9 +204,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 7. Logging Success (adjusted numbering)
     await logToSupabase({
-      original_lead_id: lead.id,
+      original_lead_id: leadIdForLogging,
       contact_name: recipientName,
-      contact_email: recipientEmail,
+      contact_email: intendedRecipientEmail, // Log who it was intended for
+      actual_recipient_email_sent_to: actualTestRecipientEmail, // Log actual recipient
       sender_name: activeSenderName,
       sender_email_used: activeSenderEmail,
       email_subject_sent: emailSubject,
@@ -208,17 +221,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 8. Response (adjusted numbering)
     return res.status(200).json({
         success: true,
-        message: `Test email successfully sent to ${recipientEmail} from ${activeSenderEmail}.`,
-        lead_id: lead.id,
+        message: `Test email successfully sent to ${actualTestRecipientEmail} (personalized for ${intendedRecipientEmail || 'N/A'}) from ${activeSenderEmail}.`,
+        lead_id: leadIdForLogging,
         subject: emailSubject,
     });
 
   } catch (error: any) {
     console.error('Error in test-email handler:', error);
-    // Ensure leadId is available for logging if the error happens after lead fetching
-    const currentLeadId = typeof lead !== 'undefined' && lead ? lead.id : `test-lead-fell-early-${Date.now()}`;
+    // Ensure leadIdForLogging is available for logging if the error happens after lead fetching
+    // If lead fetching failed, leadIdForLogging would not be set.
+    // Fallback to a generic placeholder if lead is not defined.
+    const errorLeadId = typeof lead !== 'undefined' && lead ? (lead.id || lead.uuid) : `test-lead-fetch-failed-${Date.now()}`;
     await logToSupabase({
-      original_lead_id: currentLeadId,
+      original_lead_id: errorLeadId,
+      contact_email: typeof intendedRecipientEmail !== 'undefined' ? intendedRecipientEmail : 'unknown_intended', // Log intended if available
+      actual_recipient_email_sent_to: actualTestRecipientEmail, // Log actual if available, otherwise it might be caught by validation
       email_status: 'FAILED_TO_SEND',
       email_error_message: `Test email failed: ${error.message}`,
       // stack_trace: error.stack, // Optional: log stack trace
