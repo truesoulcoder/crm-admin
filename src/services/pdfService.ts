@@ -1,9 +1,9 @@
 // This module should only be used in server-side code (API routes)
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { logInfo } from './logService.js';
-import { chromium } from '@sparticuz/chromium';
-import { fontkit } from '@pdf-lib/fontkit';
+// @ts-ignore - chromium is a default export
+import chromium from '@sparticuz/chromium';
+import * as fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, rgb } from 'pdf-lib';
 import { Browser, PDFOptions, launch } from 'puppeteer-core';
 
@@ -17,8 +17,28 @@ const logSystemEvent = async (event: { event_type: string; message: string; deta
   }
 };
 
-export interface PdfGenerationOptions extends Omit<PDFOptions, 'path'> {
-  format?: 'A4' | 'Letter' | PDFOptions['format'];
+// Type guard for Uint8Array
+function isUint8Array(value: unknown): value is Uint8Array {
+  return value instanceof Uint8Array || 
+         (typeof value === 'object' && 
+          value !== null && 
+          'byteLength' in value && 
+          'byteOffset' in value && 
+          'buffer' in value);
+}
+
+// Type guard for ArrayBuffer
+function isArrayBuffer(value: unknown): value is ArrayBuffer {
+  return value instanceof ArrayBuffer || 
+         (typeof value === 'object' && 
+          value !== null && 
+          'byteLength' in value &&
+          !('byteOffset' in value));
+}
+
+// Update PaperFormat to use lowercase values to match puppeteer's expected format
+export interface PdfGenerationOptions extends Omit<PDFOptions, 'path' | 'format'> {
+  format?: 'a4' | 'letter';
   margin?: {
     top?: string;
     right?: string;
@@ -111,11 +131,22 @@ export async function generatePdfFromHtml(
             : '/usr/bin/google-chrome',
         };
 
-    // Launch browser
+    // Launch browser with proper type casting
     browser = await launch({
       ...launchOptions,
       headless: true,
-    });
+      args: [
+        ...(launchOptions.args || []),
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ],
+    } as const);
 
     if (!browser) {
       throw new Error('Failed to launch browser');
@@ -129,8 +160,9 @@ export async function generatePdfFromHtml(
       timeout: 30000, // 30 seconds timeout
     });
 
-    // Prepare PDF options
+    // Prepare PDF options with proper format handling
     const pdfOptions: PDFOptions = {
+      // Default format (uppercase as per puppeteer's expected format)
       format: 'Letter',
       printBackground: true,
       margin: isOverlay ? {
@@ -144,14 +176,41 @@ export async function generatePdfFromHtml(
         bottom: '1cm',
         left: '1cm',
       },
+      // Spread other options (will be overridden by specific settings above)
       ...options,
     };
+    
+    // Handle format option if provided
+    if (options.format) {
+      const format = String(options.format).toLowerCase() as 'a4' | 'letter';
+      // Ensure the format is either 'a4' or 'letter'
+      if (format === 'a4' || format === 'letter') {
+        pdfOptions.format = format;
+      }
+    }
 
     // Generate PDF
     const pdfData = await page.pdf(pdfOptions);
     
-    // Convert Uint8Array to Buffer if needed
-    const pdfBuffer = Buffer.isBuffer(pdfData) ? pdfData : Buffer.from(pdfData.buffer);
+    // Convert the PDF data to a Buffer
+    let pdfBuffer: Buffer;
+    try {
+      // The page.pdf() call should return a Buffer or Uint8Array
+      if (Buffer.isBuffer(pdfData)) {
+        pdfBuffer = pdfData;
+      } else if (isUint8Array(pdfData)) {
+        pdfBuffer = Buffer.from(pdfData);
+      } else if (isArrayBuffer(pdfData)) {
+        pdfBuffer = Buffer.from(pdfData);
+      } else if (pdfData && typeof pdfData === 'object' && 'buffer' in pdfData) {
+        pdfBuffer = Buffer.from((pdfData as { buffer: ArrayBuffer }).buffer);
+      } else {
+        throw new Error('Unsupported PDF data format');
+      }
+    } catch (error) {
+      console.error('Error converting PDF data to Buffer:', error);
+      throw new Error('Failed to process PDF data');
+    }
     
     // Log successful generation
     await logSystemEvent({

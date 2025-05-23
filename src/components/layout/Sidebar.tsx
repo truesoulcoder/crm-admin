@@ -56,7 +56,8 @@ const Sidebar: React.FC = () => {
     templates: '/templates',
     senders: '/email-senders',
     crm: '/crm',
-    settings: '/settings'
+    settings: '/settings',
+    'email-analytics': '/dashboard/email-analytics'
   };
 
   const getFilteredMenuItems = () => {

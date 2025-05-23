@@ -16,9 +16,8 @@ import { Edit3, PlusCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import React, { useState, useEffect, useMemo, useCallback, useRef, ChangeEvent } from 'react';
 
-import CrmTable, { Lead as LeadType, StatusOption as StatusOptionType } from '@/components/crm/CrmTable'; // Import CrmTable and types // Import CrmTable and types
+import CrmTable, { Lead as LeadType, StatusOption as StatusOptionType } from '@/components/crm/CrmTable'; 
 import { supabase } from '@/lib/supabase/client';
-
 
 // Extend the imported LeadType to include optional address fields
 export interface Lead extends Omit<LeadType, 'address' | 'city' | 'state' | 'zip_code'> {
@@ -26,7 +25,7 @@ export interface Lead extends Omit<LeadType, 'address' | 'city' | 'state' | 'zip
   city?: string;
   state?: string;
   zip_code?: string;
-  [key: string]: any; // For any other dynamic properties
+  [key: string]: any; 
 }
 
 export type StatusOption = StatusOptionType;
@@ -52,7 +51,7 @@ const componentInitialFormData: Partial<Lead> = {
   last_name: '',
   email: '',
   phone: '',
-  status: 'NEW', // Default status
+  status: 'NEW', 
   property_address_street: '',
   property_address_city: '',
   property_address_state: '',
@@ -67,8 +66,7 @@ const componentInitialFormData: Partial<Lead> = {
   mls_curr_days_on_market: '',
 };
 
-const CrmView: React.FC = () => {
-  // State hooks must be called at the top level
+const CrmView = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [marketRegionFilter, setMarketRegionFilter] = useState('');
@@ -157,196 +155,151 @@ const CrmView: React.FC = () => {
     return tempLeads;
   }, [leads, searchTerm, marketRegionFilter]);
 
-
-  const handleEditLead = useCallback((leadToEdit: Lead) => {
-    setCurrentLead(leadToEdit);
-    
-    // Safely handle potentially undefined address fields
-    const address = leadToEdit.address || '';
-    const city = leadToEdit.city || '';
-    const state = leadToEdit.state || '';
-    const zip_code = leadToEdit.zip_code || '';
-    
-    const addressParts = [
-      leadToEdit.property_address_street || address,
-      leadToEdit.property_address_city || city,
-      leadToEdit.property_address_state || state,
-      leadToEdit.property_address_zip || zip_code
-    ].filter(Boolean);
-    
-    const mappedFormData: Partial<Lead> = {
+  const handleEditLead = useCallback((lead: Lead) => {
+    setCurrentLead(lead);
+    setFormData({
+      ...lead,
       ...componentInitialFormData,
-      ...leadToEdit,
-      property_address_street: leadToEdit.property_address_street || address,
-      property_address_city: leadToEdit.property_address_city || city,
-      property_address_state: leadToEdit.property_address_state || state,
-      property_address_zip: leadToEdit.property_address_zip || zip_code,
-      property_address_full: leadToEdit.property_address_full || addressParts.join(', ') || '',
-      assessed_value: leadToEdit.assessed_value != null ? Number(leadToEdit.assessed_value) : undefined,
-      beds: leadToEdit.beds != null ? Number(leadToEdit.beds) : undefined,
-      baths: leadToEdit.baths != null ? Number(leadToEdit.baths) : undefined,
-      sq_ft: leadToEdit.sq_ft != null ? Number(leadToEdit.sq_ft) : undefined,
-    };
-    setFormData(mappedFormData);
+      ...lead,
+    });
     setIsFormOpen(true);
-    
+  }, []);
+
   const columnHelper = createColumnHelper<Lead>();
 
-  const columns = useMemo<ColumnDef<Lead, any>[]>(() => [
-    {
-      header: 'Name',
-      accessorFn: (row: Lead) => getDisplayName(row),
-      id: 'name',
-      cell: (info: CellContext<Lead, string>) => {
-        const value = info.getValue();
-        return <span className="font-medium">{value || 'N/A'}</span>;
+  const columns = useMemo<ColumnDef<Lead>[]>(
+    () => [
+      {
+        header: 'Name',
+        accessorFn: (row: Lead) => getDisplayName(row),
+        id: 'name',
+        cell: (info: CellContext<Lead, string>) => {
+          const lead = info.row.original;
+          return (
+            <button 
+              className="text-blue-600 hover:text-blue-800 font-medium text-left"
+              onClick={() => handleEditLead(lead)}
+            >
+              {info.getValue() as string}
+            </button>
+          );
+        },
       },
-    },
-    {
-      header: 'Status',
-      accessorKey: 'status',
-      id: 'status',
-      cell: (info: CellContext<Lead, string>) => {
-        const value = info.getValue();
-        return (
-          <span className={`badge ${getStatusBadgeClass(value)}`}>
-            {componentStatusOptions.find(s => s.value === value)?.label || value}
-          </span>
-        );
+      {
+        header: 'Status',
+        accessorKey: 'status',
+        id: 'status',
+        cell: (info: CellContext<Lead, string>) => {
+          const statusValue = info.getValue() as string;
+          const statusClass = getStatusBadgeClass(statusValue);
+          const statusLabel = componentStatusOptions.find(opt => opt.value === statusValue)?.label || statusValue;
+          return (
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusClass}`}>
+              {statusLabel}
+            </span>
+          );
+        },
       },
-    },
-    {
-      header: 'Email',
-      accessorKey: 'email',
-      cell: (info: CellContext<Lead, string | undefined>) => {
-        const value = info.getValue();
-        return <a href={`mailto:${value}`} className="link link-hover">{value || 'N/A'}</a>;
+      {
+        header: 'Email',
+        accessorKey: 'email',
+        cell: (info: CellContext<Lead, string | undefined>) => (
+          <a href={`mailto:${info.getValue()}`} className="text-blue-600 hover:underline">
+            {info.getValue()}
+          </a>
+        ),
       },
-    },
-    {
-      header: 'Property Address',
-      accessorFn: (row: Lead) => {
-        // Use the property address fields first, fall back to the general address fields
-        const parts = [
-          row.property_address_street || row.address,
-          row.property_address_city || row.city,
-          row.property_address_state || row.state,
-          row.property_address_zip || row.zip_code
-        ].filter(Boolean);
-        
-        return parts.length > 0 ? parts.join(', ') : (row.property_address_full || 'N/A');
+      {
+        header: 'Property Address',
+        accessorFn: (row: Lead) => {
+          const parts = [
+            row.property_address_street,
+            row.property_address_city,
+            row.property_address_state,
+            row.property_address_zip,
+          ].filter(Boolean);
+          return parts.join(', ');
+        },
+        id: 'property_address',
+        cell: (info: CellContext<Lead, string>) => (
+          <div className="whitespace-nowrap">{info.getValue() as string}</div>
+        ),
       },
-      id: 'property_address',
-      cell: (info: CellContext<Lead, string>) => {
-        const value = info.getValue();
-        return <span className="whitespace-nowrap">{value}</span>;
+      {
+        header: 'Assessed Total',
+        accessorKey: 'assessed_total',
+        id: 'assessed_total',
+        cell: (info: CellContext<Lead, number | undefined>) => (
+          <div>${info.getValue()?.toLocaleString() || 'N/A'}</div>
+        ),
+        enableSorting: true,
       },
-    },
-    {
-      header: 'Assessed Total',
-      accessorKey: 'assessed_total',
-      id: 'assessed_total',
-      cell: (info: CellContext<Lead, number | undefined>) => {
-        const value = info.getValue();
-        return value ? `$${value.toLocaleString()}` : 'N/A';
-      },
-      enableSorting: true,
-    },
-    {
-      header: 'Assessed Total',
-      accessorKey: 'assessed_total',
-      id: 'assessed_total',
-      cell: (info: CellContext<Lead, number | undefined>) => {
-        const value = info.getValue();
-        return value ? `$${value.toLocaleString()}` : 'N/A';
-      },
-      enableSorting: true,
-    }
-  ], [getStatusBadgeClass, getDisplayName, formatFullAddress, handleEditLead]);
+    ], 
+    [getStatusBadgeClass, getDisplayName, formatFullAddress, handleEditLead]
+  );
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
-    pageSize: 25,
+    pageSize: 10,
   });
 
-  const tableInstance = useReactTable<Lead>({
-    columns,
+  const tableInstance = useReactTable({
     data: filteredLeads,
+    columns,
     state: {
       sorting,
       pagination,
     },
+    pageCount: Math.ceil(filteredLeads.length / pagination.pageSize),
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    manualPagination: false, // client-side pagination
-    debugTable: process.env.NODE_ENV === 'development',
+    manualPagination: true,
+    debugTable: true,
   });
-
-  const { 
-    getHeaderGroups,
-    getRowModel,
-  } = tableInstance;
-
-  const pageIndex = tableInstance.getState().pagination.pageIndex;
-  const pageSize = tableInstance.getState().pagination.pageSize;
-  const pageCount = tableInstance.getPageCount();
-  const canPreviousPage = tableInstance.getCanPreviousPage();
-  const canNextPage = tableInstance.getCanNextPage();
-  const gotoPage = tableInstance.setPageIndex;
-  const nextPage = tableInstance.nextPage;
-  const previousPage = tableInstance.previousPage;
-  const setPageSize = tableInstance.setPageSize;
-  const pageOptions = Array.from({ length: pageCount }, (_, i) => i + 1);
-
 
   const handleSubmitForTable = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
     setFormError(null);
 
-    const leadDataToSubmit: Partial<Lead> = {
-      ...formData,
-      assessed_value: formData.assessed_value ? parseFloat(String(formData.assessed_value)) : undefined,
-      beds: formData.beds ? parseInt(String(formData.beds), 10) : undefined,
-      baths: formData.baths ? parseFloat(String(formData.baths)) : undefined,
-      sq_ft: formData.sq_ft ? parseInt(String(formData.sq_ft), 10) : undefined,
-      property_address_full: (
-        formData.property_address_street || formData.property_address_city || 
-        formData.property_address_state || formData.property_address_zip
-      ) ? [
-        formData.property_address_street,
-        formData.property_address_city,
-        formData.property_address_state,
-        formData.property_address_zip
-      ].filter(Boolean).join(', ') : (formData.property_address_full || undefined),
-    };
-
     try {
-      if (currentLead?.id) { // Editing
-        const { error: updateError } = await supabase
+      if (!formData.id) {
+        const { data, error } = await supabase
           .from('crm_leads')
-          .update(leadDataToSubmit)
-          .eq('id', currentLead.id);
-        if (updateError) throw updateError;
-      } else { // Adding new
-        const { error: insertError } = await supabase
+          .insert([formData])
+          .select();
+
+        if (error) throw error;
+        
+        if (data && data[0]) {
+          setLeads(prev => [data[0], ...prev]);
+        }
+      } else {
+        const { data, error } = await supabase
           .from('crm_leads')
-          .insert([leadDataToSubmit])
-          .select(); 
-        if (insertError) throw insertError;
+          .update(formData)
+          .eq('id', formData.id)
+          .select();
+
+        if (error) throw error;
+        
+        if (data && data[0]) {
+          setLeads(prev => 
+            prev.map(lead => lead.id === data[0].id ? data[0] : lead)
+          );
+        }
       }
+      
       setIsFormOpen(false);
-      setCurrentLead(null);
       setFormData(componentInitialFormData);
-      await fetchLeads(); 
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+      setCurrentLead(null);
+    } catch (err: any) {
+      setFormError(err.message || 'An error occurred while saving the lead');
       console.error('Error saving lead:', err);
-      setFormError(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -425,6 +378,6 @@ const CrmView: React.FC = () => {
       />
     </div>
   );
-};
+}
 
 export default CrmView;
