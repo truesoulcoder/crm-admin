@@ -9,12 +9,13 @@ const nextConfig = {
   reactStrictMode: false,
   serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
   
+  outputFileTracingIncludes: {
+    '/api/eli5-engine/*': [
+      './node_modules/@sparticuz/chromium/**'
+    ]
+  },
+
   experimental: {
-    outputFileTracingIncludes: {
-      '/api/eli5-engine/*': [
-        './node_modules/@sparticuz/chromium/**'
-      ]
-    },
     serverActions: {
       allowedOrigins: ['localhost:3000']
     }
