@@ -85,291 +85,222 @@ const CrmLeads: React.FC = () => {
   // Table State
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [rowsPerPage, setRowsPerPage] = useState<number>(25);
+  const [sortField, setSortField] = useState<keyof CrmLead | ''>(''); // Default sort field
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc'); // Default sort direction
   const [totalLeads, setTotalLeads] = useState<number>(0);
-  const [sortField, setSortField] = useState<keyof CrmLead>('created_at');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [selectedLead, setSelectedLead] = useState<CrmLead | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<CrmLead>>(initialNewLeadData);
 
-  // Google Maps API Loader
-  const { isLoaded, loadError } = useJsApiLoader({
+  // Google Maps
+  const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
-    libraries: ['places'], 
+    libraries: ['places', 'streetView'] as any, // Cast to 'any' to bypass type issue if specific library names are not in @types
   });
-
-  // State for Autocomplete and StreetView
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
   const [streetViewPosition, setStreetViewPosition] = useState<{ lat: number; lng: number } | null>(null);
-  const autocompleteInputRef = useRef<HTMLInputElement>(null);
 
 
-  // fileInputRef was for CSV upload, can be removed if PlusCircle isn't used to trigger a hidden file input.
-  // For "Add Lead" button, it's not needed.
-  // const fileInputRef = useRef<HTMLInputElement>(null); 
-
-  const columnConfigurations: ColumnConfig[] = [
-    { key: 'contact_name', label: 'Contact Info', sortable: true }, // Will render name + email + type badge
+  // Define columns for the table
+  const columns: ColumnConfig[] = [
+    { key: 'contact_name', label: 'Contact Name', sortable: true },
+    { key: 'contact_email', label: 'Email', sortable: true },
+    { key: 'contact_type', label: 'Type', sortable: true },
+    { key: 'market_region', label: 'Market', sortable: true },
     { key: 'property_address', label: 'Property Address', sortable: true },
-    { key: 'market_region', label: 'Market Region', sortable: true },
-    { key: 'status', label: 'Lead Status', sortable: true },
-    { key: 'converted', label: 'Converted', sortable: true }, 
-    // Optional columns for consideration:
-    // { key: 'contact_type', label: 'Raw Contact Type', sortable: true }, 
-    // { key: 'assessed_total', label: 'Assessed Value', sortable: true },
-    // { key: 'mls_curr_status', label: 'MLS Status', sortable: true },
-    // { key: 'normalized_lead_id', label: 'Normalized ID', sortable: true },
-    // { key: 'id', label: 'CRM ID', sortable: true },
-    // { key: 'email_sent', label: 'Email Sent', sortable: true },
+    { key: 'property_city', label: 'City', sortable: true },
+    { key: 'property_state', label: 'State', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'created_at', label: 'Created', sortable: true },
+    { key: 'updated_at', label: 'Updated', sortable: true },
+    // Add more columns as needed
   ];
 
-  // Fetch Market Regions
-  const fetchMarketRegions = useCallback(async () => {
-    console.log('Fetching market regions for CRM Leads...');
-    try {
-      // First, get a count of distinct market regions to decide on the best approach
-      const { count, error: countError } = await supabase
-        .from('crm_leads') // Target crm_leads
-        .select('market_region', { count: 'exact', head: true })
-        .not('market_region', 'is', null);
-
-      if (countError) throw countError;
-      
-      console.log(`Found ${count} non-null market regions in crm_leads`);
-      
-      // If we have a reasonable number of distinct values, fetch them directly
-      if (count && count <= 1000) {
-        const { data, error } = await supabase
-          .from('crm_leads') // Target crm_leads
-          .select('market_region')
-          .not('market_region', 'is', null)
-          .order('market_region', { ascending: true });
-          
-        if (error) throw error;
-        
-        const uniqueRegions = Array.from(
-          new Set(data.map(item => item.market_region).filter(Boolean))
-        ).sort() as string[];
-        
-        console.log(`Found ${uniqueRegions.length} unique market regions`);
-        setMarketRegions(uniqueRegions);
-      } else {
-        // If too many regions, use a more efficient approach with pagination
-        console.log('Large dataset detected, using paginated approach for crm_leads market regions...');
-        const BATCH_SIZE = 1000;
-        let offset = 0;
-        const allRegions = new Set<string>();
-        let hasMore = true;
-        
-        while (hasMore) {
-          const { data, error } = await supabase
-            .from('crm_leads') // Target crm_leads
-            .select('market_region')
-            .not('market_region', 'is', null)
-            .order('market_region', { ascending: true })
-            .range(offset, offset + BATCH_SIZE - 1);
-            
-          if (error) throw error;
-          
-          // Add new regions to our set (automatically handles duplicates)
-          data.forEach(item => {
-            if (item.market_region) {
-              allRegions.add(item.market_region);
-            }
-          });
-          
-          // If we got fewer items than requested, we've reached the end
-          if (!data || data.length < BATCH_SIZE) {
-            hasMore = false;
-          } else {
-            offset += BATCH_SIZE;
-          }
-        }
-        
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Convert set to array and sort
-        const sortedRegions = Array.from(allRegions).sort();
-        console.log(`Found ${sortedRegions.length} unique market regions`);
-        setMarketRegions(sortedRegions);
-      }
-    } catch (err) {
-      console.error('Error fetching market regions:', err);
-      setMarketRegions([]);
-    }
-  }, [setMarketRegions]); // Fix variable scope issue by adding setMarketRegions to the dependency array
-
-  // Check if a lead has any valid email address - updated to use CrmLead interface
-  const hasValidEmail = (lead: CrmLead) => {
-    return !!lead.contact_email; 
-  };
-
-  // Get status badge color based on status
-  const getStatusBadge = (status: string | null | undefined) => {
-    if (!status) status = 'UNCONTACTED';
-    
-    const baseClasses = 'badge text-xs font-medium px-2 py-1 rounded-md';
-    
-    switch (status.toUpperCase()) {
-      case 'CONTACTED':
-        return `${baseClasses} bg-green-100 text-green-800`;
-      case 'INTERESTED':
-        return `${baseClasses} bg-blue-100 text-blue-800`;
-      case 'NOT INTERESTED':
-        return `${baseClasses} bg-red-100 text-red-800`;
-      case 'FOLLOW UP':
-        return `${baseClasses} bg-yellow-100 text-yellow-800`;
-      case 'UNCONTACTED':
-      default:
-        return `${baseClasses} bg-cyan-100 text-cyan-800`; // Light blue for UNCONTACTED
-    }
-  };
-
-  // Fetch Leads from crm_leads table
   const fetchLeads = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       let query = supabase
-        .from('crm_leads') // Target crm_leads table
-        .select('*', { count: 'exact' });
+        .from('crm_leads')
+        .select('*', { count: 'exact' }); // Fetch all columns and count
 
-      // Apply market region filter if one is selected
+      // Apply market region filter
       if (filterMarketRegion && filterMarketRegion !== 'All') {
         query = query.eq('market_region', filterMarketRegion);
       }
 
-      // Apply search term filter - ensure fields match CrmLead and crm_leads table
-      if (tableSearchTerm && tableSearchTerm.trim() !== '') {
-        const searchTermQuery = `%${tableSearchTerm.trim()}%`;
-        query = query.or(
-          `contact_name.ilike.${searchTermQuery},` +
-          `contact_email.ilike.${searchTermQuery},` +
-          `property_address.ilike.${searchTermQuery},` +
-          `property_city.ilike.${searchTermQuery},` +
-          `property_state.ilike.${searchTermQuery},` +
-          `property_postal_code.ilike.${searchTermQuery},` +
-          `notes.ilike.${searchTermQuery},` +
-          `status.ilike.${searchTermQuery},` +
-          `contact_type.ilike.${searchTermQuery}`
-          // normalized_lead_id is a number, typically not searched with ilike.
-        );
+      // Apply search term filter (searching multiple fields)
+      if (tableSearchTerm) {
+        query = query.or(`contact_name.ilike.%${tableSearchTerm}%,contact_email.ilike.%${tableSearchTerm}%,property_address.ilike.%${tableSearchTerm}%,property_city.ilike.%${tableSearchTerm}%,status.ilike.%${tableSearchTerm}%`);
       }
 
-      // Apply sorting - sortField is keyof CrmLead
-      query = query.order(sortField as string, { ascending: sortDirection === 'asc' });
+      // Apply sorting
+      if (sortField) {
+        query = query.order(sortField, { ascending: sortDirection === 'asc' });
+      } else {
+        query = query.order('created_at', { ascending: false }); // Default sort
+      }
 
-      const from = (currentPage - 1) * rowsPerPage;
-      const to = from + rowsPerPage - 1;
-      query = query.range(from, to);
+      // Apply pagination
+      const startIndex = (currentPage - 1) * rowsPerPage;
+      query = query.range(startIndex, startIndex + rowsPerPage - 1);
 
-      const { data, error: supabaseError, count } = await query;
+      const { data, error: fetchError, count } = await query;
 
-      if (supabaseError) throw supabaseError;
-
+      if (fetchError) throw fetchError;
+      
       setLeads(data || []);
       setTotalLeads(count || 0);
 
     } catch (err: any) {
       console.error('Error fetching leads:', err);
-      setError(err.message || 'Failed to fetch leads.');
+      setError(`Failed to fetch leads: ${err.message || 'Unknown error'}`);
+      setLeads([]);
+      setTotalLeads(0);
     } finally {
       setIsLoading(false);
     }
-  }, [filterMarketRegion, sortField, sortDirection, currentPage, rowsPerPage, tableSearchTerm]);
+  }, [filterMarketRegion, tableSearchTerm, sortField, sortDirection, currentPage, rowsPerPage]);
+
+  const fetchMarketRegions = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('crm_leads')
+        .select('market_region');
+      
+      if (error) throw error;
+
+      if (data) {
+        const uniqueRegions = Array.from(new Set(data.map(item => item.market_region).filter(Boolean))) as string[];
+        setMarketRegions(['All', ...uniqueRegions.sort()]);
+      }
+    } catch (err: any) {
+      console.error('Error fetching market regions:', err);
+      // setError('Failed to fetch market regions.'); // Optional: display error
+    }
+  }, []);
 
   useEffect(() => {
-    const loadInitialData = async () => {
-      // Assuming these can be fetched in parallel.
-      // If fetchNormalizedLeads depends on fetchMarketRegions, they should be awaited sequentially.
-      await Promise.all([
-        fetchMarketRegions(),
-        fetchLeads()
-      ]);
-    };
+    fetchLeads();
+    fetchMarketRegions();
+  }, [fetchLeads, fetchMarketRegions]);
 
-    loadInitialData().catch(error => {
-      // This catches errors if loadInitialData itself fails, 
-      // or if Promise.all rejects due to an unhandled error in one of the fetches.
-      // Individual fetches also have their own error handling, which is good.
-      console.error('Error during initial data loading:', error);
-      // Optionally set a general error state if appropriate
-      // setError('Failed to load initial page data.'); 
-    });
-  }, [fetchMarketRegions, fetchLeads]); // Initial fetch
-
-  // Effect to reset page to 1 when search term or region filter changes
+  // Handle Google Maps Autocomplete load
   useEffect(() => {
-    if (tableSearchTerm || (filterMarketRegion && filterMarketRegion !== 'All')) {
-      setCurrentPage(1);
+    if (isGoogleMapsLoaded && addressInputRef.current && !autocomplete) {
+      const autoCompInstance = new google.maps.places.Autocomplete(addressInputRef.current, {
+        types: ['address'],
+        componentRestrictions: { country: 'us' }, // Example: Restrict to US
+      });
+      autoCompInstance.addListener('place_changed', handlePlaceSelect);
+      setAutocomplete(autoCompInstance);
     }
-  }, [tableSearchTerm, filterMarketRegion]);
+  }, [isGoogleMapsLoaded, autocomplete]); // Removed handlePlaceSelect from deps to avoid re-runs
 
-  const handleOpenNewLeadModal = () => {
-    setSelectedLead(null);
-    setEditFormData({ ...initialNewLeadData }); // Use a fresh copy
-    setStreetViewPosition(null); // Clear street view position for new lead
-    if (autocompleteInputRef.current) {
-      autocompleteInputRef.current.value = ''; // Clear autocomplete input
-    }
-    setIsModalOpen(true);
-  };
+  // Debounce search term
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+        fetchLeads(); 
+    }, 500); // 500ms delay
 
-  // Handlers
-  const handleSort = (field: keyof CrmLead) => { 
+    return () => clearTimeout(debounceTimer);
+  }, [tableSearchTerm, fetchLeads]); // Re-fetch when debounced search term changes
+
+
+  const handleSort = (field: keyof CrmLead | '') => {
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
-      setSortField(field); 
+      setSortField(field);
       setSortDirection('asc');
     }
-    setCurrentPage(1); // Reset to first page on sort change
+    // fetchLeads will be called by useEffect due to sortField/sortDirection change
   };
 
-  const handleOpenModal = (lead: CrmLead) => { 
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    // fetchLeads will be called by useEffect due to currentPage change
+  };
+
+  const handleRowsPerPageChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setRowsPerPage(Number(event.target.value));
+    setCurrentPage(1); // Reset to first page
+    // fetchLeads will be called by useEffect due to rowsPerPage change
+  };
+
+  const handleOpenModal = (lead: CrmLead | null = null) => {
     setSelectedLead(lead);
-    setEditFormData(lead);
-    // Set initial street view position if address exists
-    if (lead.property_address) {
-      // For simplicity, we'll let StreetViewPanorama geocode the address string.
-      // If more precise control is needed, geocode here and set streetViewPosition {lat,lng}
-      setStreetViewPosition(null); // Or attempt geocoding: geocodeAddressToPosition(lead.property_address);
+    if (lead) {
+      setEditFormData({
+        ...lead,
+        // Ensure numeric fields that might be null/undefined are handled for form inputs
+        normalized_lead_id: lead.normalized_lead_id ?? 0,
+        assessed_total: lead.assessed_total ?? null,
+        // Dates are strings from DB, can be used directly or formatted if needed
+      });
+      // If address exists, try to set street view
+      if (lead.property_address && lead.property_city && lead.property_state) {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ address: `${lead.property_address}, ${lead.property_city}, ${lead.property_state}` }, (results, status) => {
+          if (status === 'OK' && results && results[0] && results[0].geometry && results[0].geometry.location) {
+            setStreetViewPosition({ lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng() });
+          } else {
+            setStreetViewPosition(null);
+            console.warn('Geocode was not successful for the following reason: ' + status);
+          }
+        });
+      } else {
+        setStreetViewPosition(null);
+      }
     } else {
+      setEditFormData(initialNewLeadData);
       setStreetViewPosition(null);
     }
-    if (autocompleteInputRef.current) {
-      autocompleteInputRef.current.value = ''; // Clear autocomplete input
-    }
     setIsModalOpen(true);
+  };
+
+  const handleOpenNewLeadModal = () => {
+    handleOpenModal(null); // Open modal with no pre-filled data (i.e., for a new lead)
   };
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedLead(null);
     setEditFormData(initialNewLeadData);
+    setStreetViewPosition(null);
+    if (autocomplete) {
+        // Clear any listeners or reset autocomplete if needed upon modal close
+        google.maps.event.clearInstanceListeners(autocomplete);
+        // Re-initialize if necessary, or ensure it's ready for next use
+        if (addressInputRef.current) {
+            const autoCompInstance = new google.maps.places.Autocomplete(addressInputRef.current, {
+                types: ['address'],
+                componentRestrictions: { country: 'us' }, 
+            });
+            autoCompInstance.addListener('place_changed', handlePlaceSelect);
+            setAutocomplete(autoCompInstance);
+        }
+    }
   };
 
-  const handleModalInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    const target = e.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-    
-    // Removed special handling for custom_fields as it's not in the Lead interface.
-    // If custom_fields are needed, they should be added to the Lead interface and handled.
-    
-    let processedValue: string | boolean | number | string[] | null = value;
-    
-    if (target.type === 'checkbox') {
-      processedValue = (target as HTMLInputElement).checked;
-    } else if (target.type === 'number') {
-      processedValue = value === '' ? null : parseFloat(value);
-    } else if (target instanceof HTMLSelectElement && target.multiple) { // For multi-select
-      processedValue = Array.from(target.selectedOptions).map(option => option.value);
-    }
-    // Add more type coercions if needed, e.g., for date, tags (string to array), custom_fields (string to object)
+  const handleModalInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    let processedValue: any = value;
 
+    if (type === 'checkbox') {
+      processedValue = (e.target as HTMLInputElement).checked;
+    } else if (type === 'number' || e.target.dataset.type === 'number') {
+      // Handle potential empty string for number inputs, convert to null or 0 as appropriate
+      processedValue = value === '' ? null : parseFloat(value);
+      if (isNaN(processedValue as number)) processedValue = null; // Or 0, depending on requirements
+    } else if (name === 'normalized_lead_id' || name === 'assessed_total' || name === 'year_built' || name === 'square_footage' || name === 'lot_size_sqft') {
+      // Explicitly handle numeric fields that might not be type='number'
+      processedValue = value === '' ? null : parseFloat(value);
+      if (isNaN(processedValue as number)) processedValue = null;
+    }
     setEditFormData(prev => ({ ...prev, [name]: processedValue }));
   };
 
@@ -418,7 +349,6 @@ const CrmLeads: React.FC = () => {
     }
   };
 
-
   const handleDeleteLead = async () => {
     if (!selectedLead || !selectedLead.id || !confirm('Are you sure you want to delete this lead? This action cannot be undone.')) {
       return;
@@ -439,34 +369,6 @@ const CrmLeads: React.FC = () => {
       alert(`Failed to delete lead: ${response.error || 'Unknown error'}`);
       // setError(`Failed to delete lead: ${response.error || 'Unknown error'}`);
     }
-  };
-
-
-  const handleDeleteLead = async () => {
-    if (!selectedLead || !confirm('Are you sure you want to delete this lead? This action cannot be undone.')) {
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const { error } = await supabase
-        .from('useful_leads') // Target useful_leads table
-        .delete()
-        .eq('id', selectedLead.id);
-
-      if (error) throw error;
-
-      // Update local state
-      setLeads(prevLeads => prevLeads.filter(l => l.id !== selectedLead.id));
-      setTotalLeads(prevTotal => prevTotal -1); // Decrement total leads
-
-      alert('Lead deleted successfully!');
-      handleCloseModal();
-    } catch (err: any) {
-      console.error('Error deleting lead:', err);
-      alert(`Failed to delete lead: ${err.message || 'Unknown error'}`);
-      setError(`Failed to delete lead: ${err.message || 'Unknown error'}`);
-    }
-    setIsLoading(false);
   };
 
   const handlePlaceSelect = () => {
@@ -502,13 +404,8 @@ const CrmLeads: React.FC = () => {
             lng: place.geometry.location.lng(),
           });
         } else {
-          // Fallback if no geometry, StreetViewPanorama can try to resolve address string
-          setStreetViewPosition(null); 
+          setStreetViewPosition(null);
         }
-         if (autocompleteInputRef.current) {
-          autocompleteInputRef.current.value = ''; // Clear after selection
-        }
-
       } else {
         console.error('Place selected but no address components found or place invalid:', place);
         // Potentially clear address fields or show error
@@ -569,60 +466,52 @@ const CrmLeads: React.FC = () => {
       <div className="mb-6 p-4 bg-base-200 rounded-lg">
         <div className="flex flex-col sm:flex-row gap-4 items-end">
           {/* Search */}
-          <div className="form-control flex-1">
-            <label className="label">
+          <div className="form-control flex-grow">
+            <label htmlFor="tableSearch" className="label">
               <span className="label-text">Search Leads</span>
             </label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by name, email, address, etc..."
-                className="input input-bordered w-full pl-10 pr-10"
+              <input 
+                id="tableSearch"
+                type="text" 
+                placeholder="Search by name, email, address, city, status..."
                 value={tableSearchTerm}
                 onChange={(e) => setTableSearchTerm(e.target.value)}
+                className="input input-bordered w-full pr-10" 
               />
-              {tableSearchTerm && (
-                <button
-                  onClick={() => setTableSearchTerm('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <XCircle className="h-4 w-4" />
-                </button>
-              )}
+              <Search size={20} className="absolute top-1/2 right-3 transform -translate-y-1/2 text-base-content opacity-50" />
             </div>
           </div>
-          
-          {/* Region Filter */}
-          <div className="form-control w-full sm:w-48">
-            <label className="label">
+
+          {/* Market Region Filter */}
+          <div className="form-control">
+            <label htmlFor="marketFilter" className="label">
               <span className="label-text">Market Region</span>
             </label>
-            <select
-              className="select select-bordered w-full"
+            <select 
+              id="marketFilter"
               value={filterMarketRegion}
               onChange={(e) => setFilterMarketRegion(e.target.value)}
+              className="select select-bordered"
             >
-              <option value="">All Regions</option>
               {marketRegions.map(region => (
                 <option key={region} value={region}>{region}</option>
               ))}
             </select>
           </div>
-          
-          {/* Rows per Page */}
-          <div className="form-control w-full sm:w-32">
-            <label className="label">
-              <span className="label-text">Rows</span>
+
+          {/* Rows Per Page */}
+          <div className="form-control">
+            <label htmlFor="rowsPerPage" className="label">
+              <span className="label-text">Rows per page</span>
             </label>
             <select 
-              className="select select-bordered w-full"
-              value={rowsPerPage}
-              onChange={(e) => {
-                setRowsPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
+              id="rowsPerPage"
+              value={rowsPerPage} 
+              onChange={handleRowsPerPageChange} 
+              className="select select-bordered"
             >
+              <option value={10}>10</option>
               <option value={25}>25</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
@@ -632,287 +521,232 @@ const CrmLeads: React.FC = () => {
       </div>
 
       {/* Leads Table */}
-      <div className="overflow-x-auto bg-base-100 rounded-lg shadow">
-        <table className="table table-zebra table-sm w-full">
-          <thead>
-            <tr className="text-base-content">
-              {columnConfigurations.map(col => (
-                <th 
-                  key={col.key as string} 
-                  onClick={() => col.sortable !== false && handleSort(col.key as keyof CrmLead)}
-                  className={col.sortable !== false ? 'cursor-pointer hover:bg-base-300' : ''}
-                >
-                  {col.label} {col.sortable !== false && <SortIndicator field={col.key as keyof CrmLead} />}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && !leads.length ? (
-              <tr><td colSpan={columnConfigurations.length} className="text-center py-10">Loading leads...</td></tr>
-            ) : !isLoading && !leads.length ? (
-              <tr><td colSpan={columnConfigurations.length} className="text-center py-10">No leads found.</td></tr>
-            ) : (
-              leads.map((lead: CrmLead) => (
-                <tr key={lead.id} className="hover:bg-base-200 cursor-pointer transition-colors" onClick={() => handleOpenModal(lead)}>
-                  {columnConfigurations.map(col => {
-                    const value = lead[col.key as keyof CrmLead];
-                    let cellContent: React.ReactNode;
-
-                    switch (col.key) {
-                      case 'contact_name':
-                        cellContent = (
-                          <div className="flex items-center space-x-3">
-                            <div>
-                              <div className="flex items-center">
-                                <span className="font-medium">{lead.contact_name || 'No Name'}</span>
-                                {lead.contact_type && (
-                                  <span className={`badge badge-xs ml-2 ${
-                                    lead.contact_type.toLowerCase().startsWith('owner') 
-                                      ? 'badge-info' 
-                                      : lead.contact_type.toLowerCase() === 'agent' 
-                                        ? 'badge-secondary' 
-                                        : 'badge-outline' // Default or for 'Prospect' etc.
-                                    }`} title={`Contact Type: ${lead.contact_type}`}>
-                                    {lead.contact_type}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-sm opacity-70 flex items-center mt-1">
-                                <Mail className="w-3 h-3 mr-1 flex-shrink-0" />
-                                <span className="truncate max-w-xs" title={getCleanEmailDisplay(lead.contact_email)}>
-                                  {getCleanEmailDisplay(lead.contact_email)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                        break;
-                      case 'property_address':
-                        cellContent = (
-                          <div className="flex items-start">
-                            <MapPin size={16} className="mr-1.5 mt-0.5 flex-shrink-0 text-red-500" />
-                            <div>
-                              {displayValue(lead.property_address)}
-                              {(lead.property_city || lead.property_state || lead.property_postal_code) && <br />}
-                              {lead.property_city || lead.property_state || lead.property_postal_code
-                                ? `${displayValue(lead.property_city)}, ${displayValue(lead.property_state)} ${displayValue(lead.property_postal_code)}`
-                                : ''}
-                            </div>
-                          </div>
-                        );
-                        break;
-                      case 'status':
-                        cellContent = (
-                          <span className={getStatusBadge(lead.status)}>
-                            {lead.status || 'N/A'}
-                          </span>
-                        );
-                        break;
-                      case 'converted':
-                      case 'email_sent':
-                        cellContent = <input type="checkbox" checked={!!value} readOnly className="checkbox checkbox-xs checkbox-disabled" />;
-                        break;
-                      case 'assessed_total':
-                        cellContent = value ? `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-';
-                        break;
-                      default:
-                        cellContent = displayValue(value);
-                    }
-                    return <td key={col.key as string} className="py-3 px-4">{cellContent}</td>;
-                  })}
-                </tr>
-              ))
-                })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination Controls */}
-      <div className="mt-6 flex flex-wrap justify-between items-center gap-4 p-4 bg-base-100 rounded-lg shadow">
-        <div>
-          <span className="text-sm text-base-content opacity-70">
-            Page {currentPage} of {totalPages} (Total: {totalLeads} leads)
-          </span>
+      {isLoading && !leads.length ? (
+        <div className="flex justify-center items-center h-64">
+          <span className="loading loading-lg loading-spinner text-primary"></span>
         </div>
-        <div className="flex items-center gap-2">
-          <select 
-            className="select select-bordered select-sm"
-            value={rowsPerPage}
-            onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-          >
-            <option value={25}>25/page</option>
-            <option value={50}>50/page</option>
-            <option value={100}>100/page</option>
-          </select>
-          <div className="join">
-            <button 
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              className="join-item btn btn-sm"
-              disabled={currentPage === 1 || isLoading}
-            >
-              « Prev
-            </button>
-            <button 
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              className="join-item btn btn-sm"
-              disabled={currentPage >= totalPages || isLoading}
-            >
-              Next »
-            </button>
-          </div>
+      ) : !isLoading && !leads.length && !error ? (
+        <div className="text-center py-10">
+          <XCircle size={48} className="mx-auto text-base-content opacity-50 mb-4" />
+          <p className="text-xl text-base-content opacity-70">No leads found.</p>
+          <p className="text-base-content opacity-50">Try adjusting your filters or add a new lead.</p>
         </div>
-      </div>
-
-      {/* Modal for Editing Lead */}
-      {isModalOpen && ( // selectedLead can be null for new lead
-        <dialog open className="modal modal-open modal-bottom sm:modal-middle">
-          <div className="modal-box w-11/12 max-w-3xl">
-            <button onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"><XCircle size={20}/></button>
-            <h3 className="font-bold text-xl mb-4">
-              {selectedLead ? `Edit CRM Lead: ${editFormData.contact_name || selectedLead.contact_name || 'N/A'}` : 'Add New CRM Lead'}
-            </h3>
-            
-            <form onSubmit={(e) => { e.preventDefault(); void handleSaveLead(); }} className="space-y-4 max-h-[70vh] sm:max-h-[60vh] overflow-y-auto pr-2">
-              {isLoaded && (
-                <>
-                  <div style={{ width: '100%', height: '250px', marginBottom: '1rem', background: '#e0e0e0' }}>
-                    {(streetViewPosition || editFormData.property_address) && (
-                       <StreetViewPanorama
-                        position={streetViewPosition || editFormData.property_address!}
-                        visible={true}
-                        options={{
-                          addressControl: false,
-                          enableCloseButton: false,
-                          fullscreenControl: false,
-                          panControl: true,
-                          zoomControl: true,
-                        }}
-                        containerStyle={{ width: '100%', height: '100%' }}
-                      />
-                    )}
-                    {!(streetViewPosition || editFormData.property_address) && (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                            Street View appears here (Enter an address below)
-                        </div>
-                    )}
-                  </div>
-                  <Autocomplete
-                    onLoad={(autoC) => setAutocomplete(autoC)}
-                    onPlaceChanged={handlePlaceSelect}
-                    options={{
-                      types: ['address'],
-                      // componentRestrictions: { country: 'us' }, // Optional
-                    }}
+      ) : leads.length > 0 ? (
+        <div className="overflow-x-auto bg-base-100 shadow-lg rounded-lg">
+          <table className="table table-zebra w-full">
+            <thead>
+              <tr>
+                {columns.map(col => (
+                  <th 
+                    key={col.key} 
+                    onClick={() => col.sortable && handleSort(col.key as keyof CrmLead)}
+                    className={col.sortable ? 'cursor-pointer hover:bg-base-300' : ''}
                   >
-                    <input
-                      ref={autocompleteInputRef}
-                      type="text"
-                      placeholder="Search Full Address (e.g., 123 Main St, Anytown, USA)"
-                      className="input input-bordered w-full mb-2"
-                    />
-                  </Autocomplete>
-                </>
-              )}
-              {loadError && <div className="text-error">Error loading Google Maps: {loadError.message}</div>}
+                    {col.label}
+                    {col.sortable && <SortIndicator field={col.key as keyof CrmLead} />}
+                  </th>
+                ))}
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map(lead => (
+                <tr key={lead.id} className="hover" onClick={() => handleOpenModal(lead)}>
+                  {columns.map(col => (
+                    <td key={`${lead.id}-${col.key}`}>
+                      {col.key === 'contact_email' 
+                        ? getCleanEmailDisplay(lead[col.key as keyof CrmLead] as string | undefined)
+                        : col.key === 'status'
+                        ? <span className={`badge ${getStatusBadgeClass(lead.status)}`}>{displayValue(lead.status)}</span>
+                        : col.key === 'created_at' || col.key === 'updated_at'
+                        ? new Date(lead[col.key as keyof CrmLead] as string).toLocaleDateString()
+                        : displayValue(lead[col.key as keyof CrmLead])}
+                    </td>
+                  ))}
+                  <td>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleOpenModal(lead); }}
+                      className="btn btn-xs btn-ghost text-primary hover:bg-primary hover:text-primary-content p-1"
+                      aria-label={`Edit lead ${lead.contact_name}`}
+                    >
+                      <Edit3 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={columns.length + 1}>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm text-base-content opacity-70">
+                      Showing {Math.min((currentPage - 1) * rowsPerPage + 1, totalLeads)} - {Math.min(currentPage * rowsPerPage, totalLeads)} of {totalLeads} leads
+                    </span>
+                    <div className="join">
+                      <button 
+                        onClick={() => handlePageChange(currentPage - 1)} 
+                        disabled={currentPage === 1 || isLoading}
+                        className="join-item btn btn-sm"
+                      >
+                        «
+                      </button>
+                      <button className="join-item btn btn-sm">Page {currentPage} of {totalPages}</button>
+                      <button 
+                        onClick={() => handlePageChange(currentPage + 1)} 
+                        disabled={currentPage === totalPages || isLoading}
+                        className="join-item btn btn-sm"
+                      >
+                        »
+                      </button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      ) : null}
 
-              {/* Address fields will be populated by Autocomplete */}
-              <div>
-                <label htmlFor="modal-normalized_lead_id" className="label"><span className="label-text">Normalized Lead ID (System)</span></label>
-                <input 
-                  type="number" 
-                  id="modal-normalized_lead_id" 
-                  name="normalized_lead_id" 
-                  value={editFormData.normalized_lead_id ?? ''} 
-                  onChange={handleModalInputChange} 
-                  className="input input-bordered w-full input-disabled" // Using input-disabled for read-only appearance
-                  readOnly // Make it strictly read-only
-                />
-              </div>
-              {selectedLead && selectedLead.id && ( // Display CRM ID only for existing leads
-                <div>
-                  <label htmlFor="modal-id" className="label"><span className="label-text">CRM ID</span></label>
-                  <input type="text" id="modal-id" name="id" value={selectedLead.id} className="input input-bordered w-full input-disabled" readOnly />
+      {/* Modal for Add/Edit Lead */}
+      {isModalOpen && (
+        <dialog id="lead_modal" className={`modal modal-open ${isModalOpen ? 'modal-open' : ''}`}>
+          <div className="modal-box w-11/12 max-w-4xl bg-base-100 shadow-xl rounded-lg">
+            <form method="dialog" onSubmit={(e) => { e.preventDefault(); void handleSaveLead(); }}>
+              <button type="button" onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+              <h3 className="font-bold text-2xl mb-6 text-base-content">{selectedLead ? 'Edit Lead' : 'Add New Lead'}</h3>
+              
+              {/* Form Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                {/* Contact Info */}
+                <div className="form-control">
+                  <label htmlFor="contact_name" className="label"><span className="label-text">Contact Name</span></label>
+                  <input type="text" id="contact_name" name="contact_name" value={editFormData.contact_name || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
                 </div>
-              )}
-              <div>
-                <label htmlFor="modal-contact_name" className="label"><span className="label-text">Contact Name</span></label>
-                <input type="text" id="modal-contact_name" name="contact_name" value={editFormData.contact_name || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                <div className="form-control">
+                  <label htmlFor="contact_email" className="label"><span className="label-text">Contact Email</span></label>
+                  <input type="email" id="contact_email" name="contact_email" value={editFormData.contact_email || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                  <label htmlFor="contact_type" className="label"><span className="label-text">Contact Type <span className="text-error">*</span></span></label>
+                  <select id="contact_type" name="contact_type" value={editFormData.contact_type || ''} onChange={handleModalInputChange} className="select select-bordered w-full" required>
+                    <option value="" disabled>Select type</option>
+                    <option value="Prospect">Prospect</option>
+                    <option value="Lead">Lead</option>
+                    <option value="Client">Client</option>
+                    <option value="Vendor">Vendor</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="form-control">
+                  <label htmlFor="market_region" className="label"><span className="label-text">Market Region</span></label>
+                  <input type="text" id="market_region" name="market_region" value={editFormData.market_region || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+
+                {/* Property Info */}
+                <div className="form-control md:col-span-2">
+                  <label htmlFor="property_address" className="label"><span className="label-text">Property Address</span></label>
+                  <input 
+                    ref={addressInputRef} 
+                    type="text" 
+                    id="property_address" 
+                    name="property_address" 
+                    value={editFormData.property_address || ''} 
+                    onChange={handleModalInputChange} 
+                    className="input input-bordered w-full" 
+                    placeholder="Start typing address..."
+                  />
+                  {googleMapsLoadError && <p className="text-error text-xs mt-1">Error loading Google Maps: {googleMapsLoadError.message}</p>}
+                </div>
+
+                {isGoogleMapsLoaded && streetViewPosition && (
+                  <div className="md:col-span-2 h-64 rounded-lg overflow-hidden border border-base-300">
+                    <StreetViewPanorama 
+                      position={streetViewPosition} 
+                      visible={true} 
+                      options={{ addressControl: false, linksControl: false, panControl: true, zoomControl: true, enableCloseButton: false, fullscreenControl: false }}
+                    />
+                  </div>
+                )}
+
+                <div className="form-control">
+                  <label htmlFor="property_city" className="label"><span className="label-text">City</span></label>
+                  <input type="text" id="property_city" name="property_city" value={editFormData.property_city || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                  <label htmlFor="property_state" className="label"><span className="label-text">State</span></label>
+                  <input type="text" id="property_state" name="property_state" value={editFormData.property_state || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                  <label htmlFor="property_postal_code" className="label"><span className="label-text">Postal Code</span></label>
+                  <input type="text" id="property_postal_code" name="property_postal_code" value={editFormData.property_postal_code || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                  <label htmlFor="property_type" className="label"><span className="label-text">Property Type</span></label>
+                  <input type="text" id="property_type" name="property_type" value={editFormData.property_type || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+
+                {/* Property Details */}
+                <div className="form-control">
+                  <label htmlFor="beds" className="label"><span className="label-text">Beds</span></label>
+                  <input type="text" id="beds" name="beds" value={editFormData.beds || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                  <label htmlFor="baths" className="label"><span className="label-text">Baths</span></label>
+                  <input type="text" id="baths" name="baths" value={editFormData.baths || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                  <label htmlFor="square_footage" className="label"><span className="label-text">Square Footage</span></label>
+                  <input type="text" data-type="number" id="square_footage" name="square_footage" value={editFormData.square_footage || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                  <label htmlFor="lot_size_sqft" className="label"><span className="label-text">Lot Size (sqft)</span></label>
+                  <input type="text" data-type="number" id="lot_size_sqft" name="lot_size_sqft" value={editFormData.lot_size_sqft || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                  <label htmlFor="year_built" className="label"><span className="label-text">Year Built</span></label>
+                  <input type="text" data-type="number" id="year_built" name="year_built" value={editFormData.year_built || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                  <label htmlFor="assessed_total" className="label"><span className="label-text">Assessed Total ($)</span></label>
+                  <input type="text" data-type="number" id="assessed_total" name="assessed_total" value={editFormData.assessed_total || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                
+                {/* MLS Info & Status */}
+                <div className="form-control">
+                  <label htmlFor="mls_curr_status" className="label"><span className="label-text">MLS Status</span></label>
+                  <input type="text" id="mls_curr_status" name="mls_curr_status" value={editFormData.mls_curr_status || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                  <label htmlFor="mls_curr_days_on_market" className="label"><span className="label-text">MLS Days on Market</span></label>
+                  <input type="text" id="mls_curr_days_on_market" name="mls_curr_days_on_market" value={editFormData.mls_curr_days_on_market || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                  <label htmlFor="status" className="label"><span className="label-text">Lead Status</span></label>
+                  <input type="text" id="status" name="status" value={editFormData.status || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                </div>
+                <div className="form-control">
+                    <label htmlFor="normalized_lead_id" className="label"><span className="label-text">Normalized Lead ID</span></label>
+                    <input 
+                        type="text" // Use text to allow empty string, parse to number on change
+                        data-type="number"
+                        id="normalized_lead_id" 
+                        name="normalized_lead_id" 
+                        value={editFormData.normalized_lead_id === null || editFormData.normalized_lead_id === undefined ? '' : String(editFormData.normalized_lead_id)} 
+                        onChange={handleModalInputChange} 
+                        className="input input-bordered w-full" 
+                        placeholder="Enter Normalized Lead ID (number)"
+                    />
+                </div>
+
+                {/* Notes */}
+                <div className="form-control md:col-span-2">
+                  <label htmlFor="notes" className="label"><span className="label-text">Notes</span></label>
+                  <textarea id="notes" name="notes" value={editFormData.notes || ''} onChange={handleModalInputChange} className="textarea textarea-bordered w-full h-24"></textarea>
+                </div>
               </div>
-              <div>
-                <label htmlFor="modal-contact_email" className="label"><span className="label-text">Contact Email</span></label>
-                <input type="email" id="modal-contact_email" name="contact_email" value={editFormData.contact_email || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-contact_type" className="label"><span className="label-text">Contact Type*</span></label>
-                <input type="text" id="modal-contact_type" name="contact_type" value={editFormData.contact_type || ''} onChange={handleModalInputChange} className="input input-bordered w-full" required />
-              </div>
-              <div>
-                <label htmlFor="modal-market_region" className="label"><span className="label-text">Market Region</span></label>
-                <input type="text" id="modal-market_region" name="market_region" value={editFormData.market_region || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-property_address" className="label"><span className="label-text">Property Address</span></label>
-                <input type="text" id="modal-property_address" name="property_address" value={editFormData.property_address || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-property_city" className="label"><span className="label-text">City</span></label>
-                <input type="text" id="modal-property_city" name="property_city" value={editFormData.property_city || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-property_state" className="label"><span className="label-text">State</span></label>
-                <input type="text" id="modal-property_state" name="property_state" value={editFormData.property_state || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-property_postal_code" className="label"><span className="label-text">Postal Code</span></label>
-                <input type="text" id="modal-property_postal_code" name="property_postal_code" value={editFormData.property_postal_code || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-status" className="label"><span className="label-text">Status</span></label>
-                <input type="text" id="modal-status" name="status" value={editFormData.status || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-notes" className="label"><span className="label-text">Notes</span></label>
-                <textarea id="modal-notes" name="notes" value={editFormData.notes || ''} onChange={handleModalInputChange} className="textarea textarea-bordered w-full" rows={3}></textarea>
-              </div>
-              <div>
-                <label htmlFor="modal-property_type" className="label"><span className="label-text">Property Type</span></label>
-                <input type="text" id="modal-property_type" name="property_type" value={editFormData.property_type || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-beds" className="label"><span className="label-text">Beds</span></label>
-                <input type="text" id="modal-beds" name="beds" value={editFormData.beds || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-baths" className="label"><span className="label-text">Baths</span></label>
-                <input type="text" id="modal-baths" name="baths" value={editFormData.baths || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-year_built" className="label"><span className="label-text">Year Built</span></label>
-                <input type="text" id="modal-year_built" name="year_built" value={editFormData.year_built || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-square_footage" className="label"><span className="label-text">Square Footage</span></label>
-                <input type="text" id="modal-square_footage" name="square_footage" value={editFormData.square_footage || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-lot_size_sqft" className="label"><span className="label-text">Lot Size Sqft</span></label>
-                <input type="text" id="modal-lot_size_sqft" name="lot_size_sqft" value={editFormData.lot_size_sqft || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-assessed_total" className="label"><span className="label-text">Assessed Total</span></label>
-                <input type="number" id="modal-assessed_total" name="assessed_total" value={editFormData.assessed_total === null ? '' : editFormData.assessed_total} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-mls_curr_status" className="label"><span className="label-text">MLS Current Status</span></label>
-                <input type="text" id="modal-mls_curr_status" name="mls_curr_status" value={editFormData.mls_curr_status || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div>
-                <label htmlFor="modal-mls_curr_days_on_market" className="label"><span className="label-text">MLS Current Days on Market</span></label>
-                <input type="text" id="modal-mls_curr_days_on_market" name="mls_curr_days_on_market" value={editFormData.mls_curr_days_on_market || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              <div className="form-control">
+
+              {/* Boolean Flags */}
+              <div className="form-control mt-4">
                 <label className="label cursor-pointer">
                   <span className="label-text">Converted</span> 
                   <input type="checkbox" name="converted" checked={!!editFormData.converted} onChange={handleModalInputChange} className="checkbox checkbox-primary" />
