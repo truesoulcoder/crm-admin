@@ -8,53 +8,80 @@ const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'tem
 const BLANK_LETTERHEAD_PDF_FILE = path.join(templateDir, 'blank-letterhead.pdf');
 const ALEX_BRUSH_FONT_FILE = path.join(templateDir, 'AlexBrush-Regular.ttf');
 
-// Helper function for drawing wrapped text (simplified)
-async function drawWrappedText(page: any, text: string, options: any) {
-  const { font, fontSize, x, y, maxWidth, lineHeight, color } = options;
-  
-  console.log(`DEBUG_WRAP: drawWrappedText called. Initial Y: ${y}, MaxWidth: ${maxWidth}, FontSize: ${fontSize}, LineHeight: ${lineHeight}, Text snippet: "${text.substring(0, 50)}..."`);
+// Helper function for drawing wrapped text (CRITICAL DEBUG version)
+// Assuming PDFPage, PDFFont, RGB types are compatible with 'any' or specific pdf-lib types
+function drawWrappedText( 
+    page: any, // PDFPage,
+    text: string,
+    x: number,
+    y: number,
+    font: any, // PDFFont,
+    fontSize: number,
+    maxWidth: number,
+    lineHeight: number,
+    color: any // RGB e.g. { red: 0, green: 0, blue: 0 }
+): number { 
+    console.log(`DEBUG_WRAP: drawWrappedText called. Initial Y: ${y}, MaxWidth: ${maxWidth}, FontSize: ${fontSize}, LineHeight: ${lineHeight}, Text snippet: "${text.substring(0, 50)}..."`, 'Color:', color);
 
-  const words = text.split(' ');
-  let currentLine = '';
-  let currentY = y;
+    const words = text.split(' ');
+    let currentLine = '';
+    let currentY = y;
 
-  for (const word of words) {
-    // Check for words longer than maxWidth (basic detection, not full handling)
-    const wordWidth = font.widthOfTextAtSize(word, fontSize);
-    if (wordWidth > maxWidth) {
-      // console.log(`DEBUG_WRAP: Word longer than maxWidth: "${word}" (Width: ${wordWidth})`);
-      // If currentLine is not empty, draw it first to make space for the long word
-      if (currentLine !== '') {
-        console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line: "${currentLine}" (before long word)`);
-        page.drawText(currentLine, { x, y: currentY, font, size: fontSize, color });
-        currentY -= lineHeight;
-        currentLine = '';
-      }
-      // Draw the long word on its own line (it will overflow if truly too long)
-      console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line (long word): "${word}"`);
-      page.drawText(word, { x, y: currentY, font, size: fontSize, color });
-      currentY -= lineHeight;
-      continue; // Move to next word
+    for (const word of words) {
+        let testLine = currentLine === '' ? word : currentLine + ' ' + word;
+        const testLineWidth = font.widthOfTextAtSize(testLine, fontSize);
+
+        if (testLineWidth <= maxWidth) {
+            currentLine = testLine;
+        } else {
+            // Draw the current line (before adding the word that makes it too long)
+            if (currentLine !== '') { // Avoid drawing empty lines if a single word is too long initially
+                console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line: "${currentLine}"`);
+                page.drawText(currentLine, {
+                    x: x,
+                    y: currentY,
+                    font: font,
+                    size: fontSize,
+                    color: color,
+                });
+                currentY -= lineHeight; // Move Y for the next line
+            }
+            currentLine = word; // Start the new line with the current word
+
+            // Handle case where the word itself is longer than maxWidth
+            // The new algorithm implicitly handles this by placing the long word on a new line.
+            // If that single word is still too long, it will be drawn as is (and overflow).
+            // This differs from the previous explicit "long word" handling.
+            const currentWordWidth = font.widthOfTextAtSize(currentLine, fontSize);
+            if (currentWordWidth > maxWidth) {
+                console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line (single word > maxWidth): "${currentLine}"`);
+                page.drawText(currentLine, { // Draw the long word on its own line
+                    x: x,
+                    y: currentY,
+                    font: font,
+                    size: fontSize,
+                    color: color,
+                });
+                currentY -= lineHeight;
+                currentLine = ''; // Reset currentLine as the long word has been drawn
+            }
+        }
     }
 
-    const testLine = currentLine + (currentLine === '' ? '' : ' ') + word;
-    const { width: textWidth } = font.widthOfTextAtSize(testLine, fontSize);
-
-    if (textWidth > maxWidth && currentLine !== '') {
-      console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line: "${currentLine}"`);
-      page.drawText(currentLine, { x, y: currentY, font, size: fontSize, color });
-      currentLine = word;
-      currentY -= lineHeight;
-    } else {
-      currentLine = testLine;
+    // Draw the last remaining line
+    if (currentLine !== '') {
+        console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line (final): "${currentLine}"`);
+        page.drawText(currentLine, {
+            x: x,
+            y: currentY,
+            font: font,
+            size: fontSize,
+            color: color,
+        });
+        currentY -= lineHeight; // Decrement Y for consistency, returning position for *next* element.
     }
-  }
-  if (currentLine !== '') {
-    console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line (final): "${currentLine}"`);
-    page.drawText(currentLine, { x, y: currentY, font, size: fontSize, color });
-    currentY -= lineHeight; // Adjust Y for the next potential block of text
-  }
-  return currentY; // Return the Y position after the last line drawn
+    
+    return currentY; // Return the Y position after the last line drawn (plus one line height)
 }
 
 
@@ -166,7 +193,7 @@ export const generateLoiPdf = async (
 
     // --- Body Paragraph 1 (Introductory) ---
     const introParagraph = `We are pleased to submit this Letter of Intent ("LOI") to purchase the property located at ${personalizationData.property_address || "N/A Property Address"} (the "Property") under the terms and conditions set forth herein. This LOI is an expression of our serious interest in acquiring the Property.`;
-    currentY = await drawWrappedText(page, introParagraph, {font: timesRomanFont, fontSize: baseFontSize, x: textX, y: currentY, maxWidth: textMaxWidth, lineHeight: bodyLineHeight, color: bodyColor });
+    currentY = drawWrappedText(page, introParagraph, textX, currentY, timesRomanFont, baseFontSize, textMaxWidth, bodyLineHeight, bodyColor ); // Updated call
     currentY -= bodyLineHeight; // Space after paragraph
 
     // --- Offer Summary (Simplified Key-Value) ---
@@ -194,12 +221,12 @@ export const generateLoiPdf = async (
     // --- 72-Hour Validity Paragraph (Placeholder) ---
     // Replace with actual data from personalizationData if available, e.g., personalizationData.validity_paragraph
     const validityText = personalizationData.validity_paragraph || "This offer is valid for a period of seventy-two (72) hours from the date and time of submission. Should this offer not be accepted within this timeframe, it shall be deemed automatically withdrawn.";
-    currentY = await drawWrappedText(page, validityText, {font: timesRomanFont, fontSize: baseFontSize, x: textX, y: currentY, maxWidth: textMaxWidth, lineHeight: bodyLineHeight, color: bodyColor });
+    currentY = drawWrappedText(page, validityText, textX, currentY, timesRomanFont, baseFontSize, textMaxWidth, bodyLineHeight, bodyColor ); // Updated call
     currentY -= bodyLineHeight; // Space after paragraph
 
     // --- Closing Paragraph (Simplified) ---
     const closingParagraph = "We look forward to the possibility of working with you on this transaction and are excited about the prospect of acquiring this Property. Please indicate your acceptance of these terms by signing below.";
-    currentY = await drawWrappedText(page, closingParagraph, {font: timesRomanFont, fontSize: baseFontSize, x: textX, y: currentY, maxWidth: textMaxWidth, lineHeight: bodyLineHeight, color: bodyColor });
+    currentY = drawWrappedText(page, closingParagraph, textX, currentY, timesRomanFont, baseFontSize, textMaxWidth, bodyLineHeight, bodyColor ); // Updated call
     currentY -= bodyLineHeight * 2; // Space before "Warm regards,"
 
     // --- "Warm regards," ---
@@ -256,7 +283,7 @@ export const generateLoiPdf = async (
         currentY = pageMargin + (disclaimerLineHeight * 4); // Place it at the bottom with some margin
     }
     
-    currentY = await drawWrappedText(page, disclaimer, {font: timesRomanItalicFont, fontSize: disclaimerFontSize, x: textX, y: currentY, maxWidth: textMaxWidth, lineHeight: disclaimerLineHeight, color: disclaimerColor });
+    currentY = drawWrappedText(page, disclaimer, textX, currentY, timesRomanItalicFont, disclaimerFontSize, textMaxWidth, disclaimerLineHeight, disclaimerColor ); // Updated call
 
     // ... all page.drawText() and other drawing calls on 'page' from contentPdfDoc are complete ...
 
