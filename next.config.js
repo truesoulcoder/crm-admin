@@ -19,34 +19,10 @@ const nextConfig = {
   webpack: (config, { isServer, dev }) => {
     // Only add these configurations for server-side bundles
     if (isServer) {
-      // Exclude puppeteer and chromium from bundling in production
-      // config.externals = [...(config.externals || []), { // Original line
-      //   'puppeteer-core': 'commonjs puppeteer-core', // Removed
-      //   '@sparticuz/chromium': 'commonjs @sparticuz/chromium' // Removed
-      // }]; // Original line
-      
-      // If config.externals might be undefined or empty initially, 
-      // and these were the only entries, ensure it remains an empty array or is handled appropriately.
-      // For now, assuming config.externals might have other entries or can be empty.
-      // If it was specific to these, the following is safer:
       const existingExternals = Array.isArray(config.externals) ? config.externals : [];
       config.externals = existingExternals.filter(
         (ext) => typeof ext !== 'object' || (!ext.hasOwnProperty('puppeteer-core') && !ext.hasOwnProperty('@sparticuz/chromium'))
       );
-      // If the externals were added as an object like { 'puppeteer-core': ..., '@sparticuz/chromium': ... },
-      // and that object was pushed to an array, the above filter might need adjustment
-      // or the specific object needs to be removed.
-      // Given the original code `...config.externals || [], { ... }` it suggests they were added as a single new object.
-      // A more direct removal if the original structure was `config.externals = [{...}, 'other-ext']`
-      // might be to filter out the object containing these specific keys.
-      // However, the provided example `config.externals = [...(config.externals || []), { NEW_ENTRIES }]`
-      // means the new entries were added as a single object in the array.
-      // So, we need to filter out that specific object.
-      // This is complex without knowing the exact structure of config.externals BEFORE this modification.
-      // The safest approach based on the provided code is to assume it was an array of objects or strings.
-      // The provided example `config.externals = [...(config.externals || []), { /* these entries */ }]` means
-      // an object `{ 'puppeteer-core': '...', '@sparticuz/chromium': '...' }` was added to the array.
-      // We need to filter out this object.
       if (Array.isArray(config.externals)) {
         config.externals = config.externals.filter(external => {
           if (typeof external === 'object' && external !== null) {
