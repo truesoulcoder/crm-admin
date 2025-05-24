@@ -8,5 +8,3 @@ yarn.lock
 .windsurf.windsurf\rules
 .vercel
 .vscode
-ELI5-ENGINE\.env
-ELI5-ENGINE\service_account_key.json
