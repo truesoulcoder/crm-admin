@@ -1,19 +1,19 @@
 'use client'
 
-// Removed UploadCloud, kept PlusCircle & Eye for now
-import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api'; // Removed useJsApiLoader
-import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle, XCircle, Save, Eye, Mail, Phone, MapPin } from 'lucide-react';
+// Removed UploadCloud, Eye, Mail, Phone, MapPin from lucide-react imports
+import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle, XCircle, Save } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
+import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api'; 
+import { useGoogleMapsApi } from '../maps/GoogleMapsLoader'; 
 
 // Using shared Supabase client
-
+// import { Badge } from 'react-daisyui'; // Removed Badge from react-daisyui
+import { supabase } from '@/lib/supabase/client';
 import {
   createCrmLeadAction,
   updateCrmLeadAction,
   deleteCrmLeadAction
-} from '@/app/crm/actions';
-import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader'; // Import the context hook
-import { supabase } from '@/lib/supabase/client';
+} from '../../app/crm/actions'; // Added server action imports
 
 // Define types (adjust based on your actual schema)
 // NormalizedLead interface removed, CrmLead will be inserted below
@@ -110,7 +110,7 @@ interface ColumnConfig {
 // }
 
 const initialNewLeadData: Partial<CrmLead> = {
-  normalized_lead_id: 0,
+  normalized_lead_id: null, // Changed from 0 to null
   contact_name: '',
   contact_email: '',
   contact_type: 'Prospect',
@@ -154,12 +154,11 @@ const CrmLeads: React.FC = () => { // Renamed LeadsView to CrmLeads
   const [selectedLead, setSelectedLead] = useState<CrmLead | null>(null); 
   const [editFormData, setEditFormData] = useState<Partial<CrmLead>>(initialNewLeadData); 
 
-  // Google Maps - Consume from context
+  // Google Maps State and Refs
   const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useGoogleMapsApi();
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
   const [streetViewPosition, setStreetViewPosition] = useState<{ lat: number; lng: number } | null>(null);
-  // Add a ref for the geocoder instance
   const geocoderRef = useRef<google.maps.Geocoder | null>(null);
 
   // Renamed columnConfigurations to columns and updated content
@@ -333,45 +332,28 @@ const CrmLeads: React.FC = () => { // Renamed LeadsView to CrmLeads
     }
   }, [tableSearchTerm, filterMarketRegion]);
 
-  // Handle Google Maps Autocomplete load & Geocoder initialization
+  // Google Maps Autocomplete and Geocoder Initialization
   useEffect(() => {
     if (isGoogleMapsLoaded && window.google?.maps?.places && window.google?.maps?.Geocoder) {
       if (addressInputRef.current && !autocomplete) {
         const autoCompInstance = new google.maps.places.Autocomplete(addressInputRef.current, {
           types: ['address'],
-          componentRestrictions: { country: 'us' }, // Example: Restrict to US
+          componentRestrictions: { country: 'us' },
         });
-        autoCompInstance.addListener('place_changed', handlePlaceSelect); // handlePlaceSelect needs to be stable or wrapped in useCallback
+        autoCompInstance.addListener('place_changed', handlePlaceSelect);
         setAutocomplete(autoCompInstance);
       }
       if (!geocoderRef.current) {
         geocoderRef.current = new window.google.maps.Geocoder();
       }
     }
-    // Cleanup Autocomplete instance and listeners when component unmounts or Maps API is no longer loaded
-    return () => {
-      if (autocomplete) {
-        // google.maps.event.clearInstanceListeners(autocomplete); // Deprecated way
-        // Correct way: Autocomplete instance itself doesn't have a direct "clearListeners" or "unbindAll".
-        // Listeners added with addListener should ideally be stored and removed individually if needed,
-        // or rely on the component unmounting to clean up.
-        // For this case, simply nullifying might be enough if a new one is created on re-load.
-      }
-      // geocoderRef doesn't need explicit cleanup unless it had listeners.
-    };
-  }, [isGoogleMapsLoaded, autocomplete]); // handlePlaceSelect removed from deps, ensure it's stable
+    // Note: Cleanup for autocomplete listeners might be added here if necessary,
+    // e.g. if the modal could be destroyed and recreated frequently without full unmounts.
+    // For now, relying on handleCloseModal and component unmount for cleanup.
+  }, [isGoogleMapsLoaded, autocomplete, handlePlaceSelect]); // Added handlePlaceSelect to dependency array
 
-  // Debounce search term
-  useEffect(() => {
-    const debounceTimer = setTimeout(() => {
-        fetchLeads(); 
-    }, 500); // 500ms delay
-
-    return () => clearTimeout(debounceTimer);
-  }, [tableSearchTerm, fetchLeads]); // Re-fetch when debounced search term changes
-
-
-  const handleSort = (field: keyof CrmLead | '') => {
+  // Handlers
+  const handleSort = (field: keyof CrmLead) => { 
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
@@ -383,27 +365,29 @@ const CrmLeads: React.FC = () => { // Renamed LeadsView to CrmLeads
 
   const handleOpenModal = (lead: CrmLead | null = null) => {
     if (lead) {
-      setEditFormData({
-        ...lead,
-        normalized_lead_id: lead.normalized_lead_id ?? 0,
-        assessed_total: lead.assessed_total ?? null,
-      });
+      setSelectedLead(lead);
+      setEditFormData(lead);
+      // Geocode address for Street View if Maps API is loaded and address exists
       if (isGoogleMapsLoaded && geocoderRef.current && lead.property_address && lead.property_city && lead.property_state) {
-        geocoderRef.current.geocode({ address: `${lead.property_address}, ${lead.property_city}, ${lead.property_state}` }, (results, status) => {
-          if (status === google.maps.GeocoderStatus.OK && results && results[0]?.geometry?.location) {
-            setStreetViewPosition({ lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng() });
-          } else {
-            setStreetViewPosition(null);
-            console.warn('Geocode was not successful for the following reason: ' + status);
+        geocoderRef.current.geocode(
+          { address: `${lead.property_address}, ${lead.property_city}, ${lead.property_state}` },
+          (results, status) => {
+            if (status === google.maps.GeocoderStatus.OK && results && results[0]?.geometry?.location) {
+              setStreetViewPosition({ lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng() });
+            } else {
+              setStreetViewPosition(null);
+              console.warn('Geocode was not successful for ' + lead.property_address + ': ' + status);
+            }
           }
-        });
+        );
       } else {
         setStreetViewPosition(null);
-        if (!isGoogleMapsLoaded && lead.property_address) { // Check if API not loaded was the reason for not geocoding
+        if (!isGoogleMapsLoaded && lead.property_address) {
             console.warn("Maps API not loaded, cannot geocode address for Street View.");
         }
       }
-    } else {
+    } else { // New lead
+      setSelectedLead(null);
       setEditFormData(initialNewLeadData);
       setStreetViewPosition(null); // Clear street view for new lead
     }
@@ -419,17 +403,11 @@ const CrmLeads: React.FC = () => { // Renamed LeadsView to CrmLeads
     setSelectedLead(null);
     setEditFormData(initialNewLeadData);
     setStreetViewPosition(null);
-    // Autocomplete re-initialization logic on modal close might need review.
-    // It's re-created in the useEffect based on isGoogleMapsLoaded and addressInputRef.current.
-    // Clearing instance listeners on the old autocomplete instance might be good practice if it's being replaced.
-    // However, the current useEffect for autocomplete setup will create a new one if addressInputRef.current exists.
-    // Consider if the autocomplete instance needs to be reset or if its input element (addressInputRef.current)
-    // is detached/re-attached from the DOM, which might require re-initialization.
     if (autocomplete && typeof google !== 'undefined' && google.maps?.event) {
-        google.maps.event.clearInstanceListeners(autocomplete); // Clear listeners to prevent memory leaks or duplicate calls
+      google.maps.event.clearInstanceListeners(autocomplete); // Clear listeners
     }
-    // No need to manually re-create autocomplete here; the useEffect will handle it if the input is visible.
-    // If addressInputRef.current is null (e.g., modal not fully closed or input removed), then it won't re-init.
+    setAutocomplete(null); // Reset autocomplete state
+    // if (addressInputRef.current) addressInputRef.current.value = ''; // Optionally clear input
   };
 
   const handleModalInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => { // Added HTMLSelectElement
@@ -491,29 +469,40 @@ const CrmLeads: React.FC = () => { // Renamed LeadsView to CrmLeads
       return;
     }
     // Add other necessary client-side validation for CrmLead fields.
-    // Ensure normalized_lead_id is correctly handled
-    if (typeof editFormData.normalized_lead_id !== 'number' && editFormData.normalized_lead_id !== null && editFormData.normalized_lead_id !== undefined) {
-        editFormData.normalized_lead_id = parseInt(String(editFormData.normalized_lead_id), 10);
-        if (isNaN(editFormData.normalized_lead_id)) {
-            console.warn('Normalized Lead ID is not a valid number, check requirements.');
-            // Assuming it can be 0 or another default if not provided.
-            editFormData.normalized_lead_id = 0; 
-        }
-    } else if (editFormData.normalized_lead_id === undefined || editFormData.normalized_lead_id === null) {
-        editFormData.normalized_lead_id = 0; 
+    // Client-side validation for contact_type (already present)
+    if (!editFormData.contact_type) {
+      alert('Contact Type is required.');
+      return;
     }
-
+    
     setIsLoading(true); 
     let response;
+    
+    // Prepare data, ensuring normalized_lead_id is correctly handled as number or null
+    // handleModalInputChange should have already set it to null if empty/invalid
+    let preparedNormalizedLeadId: number | null = null;
+    if (editFormData.normalized_lead_id !== null && editFormData.normalized_lead_id !== undefined) {
+        const parsedId = parseInt(String(editFormData.normalized_lead_id), 10);
+        if (!isNaN(parsedId)) {
+            preparedNormalizedLeadId = parsedId;
+        } else {
+            // If it was some non-numeric string that didn't become null in handleModalInputChange
+            // (which it should have), ensure it becomes null here.
+            preparedNormalizedLeadId = null; 
+        }
+    }
+
+    const dataForAction = {
+        ...editFormData,
+        normalized_lead_id: preparedNormalizedLeadId
+    };
 
     if (selectedLead && selectedLead.id) { // Existing lead: UPDATE
-      const { id, created_at, updated_at, ...dataToUpdate } = editFormData as CrmLead; 
+      const { id, created_at, updated_at, ...dataToUpdate } = dataForAction as CrmLead; 
       response = await updateCrmLeadAction(selectedLead.id, dataToUpdate);
     } else { // New lead: INSERT
-      const { id, created_at, updated_at, ...dataToInsert } = editFormData;
-       if (typeof dataToInsert.normalized_lead_id !== 'number') { 
-          dataToInsert.normalized_lead_id = dataToInsert.normalized_lead_id ? parseInt(String(dataToInsert.normalized_lead_id), 10) : 0;
-       }
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { id, created_at, updated_at, ...dataToInsert } = dataForAction;
       response = await createCrmLeadAction(dataToInsert as Partial<Omit<CrmLead, 'id' | 'created_at' | 'updated_at'>>);
     }
 
@@ -543,51 +532,10 @@ const CrmLeads: React.FC = () => { // Renamed LeadsView to CrmLeads
     } else {
       console.error('Error deleting lead:', response.error);
       alert(`Failed to delete lead: ${response.error || 'Unknown error'}`);
-      // setError(`Failed to delete lead: ${response.error || 'Unknown error'}`);
     }
   };
 
-  // Wrapped handlePlaceSelect in useCallback to stabilize its reference
-  // This is important if it's used in `useEffect` dependencies, though it was removed from there.
-  // It's good practice if it's passed to other components or used in event listeners that are set up once.
-  const handlePlaceSelect = useCallback(() => {
-    if (autocomplete) {
-      const place = autocomplete.getPlace();
-      if (place?.address_components) {
-        const addressComponents = place.address_components;
-        const getAddressComponent = (type: string, part: 'long_name' | 'short_name' = 'long_name') => {
-          return addressComponents.find(c => c.types.includes(type))?.[part] || '';
-        };
-
-        const streetNumber = getAddressComponent('street_number');
-        const route = getAddressComponent('route');
-        const locality = getAddressComponent('locality');
-        const administrativeAreaLevel1 = getAddressComponent('administrative_area_level_1', 'short_name');
-        const postalCode = getAddressComponent('postal_code');
-
-        const newAddress = `${streetNumber} ${route}`.trim();
-        setEditFormData(prev => ({
-          ...prev,
-          property_address: newAddress,
-          property_city: locality,
-          property_state: administrativeAreaLevel1,
-          property_postal_code: postalCode,
-        }));
-
-        if (place.geometry?.location) {
-          setStreetViewPosition({
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng(),
-          });
-        } else {
-          setStreetViewPosition(null);
-        }
-      } else {
-        console.error('Place selected but no address components found or place invalid:', place);
-      }
-    }
-  }, [autocomplete]); // Dependency: autocomplete instance
-
+  // handleFileSelect, handleUploadButtonClick, handleFileUpload removed
 
   // Sort Indicator Component
   const SortIndicator = ({ field }: { field: keyof CrmLead | '' }) => { // Changed NormalizedLead to CrmLead
@@ -757,104 +705,112 @@ const CrmLeads: React.FC = () => { // Renamed LeadsView to CrmLeads
            <tfoot> {/* Added tfoot for consistency with old CrmView pagination style */}
               <tr>
                 <td colSpan={columns.length + 1}>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-sm text-base-content opacity-70">
-                      Showing {Math.min((currentPage - 1) * rowsPerPage + 1, totalLeads)} - {Math.min(currentPage * rowsPerPage, totalLeads)} of {totalLeads} leads
-                    </span>
-                    <div className="join">
-                      <button 
-                        onClick={() => handlePageChange(currentPage - 1)} 
-                        disabled={currentPage === 1 || isLoading}
-                        className="join-item btn btn-sm"
-                      >
-                        «
-                      </button>
-                      <button className="join-item btn btn-sm">Page {currentPage} of {totalPages}</button>
-                      <button 
-                        onClick={() => handlePageChange(currentPage + 1)} 
-                        disabled={currentPage === totalPages || isLoading}
-                        className="join-item btn btn-sm"
-                      >
-                        »
-                      </button>
-                    </div>
-                  </div>
+                  {/* Pagination will be handled by the controls below, but structure is here */}
                 </td>
               </tr>
             </tfoot>
-          </table>
+        </table>
+      </div>
+
+      {/* Pagination Controls - (Structure might need to be merged with tfoot or kept separate) */}
+      <div className="mt-6 flex flex-wrap justify-between items-center gap-4 p-4 bg-base-100 rounded-lg shadow">
+        <div>
+          <span className="text-sm text-base-content opacity-70">
+            Page {currentPage} of {totalPages} (Total: {totalLeads} leads)
+          </span>
         </div>
-      ) : null}
+        <div className="flex items-center gap-2">
+          <select 
+            className="select select-bordered select-sm"
+            value={rowsPerPage}
+            onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+          >
+            <option value={25}>25/page</option>
+            <option value={50}>50/page</option>
+            <option value={100}>100/page</option>
+          </select>
+          <div className="join">
+            <button 
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              className="join-item btn btn-sm"
+              disabled={currentPage === 1 || isLoading}
+            >
+              Â« Prev
+            </button>
+            <button 
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              className="join-item btn btn-sm"
+              disabled={currentPage >= totalPages || isLoading}
+            >
+              Next Â»
+            </button>
+          </div>
+        </div>
+      </div>
 
-      {/* Modal for Add/Edit Lead */}
-      {isModalOpen && (
-        <dialog id="lead_modal" className={`modal modal-open ${isModalOpen ? 'modal-open' : ''}`}>
-          <div className="modal-box w-11/12 max-w-4xl bg-base-100 shadow-xl rounded-lg">
-            <form method="dialog" onSubmit={(e) => { e.preventDefault(); void handleSaveLead(); }}>
-              <button type="button" onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-              <h3 className="font-bold text-2xl mb-6 text-base-content">{selectedLead ? 'Edit Lead' : 'Add New Lead'}</h3>
-              
-              {/* Form Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                {/* Contact Info */}
-                <div className="form-control">
-                  <label htmlFor="contact_name" className="label"><span className="label-text">Contact Name</span></label>
-                  <input type="text" id="contact_name" name="contact_name" value={editFormData.contact_name || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-                <div className="form-control">
-                  <label htmlFor="contact_email" className="label"><span className="label-text">Contact Email</span></label>
-                  <input type="email" id="contact_email" name="contact_email" value={editFormData.contact_email || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-                <div className="form-control">
-                  <label htmlFor="contact_type" className="label"><span className="label-text">Contact Type <span className="text-error">*</span></span></label>
-                  <select id="contact_type" name="contact_type" value={editFormData.contact_type || ''} onChange={handleModalInputChange} className="select select-bordered w-full" required>
-                    <option value="" disabled>Select type</option>
-                    <option value="Prospect">Prospect</option>
-                    <option value="Lead">Lead</option>
-                    <option value="Client">Client</option>
-                    <option value="Vendor">Vendor</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div className="form-control">
-                  <label htmlFor="market_region" className="label"><span className="label-text">Market Region</span></label>
-                  <input type="text" id="market_region" name="market_region" value={editFormData.market_region || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
+      {isModalOpen && ( // Modal can open for new lead (selectedLead is null) or edit
+        <div className="modal modal-open">
+          <div className="modal-box w-11/12 max-w-3xl">
+            <button onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"><XCircle size={20}/></button>
+            <h3 className="font-bold text-xl mb-4">
+              {selectedLead ? `Edit Lead: ${editFormData.contact_name || 'N/A'}` : 'Add New Lead'}
+            </h3>
+            
+            <form onSubmit={(e) => { e.preventDefault(); void handleSaveLead(); }} className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+              <div>
+                <label htmlFor="modal-contact_name" className="label"><span className="label-text">Contact Name</span></label>
+                <input type="text" id="modal-contact_name" name={`contact_name`} value={editFormData[`contact_name`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-contact_email" className="label"><span className="label-text">Contact Email</span></label>
+                <input type="email" id="modal-contact_email" name="contact_email" value={editFormData.contact_email || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div className="form-control">
+                <label htmlFor="contact_type" className="label"><span className="label-text">Contact Type <span className="text-error">*</span></span></label>
+                <select id="contact_type" name="contact_type" value={editFormData.contact_type || ''} onChange={handleModalInputChange} className="select select-bordered w-full" required>
+                  <option value="" disabled>Select type</option>
+                  <option value="Prospect">Prospect</option>
+                  <option value="Lead">Lead</option>
+                  <option value="Client">Client</option>
+                  <option value="Vendor">Vendor</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="modal-market_region" className="label"><span className="label-text">Market Region</span></label>
+                <input type="text" id="modal-market_region" name="market_region" value={editFormData.market_region || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+              </div>
+              <div>
+                <label htmlFor="modal-property_address" className="label"><span className="label-text">Property Address</span></label>
+                <input
+                  ref={addressInputRef}
+                  type="text"
+                  id="modal-property_address"
+                  name="property_address"
+                  value={editFormData.property_address || ''}
+                  onChange={handleModalInputChange}
+                  className="input input-bordered w-full"
+                  placeholder={isGoogleMapsLoaded ? "Start typing address..." : "Loading Maps API..."}
+                  disabled={!isGoogleMapsLoaded || !!googleMapsLoadError}
+                />
+                {googleMapsLoadError && <p className="text-error text-xs mt-1">Maps Error: {googleMapsLoadError.message}</p>}
+                {!isGoogleMapsLoaded && !googleMapsLoadError && <p className="text-info text-xs mt-1">Initializing address search...</p>}
+              </div>
 
-                {/* Property Info */}
-                <div className="form-control md:col-span-2">
-                  <label htmlFor="property_address" className="label"><span className="label-text">Property Address</span></label>
-                  <input 
-                    ref={addressInputRef} 
-                    type="text" 
-                    id="property_address" 
-                    name="property_address"
-                    value={editFormData.property_address || ''}
-                    onChange={handleModalInputChange}
-                    className="input input-bordered w-full"
-                    placeholder={isGoogleMapsLoaded ? "Start typing address..." : "Loading Maps API..."}
-                    disabled={!isGoogleMapsLoaded || !!googleMapsLoadError} // Disable if not loaded or error
+              {isGoogleMapsLoaded && streetViewPosition && (
+                <div className="md:col-span-2 h-64 rounded-lg overflow-hidden border border-base-300 my-4">
+                  <StreetViewPanorama
+                    position={streetViewPosition}
+                    visible={true}
+                    options={{ addressControl: false, linksControl: false, panControl: true, zoomControl: true, enableCloseButton: false, fullscreenControl: false }}
                   />
-                  {googleMapsLoadError && <p className="text-error text-xs mt-1">Maps Error: {googleMapsLoadError.message}</p>}
-                  {!isGoogleMapsLoaded && !googleMapsLoadError && <p className="text-info text-xs mt-1">Initializing address search...</p>}
                 </div>
-
-                {isGoogleMapsLoaded && streetViewPosition && (
-                  <div className="md:col-span-2 h-64 rounded-lg overflow-hidden border border-base-300">
-                    <StreetViewPanorama
-                      position={streetViewPosition}
-                      visible={true}
-                      options={{ addressControl: false, linksControl: false, panControl: true, zoomControl: true, enableCloseButton: false, fullscreenControl: false }}
-                    />
+              )}
+              {!isGoogleMapsLoaded && selectedLead?.property_address && !streetViewPosition && (
+                   <div className="md:col-span-2 h-64 rounded-lg border border-base-300 my-4 flex items-center justify-center bg-base-200">
+                      <p className="text-base-content opacity-70">Loading Street View...</p>
                   </div>
-                )}
-                {/* Show a placeholder or message if Maps API is not loaded yet for StreetView */}
-                {!isGoogleMapsLoaded && selectedLead?.property_address && (
-                     <div className="md:col-span-2 h-64 rounded-lg border border-base-300 flex items-center justify-center bg-base-200">
-                        <p className="text-base-content opacity-70">Loading Street View...</p>
-                    </div>
-                )}
-
+              )}
 
               <div>
                 <label htmlFor="modal-property_city" className="label"><span className="label-text">City</span></label>
@@ -922,7 +878,7 @@ const CrmLeads: React.FC = () => { // Renamed LeadsView to CrmLeads
                       value={editFormData.normalized_lead_id === null || editFormData.normalized_lead_id === undefined ? '' : String(editFormData.normalized_lead_id)} 
                       onChange={handleModalInputChange} 
                       className="input input-bordered w-full" 
-                      placeholder="Enter Normalized Lead ID (number)"
+                      placeholder="Enter Normalized Lead ID (number, optional)" // Updated placeholder
                   />
               </div>
 
