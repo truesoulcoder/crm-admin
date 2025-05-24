@@ -18,8 +18,8 @@
   ],
   "functions": {
     "pages/api/eli5-engine/**/*.ts": {
-      "maxDuration": 60,
-      "memory": 2048,
+      "maxDuration": 30,
+      "memory": 1024,
       "includeFiles": [
         "node_modules/@sparticuz/chromium/**"
       ]
@@ -34,5 +34,8 @@
       "NODE_ENV": "production",
       "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
     }
+  },
+  "engines": {
+    "node": "20.x"
   }
 }
