@@ -28,7 +28,8 @@ const createMimeMessage = (
   fromName: string,
   subject: string,
   htmlBody: string,
-  pdfAttachment?: { filename:string; content: Buffer }
+  pdfAttachment?: { filename: string; content: Buffer },
+  inlineLogo?: { contentId: string; contentType: string; content: Buffer } // New parameter
 ): string => {
   const boundary = `----=_Part_Boundary_${Math.random().toString(36).substring(2)}`;
   
@@ -51,6 +52,16 @@ const createMimeMessage = (
     email += `Content-Disposition: attachment; filename="${pdfAttachment.filename}"\r\n`;
     email += `Content-Transfer-Encoding: base64\r\n\r\n`;
     email += `${pdfAttachment.content.toString('base64')}\r\n\r\n`;
+  }
+
+  // Inline Logo part
+  if (inlineLogo && inlineLogo.content && inlineLogo.contentType) {
+    email += `--${boundary}\r\n`;
+    email += `Content-Type: ${inlineLogo.contentType}; name="logo.png"\r\n`; // name can be generic
+    email += `Content-Transfer-Encoding: base64\r\n`;
+    email += `Content-ID: <${inlineLogo.contentId}>\r\n`;
+    email += `Content-Disposition: inline; filename="logo.png"\r\n\r\n`; // inline disposition
+    email += `${inlineLogo.content.toString('base64')}\r\n\r\n`;
   }
 
   email += `--${boundary}--`;
@@ -178,6 +189,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Ensure assessed_total is parsed correctly for calculations after validation
     const assessedTotalNumericValidated = parseFloat(String(lead.assessed_total));
 
+    // Fetch Logo Image (early in the handler)
+    let logoImageBuffer: Buffer | null = null;
+    let logoContentType: string | null = null;
+    try {
+      const logoUrl = "https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media//logo-450px.png";
+      const response = await fetch(logoUrl);
+      if (!response.ok) {
+        console.error(`Failed to fetch logo: ${response.status} ${response.statusText}`);
+      } else {
+        logoContentType = response.headers.get('content-type');
+        const arrayBuffer = await response.arrayBuffer();
+        logoImageBuffer = Buffer.from(arrayBuffer);
+        console.log('DEBUG: Logo fetched successfully, content type:', logoContentType, 'size:', logoImageBuffer.length);
+      }
+    } catch (e: any) {
+      console.error('Error fetching logo image:', e.message);
+    }
+
+
     const currentDateFormatted = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     
     const thirtyDaysFromNow = new Date();
@@ -261,7 +291,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       property_address: lead.property_address as string, // Validated
       property_city: lead.property_city as string, // Validated
       property_state: lead.property_state as string, // Validated
-      property_zip_code: propertyZipCode, // Validated and assigned
+      property_postal_code: propertyZipCode, // Corrected key for zip code
       assessed_total: lead.assessed_total, // For reference
       current_date: currentDateFormatted,
       closing_date: closingDateFormatted,
@@ -337,7 +367,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       activeSenderName,
       emailSubject,
       emailBodyHtml,
-      { filename: dynamicPdfFilename, content: pdfBuffer } // Correctly passing PDF details
+      { filename: dynamicPdfFilename, content: pdfBuffer },
+      logoImageBuffer && logoContentType ? { contentId: 'company_logo', contentType: logoContentType, content: logoImageBuffer } : undefined
     );
     const base64EncodedEmail = Buffer.from(rawEmail).toString('base64url');
 
