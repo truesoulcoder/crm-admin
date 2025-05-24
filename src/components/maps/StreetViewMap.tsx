@@ -1,17 +1,15 @@
 // src/components/maps/StreetViewMap.tsx
 'use client';
 
-import { GoogleMap, StreetViewPanorama, MarkerF, useJsApiLoader } from '@react-google-maps/api';
+import { GoogleMap, StreetViewPanorama, MarkerF } from '@react-google-maps/api';
 import { MapPin, AlertTriangle, Loader2, RefreshCw, Eye, Map } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-
-// Define the libraries array with the correct type
-type Libraries = ('drawing' | 'geometry' | 'localContext' | 'places' | 'visualization' | 'marker')[];
-const libraries: Libraries = ['places', 'geocoding', 'streetView'];
+import { useGoogleMapsApi } from './GoogleMapsLoader'; // Import the context hook
 
 interface StreetViewMapProps {
   address: string;
   containerStyle?: React.CSSProperties;
+  // No longer needs criticalApiError as this will be handled by GoogleMapsLoader or context
 }
 
 const defaultContainerStyle: React.CSSProperties = {
@@ -37,10 +35,11 @@ const LoadingDisplay: React.FC<{ message: string; style: React.CSSProperties }> 
   </div>
 );
 
-const StreetViewMapContent: React.FC<StreetViewMapProps & { isApiReady: boolean }> = ({
+// Renamed isApiReady to isMapsApiLoaded
+const StreetViewMapContent: React.FC<StreetViewMapProps & { isMapsApiLoaded: boolean }> = ({
   address,
   containerStyle = defaultContainerStyle,
-  isApiReady,
+  isMapsApiLoaded, // Use the new prop name
 }) => {
   const [position, setPosition] = useState<google.maps.LatLngLiteral | null>(null);
   const [geocodingError, setGeocodingError] = useState<string | null>(null);
@@ -89,7 +88,8 @@ const StreetViewMapContent: React.FC<StreetViewMapProps & { isApiReady: boolean 
 
   // Initialize services when component mounts or when API is ready
   useEffect(() => {
-    if (isApiReady && window.google?.maps) {
+    // Use isMapsApiLoaded from props
+    if (isMapsApiLoaded && window.google?.maps) {
       geocoderRef.current = new window.google.maps.Geocoder();
       streetViewServiceRef.current = new window.google.maps.StreetViewService();
       
@@ -104,10 +104,10 @@ const StreetViewMapContent: React.FC<StreetViewMapProps & { isApiReady: boolean 
       geocoderRef.current = null;
       streetViewServiceRef.current = null;
     };
-  }, [address, geocodeAddressAndCheckStreetViewMemoized, isApiReady]);
+  }, [address, geocodeAddressAndCheckStreetViewMemoized, isMapsApiLoaded]); // Dependency updated
 
   const checkStreetViewAvailability = useCallback(async (latLng: google.maps.LatLngLiteral): Promise<boolean> => {
-    if (!streetViewServiceRef.current) return false;
+    if (!streetViewServiceRef.current || !window.google?.maps?.StreetViewService) return false; // Added window.google.maps.StreetViewService check
     try {
       const { data } = await streetViewServiceRef.current.getPanorama({
         location: latLng,
@@ -119,16 +119,17 @@ const StreetViewMapContent: React.FC<StreetViewMapProps & { isApiReady: boolean 
       console.warn('Street View check failed:', error);
       return false;
     }
-  }, []);
+  }, []); // streetViewServiceRef.current will be initialized when isMapsApiLoaded is true
 
   useEffect(() => {
-    if (isApiReady && address) {
+    // Use isMapsApiLoaded from props
+    if (isMapsApiLoaded && address) {
       const handler = setTimeout(() => {
         void geocodeAddressAndCheckStreetViewMemoized(address);
       }, 700); // Debounce
       return () => clearTimeout(handler);
     }
-  }, [address, isApiReady, geocodeAddressAndCheckStreetViewMemoized]);
+  }, [address, isMapsApiLoaded, geocodeAddressAndCheckStreetViewMemoized]); // Dependency updated
 
   const toggleViewMode = useCallback(() => {
     if (hasStreetView) { // Only toggle if Street View is an option
@@ -136,19 +137,11 @@ const StreetViewMapContent: React.FC<StreetViewMapProps & { isApiReady: boolean 
     }
   }, [hasStreetView]);
 
-  if (criticalApiError) {
-    return <ErrorDisplay message={criticalApiError} style={containerStyle} />;
-  }
+  // Redundant checks for API readiness (criticalApiError, apiKey, etc.) are removed.
+  // StreetViewMapContent relies on its parent (`StreetViewMap`) to handle the main API loading/error states.
+  // It will only render if isMapsApiLoaded is true, as enforced by the parent.
 
-  if (!isApiReady && apiKey) { // API Key is there, but window.google.maps not yet (GoogleMapsLoader might be loading)
-    return <LoadingDisplay message="Loading Google Maps interface..." style={containerStyle} />;
-  }
-  
-  if (!isApiReady && !apiKey) { // Should be caught by criticalApiError, but as a fallback
-     return <ErrorDisplay message="Google Maps API key not set and API not loaded." style={containerStyle} />;
-  }
-
-  // Show loading state while geocoding
+  // Show loading state while geocoding (this is specific to this component's logic)
   if (isGeocoding) {
     return <LoadingDisplay message="Fetching location data..." style={containerStyle} />;
   }
@@ -181,7 +174,8 @@ const StreetViewMapContent: React.FC<StreetViewMapProps & { isApiReady: boolean 
 
   return (
     <div style={containerStyle}>
-      {hasStreetView && (
+      {/* Ensure window.google.maps is available before trying to use related constants */}
+      {isMapsApiLoaded && hasStreetView && (
         <button
           onClick={toggleViewMode}
           className="btn btn-sm btn-circle btn-ghost absolute top-2 right-2 z-10 bg-base-100/70 hover:bg-base-100"
@@ -191,11 +185,11 @@ const StreetViewMapContent: React.FC<StreetViewMapProps & { isApiReady: boolean 
         </button>
       )}
 
-      {showStreetView && hasStreetView ? (
+      {isMapsApiLoaded && showStreetView && hasStreetView ? (
         <StreetViewPanorama
           options={panoramaOptions}
         />
-      ) : (
+      ) : isMapsApiLoaded ? ( // Also check isMapsApiLoaded for GoogleMap
         <GoogleMap
           mapContainerStyle={{ width: '100%', height: '100%' }}
           center={position}
@@ -204,8 +198,8 @@ const StreetViewMapContent: React.FC<StreetViewMapProps & { isApiReady: boolean 
         >
           <MarkerF position={position} title={address} />
         </GoogleMap>
-      )}
-       {!hasStreetView && position && (
+      ) : null } {/* Render nothing or a placeholder if API not loaded */}
+       {isMapsApiLoaded && !hasStreetView && position && (
          <div className="absolute bottom-2 left-2 bg-base-100/70 p-1.5 rounded text-xs text-base-content">
             Street View not available for this location. Showing map.
           </div>
@@ -215,11 +209,8 @@ const StreetViewMapContent: React.FC<StreetViewMapProps & { isApiReady: boolean 
 };
 
 const StreetViewMap: React.FC<StreetViewMapProps> = (props) => {
-  const { isLoaded: isApiReady, loadError } = useJsApiLoader({
-    id: 'google-maps-script',
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
-    libraries,
-  });
+  // Consume context from GoogleMapsLoader
+  const { isLoaded: isMapsApiLoaded, loadError } = useGoogleMapsApi();
 
   // Memoize the map container style
   const mapContainerStyle = useMemo(() => ({
@@ -227,18 +218,30 @@ const StreetViewMap: React.FC<StreetViewMapProps> = (props) => {
     ...props.containerStyle,
   }), [props.containerStyle]);
 
+  // Error and loading states are now primarily handled by GoogleMapsLoader,
+  // but we can still show specific messages or fallbacks here if needed.
   if (loadError) {
     return <ErrorDisplay 
-      message="Error loading Google Maps. Please try again later." 
+      message={`Error loading Google Maps API: ${loadError.message}`}
       style={mapContainerStyle} 
     />;
   }
 
-  if (!isApiReady) {
-    return <LoadingDisplay message="Loading map..." style={mapContainerStyle} />;
-  }
+  // if (!isMapsApiLoaded && !process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY) {
+  //   // This case should be handled by GoogleMapsLoader, which shows an API key error.
+  //   // If GoogleMapsLoader is not used, this component would not know about the API key directly.
+  //   return <ErrorDisplay message="Google Maps API key not configured." style={mapContainerStyle} />;
+  // }
 
-  return <StreetViewMapContent {...props} isApiReady={isApiReady} />;
+  if (!isMapsApiLoaded) {
+    // This message is shown if the context indicates Maps API isn't loaded yet.
+    // GoogleMapsLoader should handle the initial script load display, but this provides
+    // a fallback or component-specific loading message.
+    return <LoadingDisplay message="Loading Google Maps interface..." style={mapContainerStyle} />;
+  }
+  
+  // Pass isMapsApiLoaded to StreetViewMapContent; at this point, it should be true.
+  return <StreetViewMapContent {...props} isMapsApiLoaded={isMapsApiLoaded} />;
 };
 
 export default StreetViewMap;

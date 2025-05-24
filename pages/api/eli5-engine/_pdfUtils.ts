@@ -8,29 +8,80 @@ const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'tem
 const BLANK_LETTERHEAD_PDF_FILE = path.join(templateDir, 'blank-letterhead.pdf');
 const ALEX_BRUSH_FONT_FILE = path.join(templateDir, 'AlexBrush-Regular.ttf');
 
-// Helper function for drawing wrapped text (simplified)
-async function drawWrappedText(page: any, text: string, options: any) {
-  const { font, fontSize, x, y, maxWidth, lineHeight, color } = options;
-  const words = text.split(' ');
-  let currentLine = '';
-  let currentY = y;
+// Helper function for drawing wrapped text (CRITICAL DEBUG version)
+// Assuming PDFPage, PDFFont, RGB types are compatible with 'any' or specific pdf-lib types
+function drawWrappedText( 
+    page: any, // PDFPage,
+    text: string,
+    x: number,
+    y: number,
+    font: any, // PDFFont,
+    fontSize: number,
+    maxWidth: number,
+    lineHeight: number,
+    color: any // RGB e.g. { red: 0, green: 0, blue: 0 }
+): number { 
+    console.log(`DEBUG_WRAP: drawWrappedText called. Initial Y: ${y}, MaxWidth: ${maxWidth}, FontSize: ${fontSize}, LineHeight: ${lineHeight}, Text snippet: "${text.substring(0, 50)}..."`, 'Color:', color);
 
-  for (const word of words) {
-    const testLine = currentLine + (currentLine === '' ? '' : ' ') + word;
-    const { width: textWidth } = font.widthOfTextAtSize(testLine, fontSize);
-    if (textWidth > maxWidth && currentLine !== '') {
-      page.drawText(currentLine, { x, y: currentY, font, size: fontSize, color });
-      currentLine = word;
-      currentY -= lineHeight;
-    } else {
-      currentLine = testLine;
+    const words = text.split(' ');
+    let currentLine = '';
+    let currentY = y;
+
+    for (const word of words) {
+        let testLine = currentLine === '' ? word : currentLine + ' ' + word;
+        const testLineWidth = font.widthOfTextAtSize(testLine, fontSize);
+
+        if (testLineWidth <= maxWidth) {
+            currentLine = testLine;
+        } else {
+            // Draw the current line (before adding the word that makes it too long)
+            if (currentLine !== '') { // Avoid drawing empty lines if a single word is too long initially
+                console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line: "${currentLine}"`);
+                page.drawText(currentLine, {
+                    x: x,
+                    y: currentY,
+                    font: font,
+                    size: fontSize,
+                    color: color,
+                });
+                currentY -= lineHeight; // Move Y for the next line
+            }
+            currentLine = word; // Start the new line with the current word
+
+            // Handle case where the word itself is longer than maxWidth
+            // The new algorithm implicitly handles this by placing the long word on a new line.
+            // If that single word is still too long, it will be drawn as is (and overflow).
+            // This differs from the previous explicit "long word" handling.
+            const currentWordWidth = font.widthOfTextAtSize(currentLine, fontSize);
+            if (currentWordWidth > maxWidth) {
+                console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line (single word > maxWidth): "${currentLine}"`);
+                page.drawText(currentLine, { // Draw the long word on its own line
+                    x: x,
+                    y: currentY,
+                    font: font,
+                    size: fontSize,
+                    color: color,
+                });
+                currentY -= lineHeight;
+                currentLine = ''; // Reset currentLine as the long word has been drawn
+            }
+        }
     }
-  }
-  if (currentLine !== '') {
-    page.drawText(currentLine, { x, y: currentY, font, size: fontSize, color });
-    currentY -= lineHeight; // Adjust Y for the next potential block of text
-  }
-  return currentY; // Return the Y position after the last line drawn
+
+    // Draw the last remaining line
+    if (currentLine !== '') {
+        console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line (final): "${currentLine}"`);
+        page.drawText(currentLine, {
+            x: x,
+            y: currentY,
+            font: font,
+            size: fontSize,
+            color: color,
+        });
+        currentY -= lineHeight; // Decrement Y for consistency, returning position for *next* element.
+    }
+    
+    return currentY; // Return the Y position after the last line drawn (plus one line height)
 }
 
 
@@ -67,63 +118,83 @@ export const generateLoiPdf = async (
     }
 
     // 2. Draw LOI Content Programmatically
-    // Define margins and starting Y position (from top)
-    const margin = 50;
-    let y = height - margin - 30; // Initial Y, adjusted for potential letterhead space
-    const contentWidth = width - 2 * margin;
-    const baseFontSize = 10;
-    const titleFontSize = 16;
-    const subtitleFontSize = 12;
-    const signatureFontSize = 24;
-    const disclaimerFontSize = 8;
-    const lineHeight = baseFontSize * 1.2;
-    const smallLineHeight = disclaimerFontSize * 1.2;
+    // Define drawing parameters
+    const pageMargin = 50; // Updated page margin
+    let currentY = height - pageMargin; // Start from top, below margin
+    const textX = pageMargin;
+    const textMaxWidth = width - 2 * pageMargin; // Updated textMaxWidth
+    
+    const baseFontSize = 14; 
+    const titleFontSize = 20; 
+    const subtitleFontSize = 16;
+    const signatureFontSize = 28; 
+    const disclaimerFontSize = 12;
+
+    const bodyLineHeight = baseFontSize * 1.2;
+    const disclaimerLineHeight = disclaimerFontSize * 1.2;
+    const titleColor = rgb(0,0,0);
+    const bodyColor = rgb(0,0,0);
+    const subtitleColor = rgb(0.1, 0.1, 0.1);
+    const signatureColor = rgb(0.05, 0.2, 0.5);
+    const disclaimerColor = rgb(0.3,0.3,0.3);
 
     // --- Title ---
-    page.drawText("LETTER OF INTENT", {
-      x: margin,
-      y: y,
+    page.drawText("LETTER OF INTENT TO PURCHASE REAL ESTATE", { // Main Title - Assuming this is the one for increased spacing
+      x: textX, // Or centered: (width - helveticaBoldFont.widthOfTextAtSize("LETTER OF INTENT", titleFontSize)) / 2
+      y: currentY,
       font: helveticaBoldFont,
       size: titleFontSize,
-      color: rgb(0, 0, 0),
+      color: titleColor,
     });
-    y -= titleFontSize * 1.5;
+    currentY -= titleFontSize * 1.5;
+    currentY -= bodyLineHeight * 0.75; // Added extra spacing (0.75 of a body line) after title
 
     // --- Property Address Subtitle ---
-    page.drawText(personalizationData.property_address || "N/A Property Address", {
-      x: margin,
-      y: y,
+    const streetAddress = personalizationData.property_address || "N/A Street Address";
+    page.drawText(streetAddress, {
+      x: textX,
+      y: currentY,
       font: helveticaFont,
       size: subtitleFontSize,
-      color: rgb(0.1, 0.1, 0.1),
+      color: subtitleColor,
     });
-    y -= subtitleFontSize * 1.5;
+    currentY -= subtitleFontSize * 1.2; // Line height for subtitle
+
+    const cityStateZip = `${personalizationData.property_city || "N/A City"}, ${personalizationData.property_state || "N/A State"} ${personalizationData.property_postal_code || "N/A Zip"}`;
+    page.drawText(cityStateZip, {
+      x: textX,
+      y: currentY,
+      font: helveticaFont,
+      size: subtitleFontSize,
+      color: subtitleColor,
+    });
+    currentY -= subtitleFontSize * 1.5; // Space after address block
     
     // --- Date ---
-    page.drawText(personalizationData.current_date || "N/A Date", {
-        x: width - margin - helveticaFont.widthOfTextAtSize(personalizationData.current_date || "N/A Date", baseFontSize), // Align right
-        y: y,
+    const dateText = personalizationData.current_date || "N/A Date";
+    page.drawText(dateText, {
+        x: width - pageMargin - helveticaFont.widthOfTextAtSize(dateText, baseFontSize), // Align right
+        y: currentY,
         font: helveticaFont,
         size: baseFontSize,
-        color: rgb(0,0,0)
+        color: bodyColor
     });
-    y -= lineHeight * 2;
-
+    currentY -= bodyLineHeight * 2; // Space after date
 
     // --- Salutation ---
     page.drawText(`Dear ${personalizationData.greeting_name || "Sir/Madam"},`, {
-      x: margin,
-      y: y,
+      x: textX,
+      y: currentY,
       font: helveticaFont,
       size: baseFontSize,
-      color: rgb(0, 0, 0),
+      color: bodyColor,
     });
-    y -= lineHeight * 1.5;
+    currentY -= bodyLineHeight * 2; // Extra space after salutation
 
-    // --- Body Paragraph 1 (Simplified) ---
-    const introParagraph = `We are pleased to submit this Letter of Intent ("LOI") to purchase the property located at ${personalizationData.property_address || "N/A"} (the "Property") under the terms and conditions set forth herein. This LOI is an expression of our serious interest in acquiring the Property.`;
-    y = await drawWrappedText(page, introParagraph, {font: timesRomanFont, fontSize: baseFontSize, x: margin, y, maxWidth: contentWidth, lineHeight, color: rgb(0,0,0) });
-    y -= lineHeight; 
+    // --- Body Paragraph 1 (Introductory) ---
+    const introParagraph = `We are pleased to submit this Letter of Intent ("LOI") to purchase the property located at ${personalizationData.property_address || "N/A Property Address"} (the "Property") under the terms and conditions set forth herein. This LOI is an expression of our serious interest in acquiring the Property.`;
+    currentY = drawWrappedText(page, introParagraph, textX, currentY, timesRomanFont, baseFontSize, textMaxWidth, bodyLineHeight, bodyColor ); // Updated call
+    currentY -= bodyLineHeight; // Space after paragraph
 
     // --- Offer Summary (Simplified Key-Value) ---
     const offerDetails = [
@@ -131,72 +202,97 @@ export const generateLoiPdf = async (
       { label: "Earnest Money Deposit (EMD):", value: personalizationData.emd_amount || "N/A" },
       { label: "Closing Date:", value: personalizationData.closing_date || "N/A" },
       { label: "Title Company:", value: personalizationData.title_company || "N/A" },
+      { label: "Buyer’s Assignment Consideration:", value: "$10" }, 
     ];
+    
+    const labelX = textX + 10; // Use textX (which is pageMargin) or add a small indent
+    const valueX = pageMargin + 220; // New fixed X for all values, increased from previous relative offset
 
     for (const detail of offerDetails) {
-      page.drawText(detail.label, { x: margin, y: y, font: timesRomanFont, size: baseFontSize, color: rgb(0,0,0) });
-      page.drawText(detail.value, { x: margin + 150, y: y, font: helveticaBoldFont, size: baseFontSize, color: rgb(0,0,0) });
-      y -= lineHeight;
+      page.drawText(detail.label, { 
+        x: labelX, 
+        y: currentY, 
+        font: timesRomanFont, // Using timesRomanFont for labels
+        size: baseFontSize, 
+        color: bodyColor 
+      });
+      page.drawText(detail.value, { 
+        x: valueX, // Use the new fixed X for values
+        y: currentY, 
+        font: helveticaBoldFont, // Keep helveticaBoldFont for values as per original
+        size: baseFontSize, 
+        color: bodyColor 
+      });
+      currentY -= bodyLineHeight;
     }
-    y -= lineHeight;
+    currentY -= bodyLineHeight; // Space after offer details
 
+    // --- 72-Hour Validity Paragraph (Placeholder) ---
+    // Replace with actual data from personalizationData if available, e.g., personalizationData.validity_paragraph
+    const validityText = personalizationData.validity_paragraph || "This offer is valid for a period of seventy-two (72) hours from the date and time of submission. Should this offer not be accepted within this timeframe, it shall be deemed automatically withdrawn.";
+    currentY = drawWrappedText(page, validityText, textX, currentY, timesRomanFont, baseFontSize, textMaxWidth, bodyLineHeight, bodyColor ); // Updated call
+    currentY -= bodyLineHeight; // Space after paragraph
 
     // --- Closing Paragraph (Simplified) ---
-    const closingParagraph = "We look forward to the possibility of working with you on this transaction and are excited about the prospect of acquiring this Property. Please indicate your acceptance of these terms by signing below.";
-    y = await drawWrappedText(page, closingParagraph, {font: timesRomanFont, fontSize: baseFontSize, x: margin, y, maxWidth: contentWidth, lineHeight, color: rgb(0,0,0) });
-    y -= lineHeight * 2;
+    const closingParagraph = "We look forward to the possibility of working with you on this transaction and are excited about the prospect of acquiring this Property. Please reply back to us if you wish to move forward or have questions.";
+    currentY = drawWrappedText(page, closingParagraph, textX, currentY, timesRomanFont, baseFontSize, textMaxWidth, bodyLineHeight, bodyColor ); // Updated call
+    currentY -= bodyLineHeight * 2; // Space before "Warm regards,"
 
     // --- "Warm regards," ---
     page.drawText("Warm regards,", {
-      x: margin,
-      y: y,
+      x: textX,
+      y: currentY,
       font: helveticaFont,
       size: baseFontSize,
-      color: rgb(0, 0, 0),
+      color: bodyColor,
     });
-    y -= lineHeight * 2; // Space for signature
+    currentY -= bodyLineHeight * 2; // Space for signature
 
     // --- Sender Signature Block ---
     page.drawText(personalizationData.sender_name || "N/A Sender Name", {
-      x: margin,
-      y: y,
+      x: textX,
+      y: currentY,
       font: alexBrushFont, // Use AlexBrush or fallback
       size: signatureFontSize,
-      color: rgb(0.05, 0.2, 0.5), // A blueish color for signature
+      color: signatureColor, 
     });
-    y -= signatureFontSize * 0.8; 
+    currentY -= signatureFontSize * 0.8; // Adjust based on font visual size
 
     page.drawText(personalizationData.sender_name || "N/A Sender Name", {
-      x: margin,
-      y: y,
+      x: textX,
+      y: currentY,
       font: helveticaFont,
       size: baseFontSize,
-      color: rgb(0, 0, 0),
+      color: bodyColor,
     });
-    y -= lineHeight;
+    currentY -= bodyLineHeight;
     page.drawText(personalizationData.sender_title || "N/A Sender Title", {
-      x: margin,
-      y: y,
+      x: textX,
+      y: currentY,
       font: helveticaFont,
       size: baseFontSize,
-      color: rgb(0, 0, 0),
+      color: bodyColor,
     });
-    y -= lineHeight;
+    currentY -= bodyLineHeight;
     page.drawText(personalizationData.company_name || "N/A Company Name", {
-      x: margin,
-      y: y,
+      x: textX,
+      y: currentY,
       font: helveticaFont,
       size: baseFontSize,
-      color: rgb(0, 0, 0),
+      color: bodyColor,
     });
-    y -= lineHeight * 3; // More space before disclaimer
+    currentY -= bodyLineHeight * 3; // More space before disclaimer
 
     // --- Disclaimer Footer (Simplified) ---
     const disclaimer = "This Letter of Intent is non-binding and is intended solely as a basis for further discussion and negotiation. No contractual obligations will arise between the parties unless and until a definitive written agreement is executed by both parties.";
-    y = height - (height - (y - disclaimerFontSize * 3)); // Approximate bottom placement
-    if (y < margin + smallLineHeight * 3) y = margin + smallLineHeight * 3; // Ensure it's not too low
+    // For disclaimer, it's often better to position from bottom if possible, or ensure enough space
+    // For now, continuing the flow, but ensure currentY does not go off-page.
+    // A check: if currentY < pageMargin + (disclaimerLineHeight * ~3 lines), then reposition.
+    if (currentY < pageMargin + (disclaimerLineHeight * 4)) { // Estimate 3 lines for disclaimer + padding
+        currentY = pageMargin + (disclaimerLineHeight * 4); // Place it at the bottom with some margin
+    }
     
-    await drawWrappedText(page, disclaimer, {font: timesRomanItalicFont, fontSize: disclaimerFontSize, x: margin, y, maxWidth: contentWidth, lineHeight: smallLineHeight, color: rgb(0.3,0.3,0.3) });
+    currentY = drawWrappedText(page, disclaimer, textX, currentY, timesRomanItalicFont, disclaimerFontSize, textMaxWidth, disclaimerLineHeight, disclaimerColor ); // Updated call
 
     // ... all page.drawText() and other drawing calls on 'page' from contentPdfDoc are complete ...
 
