@@ -26,8 +26,7 @@ const nextConfig = {
     if (isServer) {
       // Exclude puppeteer and chromium from bundling in production
       config.externals = [...(config.externals || []), {
-        'puppeteer-core': 'commonjs puppeteer-core',
-        '@sparticuz/chromium': 'commonjs @sparticuz/chromium'
+        'puppeteer-core': 'commonjs puppeteer-core'
       }];
       
       // Add Node.js polyfills
