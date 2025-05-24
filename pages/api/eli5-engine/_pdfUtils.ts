@@ -226,9 +226,11 @@ export const generateLoiPdf = async (
      const firstPageFromContent = pagesToEmbed[0]; // The first page of our dynamically generated content
      console.log('DEBUG_PDFUTILS: firstPageFromContent type:', typeof firstPageFromContent);
 
-     // Copy the first page from the content PDF into the letterhead PDF
-     const [copiedPage] = await letterheadPdfDoc.copyPages(contentPdfToEmbed, [0]); // [0] means copy the first page
-     console.log('DEBUG_PDFUTILS: copiedPage type:', typeof copiedPage, 'width:', copiedPage.getWidth(), 'height:', copiedPage.getHeight());
+     // Embed the first page from the dynamically generated content PDF into the letterhead document
+     // embedPdf expects an array of PDFPage objects, or a single PDFPage object.
+     // Ensure firstPageFromContent is a PDFPage object.
+     const [embeddedContentPage] = await letterheadPdfDoc.embedPdf([firstPageFromContent]); 
+     console.log('DEBUG_PDFUTILS: embeddedContentPage type:', typeof embeddedContentPage, 'width:', embeddedContentPage.width, 'height:', embeddedContentPage.height);
 
      const firstPageOfLetterhead = letterheadPdfDoc.getPages()[0];
      if (!firstPageOfLetterhead) {
@@ -236,14 +238,12 @@ export const generateLoiPdf = async (
          throw new Error('Blank letterhead PDF does not contain any pages.');
      }
      
-     // Draw the copied page onto the first page of the letterhead
-     // Adjust x, y if content should not start at bottom-left of letterhead page.
-     // Common is to overlay directly, or position with slight margins.
-     firstPageOfLetterhead.drawPage(copiedPage, {
-         x: 0, // Or some margin, e.g., firstPageOfLetterhead.getX() + margin
-         y: 0, // Or some margin, e.g., firstPageOfLetterhead.getY() + margin
-         width: copiedPage.getWidth(),
-         height: copiedPage.getHeight(),
+     // Draw the EMBEDDED page onto the first page of the letterhead
+     firstPageOfLetterhead.drawPage(embeddedContentPage, { // Use the 'embeddedContentPage' here
+         x: 0, 
+         y: 0, 
+         width: embeddedContentPage.width, 
+         height: embeddedContentPage.height,
      });
 
      const mergedPdfBytes = await letterheadPdfDoc.save();
