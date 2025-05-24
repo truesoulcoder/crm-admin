@@ -1,6 +1,17 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { google, Auth } from 'googleapis';
-import { JSONClient } from 'google-auth-library/build/src/auth/googleauth';
+// Third-party libraries
+import { google } from 'googleapis';
+import { JWT } from 'google-auth-library';
+import { createClient } from '@supabase/supabase-js';
+
+// Types
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+// Type definitions
+interface ServiceAccountCredentials {
+  client_email: string;
+  private_key: string;
+  [key: string]: any;
+}
 
 // Supabase Client
 let supabase: SupabaseClient | null = null;
@@ -20,31 +31,32 @@ export const getSupabaseClient = (): SupabaseClient => {
 };
 
 // Gmail Service
-export const getGmailService = (userEmailToImpersonate: string): google.gmail_v1.Gmail => {
+export const getGmailService = (userEmailToImpersonate: string): import('googleapis').gmail_v1.Gmail => {
   const serviceAccountKeyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   if (!serviceAccountKeyJson) {
     throw new Error('Google Service Account Key JSON is not defined in environment variables.');
   }
 
-  let serviceAccountCredentials;
+  let serviceAccountCredentials: ServiceAccountCredentials;
   try {
-    serviceAccountCredentials = JSON.parse(serviceAccountKeyJson);
+    const parsed = JSON.parse(serviceAccountKeyJson);
     // Ensure private_key newlines are handled if they come as literal \n
-    if (serviceAccountCredentials.private_key) {
-        serviceAccountCredentials.private_key = serviceAccountCredentials.private_key.replace(/\\n/g, '\n');
+    if (parsed.private_key) {
+      parsed.private_key = String(parsed.private_key).replace(/\\n/g, '\n');
     }
+    serviceAccountCredentials = parsed as ServiceAccountCredentials;
   } catch (error) {
-    throw new Error('Failed to parse Google Service Account Key JSON: ' + (error as Error).message);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    throw new Error(`Failed to parse Google Service Account Key JSON: ${errorMessage}`);
   }
 
-  // Simpler way using JWT directly if GoogleAuth is complex for this:
-   const jwtClient = new google.auth.JWT(
-    serviceAccountCredentials.client_email,
-    undefined, // keyFile path, not needed when key is provided directly
-    serviceAccountCredentials.private_key,
-    ['https://www.googleapis.com/auth/gmail.send'],
-    userEmailToImpersonate // Subject to impersonate
-  );
+  // Create JWT client for Gmail API
+  const jwtClient = new JWT({
+    email: serviceAccountCredentials.client_email,
+    key: serviceAccountCredentials.private_key,
+    scopes: ['https://www.googleapis.com/auth/gmail.send'],
+    subject: userEmailToImpersonate
+  });
 
   const gmail = google.gmail({ version: 'v1', auth: jwtClient });
   return gmail;
