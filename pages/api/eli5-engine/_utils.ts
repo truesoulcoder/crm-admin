@@ -1,7 +1,9 @@
+// Core Node.js modules
+
 // Third-party libraries
-import { google } from 'googleapis';
-import { JWT } from 'google-auth-library';
 import { createClient } from '@supabase/supabase-js';
+import { JWT } from 'google-auth-library';
+import { google } from 'googleapis';
 
 // Types
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -10,7 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 interface ServiceAccountCredentials {
   client_email: string;
   private_key: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Supabase Client
