@@ -28,5 +28,6 @@
       "NODE_ENV": "production",
       "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
     }
-  }
+  },
+  "regions": ["iad1"]
 }

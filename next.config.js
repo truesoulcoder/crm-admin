@@ -7,44 +7,41 @@ const __dirname = path.dirname(__filename);
 
 const nextConfig = {
   reactStrictMode: false,
-  // Only include puppeteer-core in serverExternalPackages
-  serverExternalPackages: ['puppeteer-core'],
+  
+  // Enable server components external packages
+  serverExternalPackages: ['@sparticuz/chromium-min'],
   
   // Configure output file tracing for serverless functions
-  outputFileTracingIncludes: {
-    '/api/eli5-engine/**/*': [
-      // Include all files from @sparticuz/chromium-min
-      './node_modules/@sparticuz/chromium-min/**/*',
-      // Include any other required files
-      './node_modules/puppeteer-core/**/*',
-      './node_modules/ws/**/*',
-      './node_modules/undici/**/*'
-    ]
-  },
-
-  experimental: {
-    serverActions: {
-      allowedOrigins: ['localhost:3000']
-    },
-    // Enable server components external packages
-    serverComponentsExternalPackages: ['@sparticuz/chromium-min']
+  output: 'standalone',
+  
+  // Configure page extensions
+  pageExtensions: ['tsx', 'ts', 'jsx', 'js'],
+  
+  // Configure images
+  images: {
+    domains: ['lh3.googleusercontent.com'],
   },
   
-  // Disable server components cache in development
-  experimental: {
-    serverComponents: {
-      cacheDir: '.next/cache/server-components'
-    }
+  // Environment variables
+  env: {
+    // Ensure Chromium is downloaded during build
+    CHROME_PATH: process.env.CHROME_PATH || '',
   },
+  
   // Configure webpack to handle Node.js modules and optimize builds
   webpack: (config, { isServer, dev }) => {
     // Only add these configurations for server-side bundles
     if (isServer) {
       // Exclude puppeteer and chromium from bundling
-      config.externals = [...(config.externals || []), {
-        'puppeteer-core': 'commonjs puppeteer-core',
-        '@sparticuz/chromium-min': 'commonjs @sparticuz/chromium-min'
-      }];
+      config.externals = [
+        ...(config.externals || []), 
+        {
+          'puppeteer-core': 'commonjs puppeteer-core',
+          '@sparticuz/chromium-min': 'commonjs @sparticuz/chromium-min',
+          'canvas': 'commonjs canvas',
+          'sharp': 'commonjs sharp'
+        }
+      ];
       
       // Enable source maps in development
       if (dev) {
