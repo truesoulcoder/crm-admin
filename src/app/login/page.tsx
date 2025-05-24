@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
 
-import { Background } from '@once/once-ui';
+import { Background } from '@/components/ui/Background';
 import { supabase } from '@/lib/supabase/client';
 
 export default function LoginPage() {
@@ -69,16 +69,16 @@ export default function LoginPage() {
           opacity: 1,
           x: mousePosition.x,
           y: mousePosition.y,
-          colorStart: "accent-background-strong",
-          colorEnd: "static-transparent"
+          colorStart: 'hsl(var(--a))', // Using accent color
+          colorEnd: 'transparent'
         }}
         lines={{
           display: true,
           opacity: 0.1,
-          size: "16",
+          size: 16,
           thickness: 1,
           angle: 90,
-          color: "accent-background-strong"
+          color: 'hsl(var(--a))' // Using accent color
         }}
         mask={{
           x: mousePosition.x,
