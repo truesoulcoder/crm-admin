@@ -1,5 +1,5 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
 import { getSupabaseClient } from './_utils';
+import type { NextApiRequest, NextApiResponse } from 'next';
 
 const STATUS_KEY = 'campaign_processing_enabled';
 
