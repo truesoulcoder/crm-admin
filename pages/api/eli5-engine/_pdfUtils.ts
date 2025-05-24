@@ -2,7 +2,7 @@ import fs from 'fs/promises'; // For reading template files
 import path from 'path';
 // import puppeteer from 'puppeteer'; // Removed puppeteer
 import puppeteer from 'puppeteer-core'; // Added puppeteer-core
-import chromium from 'chrome-aws-lambda'; // Switched from @sparticuz/chromium-min
+import chromium from 'chrome-aws-lambda'; // Switched to chrome-aws-lambda
 import nunjucks from 'nunjucks';
 import { PDFDocument } from 'pdf-lib';
 // import { logToSupabase } from './_utils'; // Assuming logToSupabase is available
@@ -32,14 +32,14 @@ export const generateLoiPdf = async (
     // 1. Render HTML content using Nunjucks
     const renderedHtml = nunjucks.render('letter_of_intent_text.html', personalizationData);
 
+    // 2. Convert HTML to PDF using Puppeteer
     let browser = null; 
     try {
-      const executablePath = await chromium.executablePath;
       browser = await puppeteer.launch({
         args: chromium.args,
-        executablePath,
-        headless: chromium.headless,
         defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath, // CRITICAL CHANGE for chrome-aws-lambda
+        headless: chromium.headless, 
         ignoreHTTPSErrors: true,
       });
       const page = await browser.newPage();
@@ -103,4 +103,3 @@ export const generateLoiPdf = async (
     return null;
   }
 };
-// Legacy PDF utilities removed
