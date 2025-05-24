@@ -1,19 +1,18 @@
 'use client'
 
-// Removed UploadCloud, Eye, Mail, Phone, MapPin from lucide-react imports
-import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle, XCircle, Save } from 'lucide-react';
+// React and Third-Party Libraries
 import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
-import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api'; 
-import { useGoogleMapsApi } from '../maps/GoogleMapsLoader'; 
+import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle, XCircle, Save } from 'lucide-react';
+import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api';
 
-// Using shared Supabase client
-// import { Badge } from 'react-daisyui'; // Removed Badge from react-daisyui
-import { supabase } from '@/lib/supabase/client';
+// Local/Application-Specific Imports
+import { useGoogleMapsApi } from '../maps/GoogleMapsLoader';
+import { supabase } from '@/lib/supabase/client'; // Using shared Supabase client
 import {
   createCrmLeadAction,
   updateCrmLeadAction,
   deleteCrmLeadAction
-} from '../../app/crm/actions'; // Added server action imports
+} from '../../app/crm/actions'; // Server action imports
 
 // Define types (adjust based on your actual schema)
 // NormalizedLead interface removed, CrmLead will be inserted below
