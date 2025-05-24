@@ -1,10 +1,12 @@
 // src/app/api/leads/upload/route.ts
-import { createClient } from '@supabase/supabase-js';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
-import Papa from 'papaparse';
 import { randomUUID } from 'crypto';
+
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import Papa from 'papaparse';
+
 
 // Utility function to convert strings to snake_case
 const convertToSnakeCase = (str: string): string => {
@@ -263,7 +265,49 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('API: Lead import and normalization process completed successfully.');
-    return NextResponse.json({ ok: true, message: 'File processed and leads normalized successfully.' });
+
+    // ---------- 4. CREATE MARKET-SPECIFIC TABLE ----------
+    const saneMarketRegionPart = convertToSnakeCase(marketRegion);
+    if (!saneMarketRegionPart) {
+      console.error(`API Error: Market region "${marketRegion}" results in an empty string after sanitization.`);
+      // Note: File is already uploaded and leads normalized. Consider if cleanup is needed here.
+      // For now, we proceed but the table name might be 'mkt_'
+      return NextResponse.json(
+        { ok: false, error: `Market region "${marketRegion}" is invalid for table creation.` },
+        { status: 400 }
+      );
+    }
+    const targetTableName = `mkt_${saneMarketRegionPart}`;
+    console.log(`API: Attempting to create/populate market-specific table: ${targetTableName} for market: ${marketRegion}`);
+
+    const { error: marketTableError } = await supabaseAdmin.rpc('create_market_specific_lead_table', {
+      p_target_table_name: targetTableName,
+      p_market_region_filter: marketRegion
+    });
+
+    if (marketTableError) {
+      console.error(`RPC call to create_market_specific_lead_table for ${targetTableName} failed:`, marketTableError);
+      // Attempt to cleanup the storage file if this final step fails
+      if (objectPath) {
+        console.log(`Attempting to cleanup storage file due to market-specific table creation failure: ${objectPath}`);
+        const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+        if (cleanupError) {
+          console.error(`Failed to cleanup storage file ${objectPath} after market-specific table failure:`, cleanupError);
+        } else {
+          console.log(`Successfully cleaned up storage file: ${objectPath}`);
+        }
+      }
+      return NextResponse.json(
+        { ok: false, error: `Failed to create or populate market-specific table '${targetTableName}'.`, details: marketTableError.message },
+        { status: 500 }
+      );
+    }
+
+    console.log(`API: Successfully created/populated market-specific table ${targetTableName}.`);
+    return NextResponse.json({ 
+      ok: true, 
+      message: `File processed, leads normalized, and market table '${targetTableName}' created/updated successfully.` 
+    });
 
   } catch (error: any) {
     console.error('API: Unhandled error in POST /api/leads/upload:', error);
