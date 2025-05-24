@@ -223,13 +223,12 @@ export const generateLoiPdf = async (
          console.error('DEBUG_PDFUTILS: No pages found in dynamically generated content PDF (contentPdfToEmbed).');
          throw new Error('No pages found in the generated content PDF to embed.');
      }
-     const firstPageFromContent = pagesToEmbed[0]; // The first page of our dynamically generated content
-     console.log('DEBUG_PDFUTILS: firstPageFromContent type:', typeof firstPageFromContent);
+     // const firstPageFromContent = pagesToEmbed[0]; // This line can be removed as firstPageFromContent is no longer used directly here
+     // console.log('DEBUG_PDFUTILS: firstPageFromContent type:', typeof firstPageFromContent); // This log can also be removed
 
-     // Embed the first page from the dynamically generated content PDF into the letterhead document
-     // embedPdf expects an array of PDFPage objects, or a single PDFPage object.
-     // Ensure firstPageFromContent is a PDFPage object.
-     const [embeddedContentPage] = await letterheadPdfDoc.embedPdf([firstPageFromContent]); 
+     // Embed the first page (index 0) from the contentPdfToEmbed document
+     const [embeddedContentPage] = await letterheadPdfDoc.embedPdf(contentPdfToEmbed, [0]); 
+     
      console.log('DEBUG_PDFUTILS: embeddedContentPage type:', typeof embeddedContentPage, 'width:', embeddedContentPage.width, 'height:', embeddedContentPage.height);
 
      const firstPageOfLetterhead = letterheadPdfDoc.getPages()[0];
