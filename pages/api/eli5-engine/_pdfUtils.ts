@@ -1,32 +1,15 @@
-import fs from 'fs/promises';
+import fs from 'fs/promises'; // For reading template files and font
 import path from 'path';
+import { PDFDocument, StandardFonts, rgb, PageSizes } from 'pdf-lib'; // Ensure imports at top
+import fontkit from '@pdf-lib/fontkit'; // Added fontkit import
 
-import { PDFDocument, StandardFonts, rgb, PageSizes, PDFPage, PDFFont } from 'pdf-lib';
-
-interface PersonalizationData {
-  property_address?: string;
-  current_date?: string;
-  greeting_name?: string;
-  offer_price?: string;
-  emd_amount?: string;
-  closing_date?: string;
-  title_company?: string;
-  sender_name?: string;
-  sender_title?: string;
-  company_name?: string;
-  // Add other properties as needed
-}
+// Define paths (ensure these are correct for your serverless environment)
+const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
+const BLANK_LETTERHEAD_PDF_FILE = path.join(templateDir, 'blank-letterhead.pdf');
+const ALEX_BRUSH_FONT_FILE = path.join(templateDir, 'AlexBrush-Regular.ttf');
 
 // Helper function for drawing wrapped text (simplified)
-async function drawWrappedText(page: PDFPage, text: string, options: {
-  font: PDFFont;
-  fontSize: number;
-  x: number;
-  y: number;
-  maxWidth: number;
-  lineHeight: number;
-  color: any; // Type from pdf-lib
-}) {
+async function drawWrappedText(page: any, text: string, options: any) {
   const { font, fontSize, x, y, maxWidth, lineHeight, color } = options;
   const words = text.split(' ');
   let currentLine = '';
@@ -34,7 +17,7 @@ async function drawWrappedText(page: PDFPage, text: string, options: {
 
   for (const word of words) {
     const testLine = currentLine + (currentLine === '' ? '' : ' ') + word;
-    const textWidth = font.widthOfTextAtSize(testLine, fontSize);
+    const { width: textWidth } = font.widthOfTextAtSize(testLine, fontSize);
     if (textWidth > maxWidth && currentLine !== '') {
       page.drawText(currentLine, { x, y: currentY, font, size: fontSize, color });
       currentLine = word;
@@ -45,19 +28,14 @@ async function drawWrappedText(page: PDFPage, text: string, options: {
   }
   if (currentLine !== '') {
     page.drawText(currentLine, { x, y: currentY, font, size: fontSize, color });
-    currentY -= lineHeight;
+    currentY -= lineHeight; // Adjust Y for the next potential block of text
   }
-  return currentY;
+  return currentY; // Return the Y position after the last line drawn
 }
-
-// Define paths (ensure these are correct for your serverless environment)
-const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
-const BLANK_LETTERHEAD_PDF_FILE = path.join(templateDir, 'blank-letterhead.pdf');
-const ALEX_BRUSH_FONT_FILE = path.join(templateDir, 'AlexBrush-Regular.ttf');
 
 
 export const generateLoiPdf = async (
-  personalizationData: PersonalizationData,
+  personalizationData: any,
   leadId: string, 
   contactEmail: string 
 ): Promise<Buffer | null> => {
@@ -69,6 +47,7 @@ export const generateLoiPdf = async (
   try {
     // 1. Create New PDF Document for Content
     const contentPdfDoc = await PDFDocument.create();
+    contentPdfDoc.registerFontkit(fontkit); // Register fontkit
     const page = contentPdfDoc.addPage(PageSizes.A4); // Using standard A4 size
     const { width, height } = page.getSize();
 
@@ -111,7 +90,7 @@ export const generateLoiPdf = async (
     y -= titleFontSize * 1.5;
 
     // --- Property Address Subtitle ---
-    page.drawText(personalizationData?.property_address || "N/A Property Address", {
+    page.drawText(personalizationData.property_address || "N/A Property Address", {
       x: margin,
       y: y,
       font: helveticaFont,
@@ -121,9 +100,8 @@ export const generateLoiPdf = async (
     y -= subtitleFontSize * 1.5;
     
     // --- Date ---
-    const currentDateText = personalizationData?.current_date || "N/A Date";
-    page.drawText(currentDateText, {
-        x: width - margin - helveticaFont.widthOfTextAtSize(currentDateText, baseFontSize), // Align right
+    page.drawText(personalizationData.current_date || "N/A Date", {
+        x: width - margin - helveticaFont.widthOfTextAtSize(personalizationData.current_date || "N/A Date", baseFontSize), // Align right
         y: y,
         font: helveticaFont,
         size: baseFontSize,
@@ -133,7 +111,7 @@ export const generateLoiPdf = async (
 
 
     // --- Salutation ---
-    page.drawText(`Dear ${personalizationData?.greeting_name || "Sir/Madam"},`, {
+    page.drawText(`Dear ${personalizationData.greeting_name || "Sir/Madam"},`, {
       x: margin,
       y: y,
       font: helveticaFont,
@@ -143,16 +121,16 @@ export const generateLoiPdf = async (
     y -= lineHeight * 1.5;
 
     // --- Body Paragraph 1 (Simplified) ---
-    const introParagraph = `We are pleased to submit this Letter of Intent ("LOI") to purchase the property located at ${personalizationData?.property_address || "N/A"} (the "Property") under the terms and conditions set forth herein. This LOI is an expression of our serious interest in acquiring the Property.`;
+    const introParagraph = `We are pleased to submit this Letter of Intent ("LOI") to purchase the property located at ${personalizationData.property_address || "N/A"} (the "Property") under the terms and conditions set forth herein. This LOI is an expression of our serious interest in acquiring the Property.`;
     y = await drawWrappedText(page, introParagraph, {font: timesRomanFont, fontSize: baseFontSize, x: margin, y, maxWidth: contentWidth, lineHeight, color: rgb(0,0,0) });
     y -= lineHeight; 
 
     // --- Offer Summary (Simplified Key-Value) ---
     const offerDetails = [
-      { label: "Purchase Price:", value: personalizationData?.offer_price || "N/A" },
-      { label: "Earnest Money Deposit (EMD):", value: personalizationData?.emd_amount || "N/A" },
-      { label: "Closing Date:", value: personalizationData?.closing_date || "N/A" },
-      { label: "Title Company:", value: personalizationData?.title_company || "N/A" },
+      { label: "Purchase Price:", value: personalizationData.offer_price || "N/A" },
+      { label: "Earnest Money Deposit (EMD):", value: personalizationData.emd_amount || "N/A" },
+      { label: "Closing Date:", value: personalizationData.closing_date || "N/A" },
+      { label: "Title Company:", value: personalizationData.title_company || "N/A" },
     ];
 
     for (const detail of offerDetails) {
@@ -196,7 +174,7 @@ export const generateLoiPdf = async (
       color: rgb(0, 0, 0),
     });
     y -= lineHeight;
-    page.drawText(personalizationData?.sender_title || "N/A Sender Title", {
+    page.drawText(personalizationData.sender_title || "N/A Sender Title", {
       x: margin,
       y: y,
       font: helveticaFont,
@@ -204,7 +182,7 @@ export const generateLoiPdf = async (
       color: rgb(0, 0, 0),
     });
     y -= lineHeight;
-    page.drawText(personalizationData?.company_name || "N/A Company Name", {
+    page.drawText(personalizationData.company_name || "N/A Company Name", {
       x: margin,
       y: y,
       font: helveticaFont,
@@ -220,36 +198,57 @@ export const generateLoiPdf = async (
     
     await drawWrappedText(page, disclaimer, {font: timesRomanItalicFont, fontSize: disclaimerFontSize, x: margin, y, maxWidth: contentWidth, lineHeight: smallLineHeight, color: rgb(0.3,0.3,0.3) });
 
-    // 3. Save the dynamically generated content PDF
-    const contentPdfBytes = await contentPdfDoc.save();
+    // ... all page.drawText() and other drawing calls on 'page' from contentPdfDoc are complete ...
 
-    // 4. Merge with Blank Letterhead
-    const letterheadPdfBytes = await fs.readFile(BLANK_LETTERHEAD_PDF_FILE);
-    
-    const letterheadPdfDoc = await PDFDocument.load(letterheadPdfBytes);
-    const contentPdfToEmbed = await PDFDocument.load(contentPdfBytes);
+     const contentPdfBytes = await contentPdfDoc.save();
+     console.log('DEBUG_PDFUTILS: contentPdfBytes type:', typeof contentPdfBytes, 'instanceof Uint8Array:', contentPdfBytes instanceof Uint8Array, 'length:', contentPdfBytes?.length);
 
-    // Embed the first page of the content PDF onto the first page of the letterhead
-    const [contentFirstPage] = await letterheadPdfDoc.embedPdf(contentPdfToEmbed.getPages()[0]);
-    
-    const firstPageOfLetterhead = letterheadPdfDoc.getPages()[0];
-    if (!firstPageOfLetterhead) {
-      throw new Error('Blank letterhead PDF does not contain any pages.');
-    }
-    
-    // Draw the content page onto the letterhead page
-    // Adjust x, y, width, height as needed for desired positioning on letterhead
-    // For a full overlay, use dimensions of the content page, assuming letterhead is background
-    firstPageOfLetterhead.drawPage(contentFirstPage, {
-      x: 0, // Adjust if content needs to be offset from letterhead edges
-      y: 0, // Adjust if content needs to be offset from letterhead edges
-      width: contentFirstPage.width,
-      height: contentFirstPage.height,
-    });
+     if (!(contentPdfBytes instanceof Uint8Array) || contentPdfBytes.length === 0) {
+         console.error('DEBUG_PDFUTILS: contentPdfBytes is invalid or empty. PDF content generation might have failed silently.');
+         throw new Error('Generated content PDF bytes are invalid or empty.');
+     }
 
-    const mergedPdfBytes = await letterheadPdfDoc.save();
-    console.log(`Successfully generated LOI PDF (pdf-lib) for lead ID: ${leadId}`);
-    return Buffer.from(mergedPdfBytes);
+     const BLANK_LETTERHEAD_PDF_FILE = path.join(templateDir, 'blank-letterhead.pdf'); // Ensure templateDir is correctly defined
+     const letterheadPdfBytes = await fs.readFile(BLANK_LETTERHEAD_PDF_FILE);
+
+     const letterheadPdfDoc = await PDFDocument.load(letterheadPdfBytes);
+     const contentPdfToEmbed = await PDFDocument.load(contentPdfBytes); // This is the dynamically generated content
+     
+     console.log('DEBUG_PDFUTILS: contentPdfToEmbed (dynamic content) type:', typeof contentPdfToEmbed, 'pageCount:', contentPdfToEmbed?.getPageCount());
+
+     const pagesToEmbed = contentPdfToEmbed.getPages();
+     console.log('DEBUG_PDFUTILS: contentPdfToEmbed pages array length:', pagesToEmbed.length);
+
+     if (pagesToEmbed.length === 0) {
+         console.error('DEBUG_PDFUTILS: No pages found in dynamically generated content PDF (contentPdfToEmbed).');
+         throw new Error('No pages found in the generated content PDF to embed.');
+     }
+     const firstPageFromContent = pagesToEmbed[0]; // The first page of our dynamically generated content
+     console.log('DEBUG_PDFUTILS: firstPageFromContent type:', typeof firstPageFromContent);
+
+     // Copy the first page from the content PDF into the letterhead PDF
+     const [copiedPage] = await letterheadPdfDoc.copyPages(contentPdfToEmbed, [0]); // [0] means copy the first page
+     console.log('DEBUG_PDFUTILS: copiedPage type:', typeof copiedPage, 'width:', copiedPage.getWidth(), 'height:', copiedPage.getHeight());
+
+     const firstPageOfLetterhead = letterheadPdfDoc.getPages()[0];
+     if (!firstPageOfLetterhead) {
+         console.error('DEBUG_PDFUTILS: Blank letterhead PDF does not contain any pages.');
+         throw new Error('Blank letterhead PDF does not contain any pages.');
+     }
+     
+     // Draw the copied page onto the first page of the letterhead
+     // Adjust x, y if content should not start at bottom-left of letterhead page.
+     // Common is to overlay directly, or position with slight margins.
+     firstPageOfLetterhead.drawPage(copiedPage, {
+         x: 0, // Or some margin, e.g., firstPageOfLetterhead.getX() + margin
+         y: 0, // Or some margin, e.g., firstPageOfLetterhead.getY() + margin
+         width: copiedPage.getWidth(),
+         height: copiedPage.getHeight(),
+     });
+
+     const mergedPdfBytes = await letterheadPdfDoc.save();
+     console.log('DEBUG_PDFUTILS: Merged PDF saved, byte length:', mergedPdfBytes.length);
+     return Buffer.from(mergedPdfBytes);
 
   } catch (error: any) {
     console.error(`Error in generateLoiPdf (pdf-lib) for lead ${leadId}: ${error.message}`, error.stack);
