@@ -124,11 +124,11 @@ export const generateLoiPdf = async (
     const textX = pageMargin;
     const textMaxWidth = width - 2 * pageMargin; // Updated textMaxWidth
     
-    const baseFontSize = 11; 
-    const titleFontSize = 18; 
-    const subtitleFontSize = 13;
+    const baseFontSize = 14; 
+    const titleFontSize = 28; 
+    const subtitleFontSize = 18;
     const signatureFontSize = 28; 
-    const disclaimerFontSize = 9;
+    const disclaimerFontSize = 12;
 
     const bodyLineHeight = baseFontSize * 1.2;
     const disclaimerLineHeight = disclaimerFontSize * 1.2;
@@ -202,18 +202,27 @@ export const generateLoiPdf = async (
       { label: "Earnest Money Deposit (EMD):", value: personalizationData.emd_amount || "N/A" },
       { label: "Closing Date:", value: personalizationData.closing_date || "N/A" },
       { label: "Title Company:", value: personalizationData.title_company || "N/A" },
-      { label: "Buyer’s Assignment Consideration (BAC):", value: "$10" }, // Added BAC item
+      { label: "Buyer’s Assignment Consideration (BAC):", value: "$10" }, 
     ];
     
-    const itemIndentX = textX + 10; // Indent for list items if desired, or use textX
-    const listFont = timesRomanFont; // Font for list items
-    const listFontSize = baseFontSize; // Font size for list items
-    const listColor = bodyColor; // Color for list items
-    const valueXOffset = 180; // X offset for the value part of the list item
+    const labelX = textX + 10; // Use textX (which is pageMargin) or add a small indent
+    const valueX = pageMargin + 220; // New fixed X for all values, increased from previous relative offset
 
     for (const detail of offerDetails) {
-      page.drawText(detail.label, { x: itemIndentX, y: currentY, font: listFont, size: listFontSize, color: listColor });
-      page.drawText(detail.value, { x: itemIndentX + valueXOffset, y: currentY, font: helveticaBoldFont, size: listFontSize, color: listColor });
+      page.drawText(detail.label, { 
+        x: labelX, 
+        y: currentY, 
+        font: timesRomanFont, // Using timesRomanFont for labels
+        size: baseFontSize, 
+        color: bodyColor 
+      });
+      page.drawText(detail.value, { 
+        x: valueX, // Use the new fixed X for values
+        y: currentY, 
+        font: helveticaBoldFont, // Keep helveticaBoldFont for values as per original
+        size: baseFontSize, 
+        color: bodyColor 
+      });
       currentY -= bodyLineHeight;
     }
     currentY -= bodyLineHeight; // Space after offer details
@@ -225,7 +234,7 @@ export const generateLoiPdf = async (
     currentY -= bodyLineHeight; // Space after paragraph
 
     // --- Closing Paragraph (Simplified) ---
-    const closingParagraph = "We look forward to the possibility of working with you on this transaction and are excited about the prospect of acquiring this Property. Please indicate your acceptance of these terms by signing below.";
+    const closingParagraph = "We look forward to the possibility of working with you on this transaction and are excited about the prospect of acquiring this Property. Please reply back to us if you wish to move forward or have questions.";
     currentY = drawWrappedText(page, closingParagraph, textX, currentY, timesRomanFont, baseFontSize, textMaxWidth, bodyLineHeight, bodyColor ); // Updated call
     currentY -= bodyLineHeight * 2; // Space before "Warm regards,"
 
