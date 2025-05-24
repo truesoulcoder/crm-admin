@@ -1,34 +1,52 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
-import React from 'react';
+import type { NextRequest } from 'next/server';
 
-export async function middleware(req: any) {
-  const res = NextResponse.next();
+export async function middleware(request: NextRequest) {
+  const response = NextResponse.next();
+  const url = request.nextUrl;
+  const path = url.pathname;
+
+  // Create a Supabase client configured to use cookies
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll: () => req.cookies.getAll(),
-        setAll: (cookies) => {
-          cookies.forEach(({ name, value, options }) => {
-            res.cookies.set(name, value, options);
-          });
-        }
-      }
+        get(name: string) {
+          return request.cookies.get(name)?.value;
+        },
+        set(name: string, value: string, options: any) {
+          request.cookies.set({ name, value, ...options });
+          response.cookies.set({ name, value, ...options });
+        },
+        remove(name: string, options: any) {
+          request.cookies.delete(name);
+          response.cookies.delete(name);
+        },
+      },
     }
   );
-  // Refresh session if expired
-  await supabase.auth.getUser();
-  return res;
+
+  // Get the user's session
+  const { data: { session } } = await supabase.auth.getSession();
+  const isAuthPage = path === '/' || path === '/login' || path === '/signup';
+  
+  // If user is not signed in and the current path is not an auth page, redirect to login
+  if (!session && !isAuthPage) {
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+
+  // If user is signed in and the current path is an auth page, redirect to dashboard
+  if (session && isAuthPage) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
+
+  return response;
 }
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/.*).*)',
   ],
 };
-export interface StreetViewMapProps {
-  address: string;
-  containerStyle?: React.CSSProperties;
-}

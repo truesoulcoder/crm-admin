@@ -39,22 +39,22 @@ const getUserRole = (user: User | null): string => {
       const roleFromMeta = user.app_metadata.role;
       console.log(`[getUserRole] Found role in app_metadata: '${roleFromMeta}'`);
       
-      if (roleFromMeta === 'superadmin' || roleFromMeta === 'crmuser' || roleFromMeta === 'guest') {
+      if (roleFromMeta === 'superadmin' || roleFromMeta === 'guest' || roleFromMeta === 'guest') {
         return roleFromMeta;
       } else {
-        console.warn(`[getUserRole] Unknown role in app_metadata: '${roleFromMeta}'. Defaulting to 'crmuser'.`);
-        return 'crmuser'; // Default to crmuser for valid domain users with unknown role
+        console.warn(`[getUserRole] Unknown role in app_metadata: '${roleFromMeta}'. Defaulting to 'guest'.`);
+        return 'guest'; // Default to guest for valid domain users with unknown role
       }
     }
     
-    // If no role is set but user has valid domain, default to 'crmuser'
-    console.log("[getUserRole] No 'role' found in app_metadata for domain user. Defaulting to 'crmuser'.");
-    return 'crmuser';
+    // If no role is set but user has valid domain, default to 'guest'
+    console.log("[getUserRole] No 'role' found in app_metadata for domain user. Defaulting to 'guest'.");
+    return 'guest';
   }
   
   // Default fallback (shouldn't normally reach here)
-  console.log("[getUserRole] No app_metadata found. Defaulting to 'crmuser'.");
-  return 'crmuser';
+  console.log("[getUserRole] No app_metadata found. Defaulting to 'guest'.");
+  return 'guest';
 };
 
 export const UserProvider = ({ children }: { children: ReactNode }) => {
@@ -64,7 +64,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() || ''; // Provide empty string as default if null
 
   useEffect(() => {
     let isMounted = true;
@@ -148,14 +148,20 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
           setRole(userRole);
           
           // Handle redirections
-          if (pathname !== '/') {
-            if (userRole === 'crmuser' && !pathname.startsWith('/crm')) {
-              router.replace('/crm');
-              return;
-            } else if (userRole === 'guest' || (userRole !== 'superadmin' && userRole !== 'crmuser')) {
-              router.replace('/');
-              return;
-            }
+          if (pathname === '/' || pathname === '/login') {
+            // If user is already authenticated and tries to access auth pages, redirect to dashboard
+            router.replace('/dashboard');
+            return;
+          }
+          
+          // Handle role-based redirections
+          if (userRole === 'guest' && !currentPath.startsWith('/crm')) {
+            router.replace('/crm');
+            return;
+          } else if (userRole === 'guest' || (userRole !== 'superadmin' && userRole !== 'guest')) {
+            // If user doesn't have proper role, redirect to home
+            router.replace('/');
+            return;
           }
         } else {
           // No active session
@@ -163,16 +169,18 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
           setUser(null);
           setRole('guest');
           
-          if (pathname !== '/') {
+          // Only redirect to login if not already on an auth page
+          if (safePathname !== '/' && safePathname !== '/login') {
             router.replace('/');
             return;
           }
         }
         
         setError(null);
-      } catch (e) {
+      } catch (err) {
         if (isMounted) {
-          console.error("Error in fetchUserSessionAndRole:", e);
+          const error = err as Error;
+          console.error("Error in fetchUserSessionAndRole:", error);
           setError("Error loading user data. Please refresh the page.");
         }
       } finally {
@@ -209,22 +217,21 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   }
 
   // This specific render-time redirect might conflict with RequireAuth or page-level redirects.
-  // Let's rely on useEffect and page-level logic for redirects mostly.
-  // if (!isLoading && role === 'crmuser' && !pathname.startsWith('/crm') && pathname !== '/' && pathname !== '/login') {
-  //   console.log(`[UserProvider] Render check: crmuser ('${role}') on restricted path '${pathname}'. Displaying redirect message.`);
-  //   // This can cause hydration errors if router.replace is called during render pass from here.
-  //   // It's better to handle in useEffect or at page level.
-  //   // router.replace('/crm'); 
-  //   return (
-  //       <div className="flex min-h-screen flex-col items-center justify-center bg-base-100">
-  //           <span className="loading loading-spinner loading-lg text-primary"></span>
-  //           <p className="mt-4 text-lg">Redirecting to your authorized area...</p>
-  //       </div>
-  //   );
-  // }
+  // We'll rely on useEffect and page-level logic for redirects to prevent hydration issues.
+  // The actual redirect logic is handled in the fetchUserSessionAndRole function.
+  // Keeping this commented as a reference for future implementation.
+  /* if (!isLoading && role === 'guest' && !safePathname.startsWith('/crm') && safePathname !== '/' && safePathname !== '/login') {
+    console.log(`[UserProvider] Render check: guest ('${role}') on restricted path '${safePathname}'.`);
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-base-100">
+        <span className="loading loading-spinner loading-lg text-primary"></span>
+        <p className="mt-4 text-lg">Redirecting to your authorized area...</p>
+      </div>
+    );
+  } */
 
   
-  console.log(`[UserProvider] Render: isLoading=${isLoading}, role=${role}, path=${pathname}. Rendering children.`);
+  console.log(`[UserProvider] Render: isLoading=${isLoading}, role=${role}, path=${safePathname}. Rendering children.`);
   return (
     <UserContext.Provider value={{ user, session, role, isLoading, error }}>
       {children}
