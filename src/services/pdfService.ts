@@ -1,10 +1,9 @@
 // This module should only be used in server-side code (API routes)
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-// @ts-ignore - chromium is a default export
-import chromium from '@sparticuz/chromium-min';
 import * as fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, rgb } from 'pdf-lib';
+import chromium from 'chrome-aws-lambda';
 import { Browser, PDFOptions, launch } from 'puppeteer-core';
 
 // Only import server-side dependencies
@@ -112,40 +111,13 @@ export async function generatePdfFromHtml(
   const startTime = Date.now();
   
   try {
-    // Configure launch options based on environment
-    const isProduction = process.env.NODE_ENV === 'production';
-    const launchOptions = isProduction
-      ? {
-          args: chromium.args,
-          defaultViewport: chromium.defaultViewport,
-          executablePath: await chromium.executablePath(),
-          headless: chromium.headless,
-          ignoreHTTPSErrors: true,
-        }
-      : {
-          args: ['--no-sandbox', '--disable-setuid-sandbox'],
-          executablePath: process.platform === 'win32'
-            ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
-            : process.platform === 'darwin'
-            ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-            : '/usr/bin/google-chrome',
-        };
-
     // Launch browser with proper type casting
     browser = await launch({
-      ...launchOptions,
-      headless: true,
-      args: [
-        ...(launchOptions.args || []),
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ],
+      executablePath: await chromium.executablePath,
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      headless: chromium.headless,
+      ignoreHTTPSErrors: true,
     } as const);
 
     if (!browser) {

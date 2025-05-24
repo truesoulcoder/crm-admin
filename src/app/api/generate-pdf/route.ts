@@ -13,6 +13,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // Removed legacy AWS Lambda chromium dependencies
     const pdfBuffer = await generatePdfFromHtml(html, {
       format: 'A4',
       margin: { top: '1cm', right: '1cm', bottom: '1cm', left: '1cm' },
