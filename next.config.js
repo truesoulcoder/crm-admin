@@ -9,16 +9,16 @@ const nextConfig = {
   reactStrictMode: false, // Temporarily disabled for diagnostics
   // External packages for server components
   serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
+  outputFileTracingIncludes: {
+    '/api/eli5-engine/*': [
+      './node_modules/@sparticuz/chromium/bin/**'
+    ]
+  },
   experimental: {
     // Add any experimental features here
     serverActions: {
       allowedOrigins: ['localhost:3000']
     },
-    outputFileTracingIncludes: {
-      '/api/eli5-engine/*': [
-        './node_modules/@sparticuz/chromium/bin/**'
-      ]
-    }
   },
   // Configure webpack to handle Node.js modules and optimize builds
   webpack: (config, { isServer, dev }) => {
