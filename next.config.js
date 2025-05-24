@@ -7,18 +7,27 @@ const __dirname = path.dirname(__filename);
 
 const nextConfig = {
   reactStrictMode: false,
-  serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
+  // Only include puppeteer-core in serverExternalPackages
+  serverExternalPackages: ['puppeteer-core'],
   
-  outputFileTracingIncludes: {
-    '/api/eli5-engine/*': [
-      './node_modules/@sparticuz/chromium/**'
-    ]
-  },
+  // Only include outputFileTracingIncludes in production
+  ...(process.env.NODE_ENV === 'production' && {
+    outputFileTracingIncludes: {
+      '/api/eli5-engine/*': [
+        // Only include the necessary files from @sparticuz/chromium
+        './node_modules/@sparticuz/chromium/bin/**',
+        './node_modules/@sparticuz/chromium/lib/**',
+        './node_modules/@sparticuz/chromium/package.json'
+      ]
+    }
+  }),
 
   experimental: {
     serverActions: {
       allowedOrigins: ['localhost:3000']
-    }
+    },
+    // Enable server components external packages
+    serverComponentsExternalPackages: ['@sparticuz/chromium']
   },
   // Configure webpack to handle Node.js modules and optimize builds
   webpack: (config, { isServer, dev }) => {

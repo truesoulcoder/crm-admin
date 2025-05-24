@@ -1,19 +1,38 @@
 {
   "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
   "routes": [
     {
       "src": "/api/(.*)",
       "dest": "/api/$1"
     },
     {
-      "src": "/",
+      "src": "/(.*)",
       "dest": "/"
     }
   ],
   "functions": {
-    "pages/api/eli5-engine/*.ts": {
-      "maxDuration": 30,
-      "memory": 1024
+    "pages/api/eli5-engine/**/*.ts": {
+      "maxDuration": 60,
+      "memory": 2048,
+      "includeFiles": [
+        "node_modules/@sparticuz/chromium/**"
+      ]
+    }
+  },
+  "env": {
+    "NODE_ENV": "production",
+    "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
+  },
+  "build": {
+    "env": {
+      "NODE_ENV": "production",
+      "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
     }
   }
 }
