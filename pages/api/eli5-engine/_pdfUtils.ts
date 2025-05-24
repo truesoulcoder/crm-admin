@@ -125,7 +125,7 @@ export const generateLoiPdf = async (
     const textMaxWidth = width - 2 * pageMargin; // Updated textMaxWidth
     
     const baseFontSize = 14; 
-    const titleFontSize = 22; 
+    const titleFontSize = 20; 
     const subtitleFontSize = 16;
     const signatureFontSize = 28; 
     const disclaimerFontSize = 12;
