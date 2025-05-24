@@ -1,18 +1,19 @@
 'use client';
 
 // Removed UploadCloud, kept PlusCircle & Eye for now
+import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api'; // Removed useJsApiLoader
 import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle, XCircle, Save, Eye, Mail, Phone, MapPin } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
-import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api'; // Removed useJsApiLoader
-import { useGoogleMapsApi } from '../maps/GoogleMapsLoader'; // Import the context hook
 
 // Using shared Supabase client
-import { supabase } from '@/lib/supabase/client';
+
 import {
   createCrmLeadAction,
   updateCrmLeadAction,
   deleteCrmLeadAction
-} from '../../app/crm/actions';
+} from '@/app/crm/actions';
+import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader'; // Import the context hook
+import { supabase } from '@/lib/supabase/client';
 
 export interface CrmLead {
   id: number; // bigserial maps to number in TS

@@ -1,24 +1,15 @@
-import CrmLeadsView from '@/components/views/CrmView';
+"use client";
 
-export const dynamic = 'force-dynamic';
-
-export default function CrmPage() {
-  return (
-    <div className="w-full h-full">
-      <CrmLeadsView />
-    </div>
-  );
-}
-import CrmLeadsView from '@/components/views/CrmView';
 import GoogleMapsLoader from '@/components/maps/GoogleMapsLoader'; // Import the loader
+import CrmView from '@/components/views/CrmView';
 
 export const dynamic = 'force-dynamic';
 
 export default function CrmPage() {
   return (
-    <GoogleMapsLoader> {/* Wrap CrmLeadsView with GoogleMapsLoader */}
+    <GoogleMapsLoader> {/* Wrap CRMView with GoogleMapsLoader */}
       <div className="w-full h-full">
-        <CrmLeadsView />
+        <CrmView />
       </div>
     </GoogleMapsLoader>
   );
