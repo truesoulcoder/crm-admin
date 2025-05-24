@@ -1,11 +1,10 @@
 import fs from 'fs/promises'; // For reading template files
 import path from 'path';
-// import puppeteer from 'puppeteer'; // Removed puppeteer
+import { PDFDocument } from 'pdf-lib'; // Import PDFDocument from pdf-lib
+
 import puppeteer from 'puppeteer-core'; // Added puppeteer-core
-import chromium from '@sparticuz/chromium'; // Reverted to @sparticuz/chromium
+import chromium from '@sparticuz/chromium-min'; // Using @sparticuz/chromium-min for smaller bundle size
 import nunjucks from 'nunjucks';
-import { PDFDocument } from 'pdf-lib';
-// import { logToSupabase } from './_utils'; // Assuming logToSupabase is available
 
 // Configure Nunjucks
 const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
@@ -35,13 +34,15 @@ export const generateLoiPdf = async (
     // 2. Convert HTML to PDF using Puppeteer
     let browser = null; 
     try {
+      // Launch browser with type assertion to handle ignoreHTTPSErrors
       browser = await puppeteer.launch({
         args: chromium.args,
         defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath(), // Ensure it's a function call
-        headless: chromium.headless, 
-        ignoreHTTPSErrors: true,
-      });
+        executablePath: await chromium.executablePath(),
+        headless: Boolean(chromium.headless), // Explicitly cast to boolean
+        // @ts-ignore - ignoreHTTPSErrors is valid but not in the type definitions
+        ignoreHTTPSErrors: true
+      } as const);
       const page = await browser.newPage();
       await page.setContent(renderedHtml, { waitUntil: 'networkidle0' });
       

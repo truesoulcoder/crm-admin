@@ -10,33 +10,46 @@ const nextConfig = {
   // Only include puppeteer-core in serverExternalPackages
   serverExternalPackages: ['puppeteer-core'],
   
-  // Only include outputFileTracingIncludes in production
-  ...(process.env.NODE_ENV === 'production' && {
-    outputFileTracingIncludes: {
-      '/api/eli5-engine/*': [
-        // Only include the necessary files from @sparticuz/chromium
-        './node_modules/@sparticuz/chromium/bin/**',
-        './node_modules/@sparticuz/chromium/lib/**',
-        './node_modules/@sparticuz/chromium/package.json'
-      ]
-    }
-  }),
+  // Configure output file tracing for serverless functions
+  outputFileTracingIncludes: {
+    '/api/eli5-engine/**/*': [
+      // Include all files from @sparticuz/chromium-min
+      './node_modules/@sparticuz/chromium-min/**/*',
+      // Include any other required files
+      './node_modules/puppeteer-core/**/*',
+      './node_modules/ws/**/*',
+      './node_modules/undici/**/*'
+    ]
+  },
 
   experimental: {
     serverActions: {
       allowedOrigins: ['localhost:3000']
     },
     // Enable server components external packages
-    serverComponentsExternalPackages: ['@sparticuz/chromium']
+    serverComponentsExternalPackages: ['@sparticuz/chromium-min']
+  },
+  
+  // Disable server components cache in development
+  experimental: {
+    serverComponents: {
+      cacheDir: '.next/cache/server-components'
+    }
   },
   // Configure webpack to handle Node.js modules and optimize builds
   webpack: (config, { isServer, dev }) => {
     // Only add these configurations for server-side bundles
     if (isServer) {
-      // Exclude puppeteer and chromium from bundling in production
+      // Exclude puppeteer and chromium from bundling
       config.externals = [...(config.externals || []), {
-        'puppeteer-core': 'commonjs puppeteer-core'
+        'puppeteer-core': 'commonjs puppeteer-core',
+        '@sparticuz/chromium-min': 'commonjs @sparticuz/chromium-min'
       }];
+      
+      // Enable source maps in development
+      if (dev) {
+        config.devtool = 'source-map';
+      }
       
       // Add Node.js polyfills
       config.resolve.fallback = {

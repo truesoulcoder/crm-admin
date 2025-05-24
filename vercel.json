@@ -1,11 +1,5 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/next"
-    }
-  ],
   "routes": [
     {
       "src": "/api/(.*)",
@@ -16,26 +10,23 @@
       "dest": "/"
     }
   ],
+  "env": {
+    "NODE_ENV": "production",
+    "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true",
+    "LD_LIBRARY_PATH": "/tmp/lib:/var/task/lib:/var/task/node_modules/@sparticuz/chromium-min/lib",
+    "CHROME_EXECUTABLE_PATH": "/var/task/node_modules/@sparticuz/chromium-min/bin/chromium"
+  },
   "functions": {
     "pages/api/eli5-engine/**/*.ts": {
       "maxDuration": 30,
       "memory": 1024,
-      "includeFiles": [
-        "node_modules/@sparticuz/chromium/**"
-      ]
+      "runtime": "nodejs20.x"
     }
-  },
-  "env": {
-    "NODE_ENV": "production",
-    "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
   },
   "build": {
     "env": {
       "NODE_ENV": "production",
       "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
     }
-  },
-  "engines": {
-    "node": "20.x"
   }
 }
