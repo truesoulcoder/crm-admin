@@ -119,14 +119,14 @@ export const generateLoiPdf = async (
 
     // 2. Draw LOI Content Programmatically
     // Define drawing parameters
-    const pageMargin = 25; // Updated page margin
+    const pageMargin = 50; // Updated page margin
     let currentY = height - pageMargin; // Start from top, below margin
     const textX = pageMargin;
     const textMaxWidth = width - 2 * pageMargin; // Updated textMaxWidth
     
     const baseFontSize = 14; 
-    const titleFontSize = 28; 
-    const subtitleFontSize = 18;
+    const titleFontSize = 22; 
+    const subtitleFontSize = 16;
     const signatureFontSize = 28; 
     const disclaimerFontSize = 12;
 
