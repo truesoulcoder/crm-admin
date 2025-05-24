@@ -2,7 +2,7 @@ import fs from 'fs/promises'; // For reading template files
 import path from 'path';
 // import puppeteer from 'puppeteer'; // Removed puppeteer
 import puppeteer from 'puppeteer-core'; // Added puppeteer-core
-import chromium from 'chrome-aws-lambda'; // Switched to chrome-aws-lambda
+import chromium from '@sparticuz/chromium'; // Reverted to @sparticuz/chromium
 import nunjucks from 'nunjucks';
 import { PDFDocument } from 'pdf-lib';
 // import { logToSupabase } from './_utils'; // Assuming logToSupabase is available
@@ -38,7 +38,7 @@ export const generateLoiPdf = async (
       browser = await puppeteer.launch({
         args: chromium.args,
         defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath, // CRITICAL CHANGE for chrome-aws-lambda
+        executablePath: await chromium.executablePath(), // Ensure it's a function call
         headless: chromium.headless, 
         ignoreHTTPSErrors: true,
       });

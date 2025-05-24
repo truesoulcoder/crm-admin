@@ -16,7 +16,7 @@
     "@heroicons/react": "^2.2.0",
     "@pdf-lib/fontkit": "^1.1.1",
     "@react-google-maps/api": "^2.20.6",
-    "chrome-aws-lambda": "^10.1.0",
+    "@sparticuz/chromium": "^123.0.1",
     "@supabase/auth-ui-react": "^0.4.7",
     "@supabase/auth-ui-shared": "^0.1.8",
     "@supabase/ssr": "^0.6.1",
