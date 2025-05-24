@@ -6,19 +6,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const nextConfig = {
-  reactStrictMode: false, // Temporarily disabled for diagnostics
-  // External packages for server components
+  reactStrictMode: false,
   serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
-  outputFileTracingIncludes: {
-    '/api/eli5-engine/*': [
-      './node_modules/@sparticuz/chromium/bin/**'
-    ]
-  },
+  
   experimental: {
-    // Add any experimental features here
+    outputFileTracingIncludes: {
+      '/api/eli5-engine/*': [
+        './node_modules/@sparticuz/chromium/**'
+      ]
+    },
     serverActions: {
       allowedOrigins: ['localhost:3000']
-    },
+    }
   },
   // Configure webpack to handle Node.js modules and optimize builds
   webpack: (config, { isServer, dev }) => {

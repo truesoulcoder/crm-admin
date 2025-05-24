@@ -11,7 +11,7 @@
     }
   ],
   "functions": {
-    "pages/api/**/*.ts": {
+    "pages/api/eli5-engine/*.ts": {
       "maxDuration": 30,
       "memory": 1024
     }
