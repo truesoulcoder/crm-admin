@@ -73,17 +73,22 @@ export const getSupabaseUser = async () => {
 
 export const getSupabaseSession = async () => {
   console.log("[auth.ts] getSupabaseSession: Fetching session...");
-  const { data: { session }, error } = await supabase.auth.getSession();
-  if (error) {
-    console.warn("[auth.ts] getSupabaseSession: Error getting session (this can be normal if not logged in):", error.message);
+  try {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) {
+      console.error("[auth.ts] getSupabaseSession: supabase.auth.getSession() returned an error:", error.message, error);
+      return null;
+    }
+    if (session) {
+      console.log("[auth.ts] getSupabaseSession: Session found, User ID:", session.user.id);
+    } else {
+      console.log("[auth.ts] getSupabaseSession: No session found (getSession returned null data).");
+    }
+    return session;
+  } catch (e: any) {
+    console.error("[auth.ts] getSupabaseSession: Caught an exception during getSession():", e.message, e);
     return null;
   }
-  if (session) {
-    console.log("[auth.ts] getSupabaseSession: Session found, User ID:", session.user.id);
-  } else {
-    console.log("[auth.ts] getSupabaseSession: No session found.");
-  }
-  return session;
 };
 
 // The old isLoggedIn() function that only checked localStorage has been removed.

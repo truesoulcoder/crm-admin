@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
+  console.log(`[Middleware] Processing path: ${request.nextUrl.pathname}`);
   const response = NextResponse.next();
   const url = request.nextUrl;
   const path = url.pathname;

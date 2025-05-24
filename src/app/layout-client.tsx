@@ -1,6 +1,7 @@
-'use client';
+"use client";
 
 import { useEffect } from 'react';
+
 import MainAppShell from '@/components/layout/MainAppShell';
 import { useTheme } from '@/hooks/useTheme';
 

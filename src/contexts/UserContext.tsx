@@ -108,7 +108,10 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       if (!isMounted) return;
       
       try {
+        console.log("[UserProvider] initializeAuth: Attempting to get Supabase session...");
         const currentSession = await getSupabaseSession();
+        if (!isMounted) return; // Re-check after await
+        console.log("[UserProvider] initializeAuth: getSupabaseSession resolved. Session User ID:", currentSession ? currentSession.user.id : 'null');
         
         if (!isMounted) return;
         
@@ -153,7 +156,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
     return () => {
       isMounted = false;
-      authListener?.subscription?.unsubscribe();
+      void authListener?.subscription?.unsubscribe(); // Explicitly mark as fire-and-forget
     };
   }, [pathname, router]);
 
