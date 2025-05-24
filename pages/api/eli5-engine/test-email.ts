@@ -217,7 +217,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const titleCompany = "Kristin Blay at Ghrist Law - Patten Title"; // Hardcoded
     
     const offerPriceNumericRawTotal = assessedTotalNumericValidated; // Use the validated numeric value
-    const offerPriceNumeric = offerPriceNumericRawTotal * 0.6;
+    const offerPriceNumeric = offerPriceNumericRawTotal * 0.5;
 
     if (offerPriceNumeric <= 0) { // Should be rare due to prior assessed_total check, but good to be safe
         const offerCalcErrorMessage = `Calculated offer_price_numeric is not positive: ${offerPriceNumeric}`;
