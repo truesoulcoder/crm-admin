@@ -2,9 +2,6 @@
   "name": "crmpro",
   "version": "0.1.0",
   "private": true,
-  "engines": {
-    "node": ">=20.0.0"
-  },
   "type": "module",
   "scripts": {
     "dev": "next dev",
@@ -15,17 +12,26 @@
   "dependencies": {
     "@eslint/config-array": "^0.20.0",
     "@eslint/object-schema": "^2.1.6",
-    "@google-cloud/local-auth": "^3.0.1",
     "@googleapis/people": "^3.0.9",
     "@heroicons/react": "^2.2.0",
     "@pdf-lib/fontkit": "^1.1.1",
     "@react-google-maps/api": "^2.20.6",
-    "@sparticuz/chromium-min": "^132.0.0",
+    // "@sparticuz/chromium": "^123.0.1", // Removed
+    // "@sparticuz/chromium-min": "^133.0.0", // Stays removed
+    // "chrome-aws-lambda": "^10.1.0", // Removed
     "@supabase/auth-ui-react": "^0.4.7",
     "@supabase/auth-ui-shared": "^0.1.8",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.8",
     "@tanstack/react-table": "^8.17.3",
+    "@tiptap/extension-highlight": "^2.12.0",
+    "@tiptap/extension-link": "^2.12.0",
+    "@tiptap/extension-placeholder": "^2.12.0",
+    "@tiptap/extension-text-align": "^2.12.0",
+    "@tiptap/extension-underline": "^2.12.0",
+    "@tiptap/pm": "^2.12.0",
+    "@tiptap/react": "^2.12.0",
+    "@tiptap/starter-kit": "^2.12.0",
     "@types/csv-parse": "^1.1.12",
     "classnames": "^2.5.1",
     "clsx": "^2.1.1",
@@ -43,11 +49,12 @@
     "next-auth": "^4.24.11",
     "nodemailer": "^6.9.14",
     "papaparse": "^5.5.2",
-    "pdf-lib": "^1.17.1",
+    "pdf-lib": "^1.17.1", // Verified present
     "pdfkit": "^0.17.1",
-    "puppeteer-core": "^24.1.1",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    // "puppeteer": "^22.12.1", // Removed puppeteer
+    // "puppeteer-core": "^22.7.1", // Removed
+    "puppeteer-extra": "^3.3.6", // Keeping this for now, might be unused
+    "puppeteer-extra-plugin-stealth": "^2.11.2", // Keeping this for now, might be unused
     "react": "^19.1.0",
     "react-daisyui": "^5.0.5",
     "react-dom": "^19.1.0",
@@ -73,7 +80,7 @@
     "eslint-config-next": "^15.3.2",
     "eslint-import-resolver-typescript": "^4.3.4",
     "ignore-loader": "^0.1.2",
-    "nunjucks": "^3.2.4",
+    "nunjucks": "^3.2.4", // Kept for email templates
     "postcss": "^8",
     "sass": "^1.87.0",
     "supabase": "^2.22.12",

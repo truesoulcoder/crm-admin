@@ -1,141 +1,234 @@
-// Core Node.js modules
-import fs from 'fs/promises';
+import fs from 'fs/promises'; // For reading template files and font
 import path from 'path';
+import { PDFDocument, StandardFonts, rgb, PageSizes } from 'pdf-lib'; // Ensure imports at top
 
-// Third-party libraries
-import { configure, render } from 'nunjucks';
-import { PDFDocument } from 'pdf-lib';
+// Define paths (ensure these are correct for your serverless environment)
+const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
+const BLANK_LETTERHEAD_PDF_FILE = path.join(templateDir, 'blank-letterhead.pdf');
+const ALEX_BRUSH_FONT_FILE = path.join(templateDir, 'AlexBrush-Regular.ttf');
 
-// Types and configuration
-import { CHROMIUM_ARGS } from './config';
+// Helper function for drawing wrapped text (simplified)
+async function drawWrappedText(page: any, text: string, options: any) {
+  const { font, fontSize, x, y, maxWidth, lineHeight, color } = options;
+  const words = text.split(' ');
+  let currentLine = '';
+  let currentY = y;
 
-import type { Browser, LaunchOptions, Page } from 'puppeteer-core';
-
-interface ChromiumModule {
-  default: {
-    executablePath: () => Promise<string>;
-    headless: string | boolean;
-  };
+  for (const word of words) {
+    const testLine = currentLine + (currentLine === '' ? '' : ' ') + word;
+    const { width: textWidth } = font.widthOfTextAtSize(testLine, fontSize);
+    if (textWidth > maxWidth && currentLine !== '') {
+      page.drawText(currentLine, { x, y: currentY, font, size: fontSize, color });
+      currentLine = word;
+      currentY -= lineHeight;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine !== '') {
+    page.drawText(currentLine, { x, y: currentY, font, size: fontSize, color });
+    currentY -= lineHeight; // Adjust Y for the next potential block of text
+  }
+  return currentY; // Return the Y position after the last line drawn
 }
 
-// Configure Nunjucks
-const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
-configure(templateDir, { autoescape: true });
-
-// Define paths to templates (adjust as necessary based on actual location)
-// For Nunjucks, 'letter_of_intent_text.html' is resolved relative to 'templateDir'
-const BLANK_LETTERHEAD_PDF_FILE = path.join(templateDir, 'blank-letterhead.pdf');
-// const ALEX_BRUSH_FONT_FILE = path.join(templateDir, 'AlexBrush-Regular.ttf'); // For reference
 
 export const generateLoiPdf = async (
   personalizationData: any,
-  leadId: string, // Used for logging or unique naming if saving temporarily
-  contactEmail: string // Used for logging, re-added as per current subtask
+  leadId: string, 
+  contactEmail: string 
 ): Promise<Buffer | null> => {
-  console.log('DEBUG_PDFUTILS_ENTRY: generateLoiPdf function started.');
-  
-  // Dynamic imports to reduce cold start time
-  const [chromiumModule, puppeteer] = await Promise.all([
-    import('@sparticuz/chromium-min'),
-    import('puppeteer-core')
-  ]) as [ChromiumModule, typeof import('puppeteer-core')];
-  
-  // Initialize Chromium
-  const chromium = chromiumModule.default;
-  const chromiumPath = await chromium.executablePath();
-  console.log('Chromium path:', chromiumPath);
+  console.log('DEBUG_PDFUTILS_ENTRY: generateLoiPdf function started (pdf-lib version).');
   console.log('DEBUG_PDFUTILS_DATA_RECEIVED: Raw personalizationData:', JSON.stringify(personalizationData));
   console.log('DEBUG_PDFUTILS_CONTACT_NAME_RECEIVED: contact_name type:', typeof personalizationData?.contact_name, 'value:', JSON.stringify(personalizationData?.contact_name));
-  
-  // Existing informative log, now after the critical entry logs
-  console.log(`Generating LOI PDF for lead ID: ${leadId}, contact: ${contactEmail}`); 
+  console.log(`Generating LOI PDF for lead ID: ${leadId}, contact: ${contactEmail} (pdf-lib version)`);
+
   try {
-    // 1. Render HTML content using Nunjucks
-    const renderedHtml = render('letter_of_intent_text.html', personalizationData as object);
+    // 1. Create New PDF Document for Content
+    const contentPdfDoc = await PDFDocument.create();
+    const page = contentPdfDoc.addPage(PageSizes.A4); // Using standard A4 size
+    const { width, height } = page.getSize();
 
-    // 2. Convert HTML to PDF using Puppeteer
-    let browser: Browser | null = null;
+    // Load Fonts
+    const helveticaFont = await contentPdfDoc.embedFont(StandardFonts.Helvetica);
+    const helveticaBoldFont = await contentPdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const timesRomanFont = await contentPdfDoc.embedFont(StandardFonts.TimesRoman);
+    const timesRomanItalicFont = await contentPdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+    
+    let alexBrushFont;
     try {
-      console.log('Launching browser...');
-      browser = await puppeteer.launch({
-        args: CHROMIUM_ARGS,
-        defaultViewport: { 
-          width: 1200, 
-          height: 1600,
-          deviceScaleFactor: 1
-        },
-        executablePath: chromiumPath,
-        headless: chromium.headless,
-        ignoreHTTPSErrors: true,
-        dumpio: true
-      } as LaunchOptions);
-      
-        const page = await browser.newPage();
-        await page.setContent(renderedHtml, { waitUntil: 'networkidle0' });
-        
-        const contentPdfBuffer = await page.pdf({ format: 'A4', printBackground: true });
-        // browser.close() is in the finally block
-
-        // 3. Merge with Blank Letterhead using pdf-lib
-        const letterheadPdfBytes = await fs.readFile(BLANK_LETTERHEAD_PDF_FILE);
-        const contentPdfBytes = contentPdfBuffer; 
-
-        const letterheadPdfDoc = await PDFDocument.load(letterheadPdfBytes);
-        const contentPdfDoc = await PDFDocument.load(contentPdfBytes);
-
-        const [contentPageToEmbed] = await letterheadPdfDoc.embedPdf(contentPdfDoc);
-        
-        const firstPageOfLetterhead = letterheadPdfDoc.getPages()[0];
-        if (!firstPageOfLetterhead) {
-          throw new Error('Blank letterhead PDF does not contain any pages.');
-        }
-        
-        firstPageOfLetterhead.drawPage(contentPageToEmbed, {
-          x: 0, 
-          y: 0, 
-          width: contentPageToEmbed.width, 
-          height: contentPageToEmbed.height,
-        });
-
-        const mergedPdfBytes = await letterheadPdfDoc.save();
-        console.log(`Successfully generated LOI PDF for lead ID: ${leadId}`);
-        return Buffer.from(mergedPdfBytes);
-
-    } catch (error: unknown) {
-      console.error(`Error during PDF generation for lead ${leadId}:`, error);
-      throw error; // Re-throw to be caught by the outer try-catch
-    } finally {
-      if (browser) {
-        try {
-          await browser.close();
-        } catch (error: unknown) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.error('Error closing browser:', errorMessage);
-          console.error(`Error closing Puppeteer browser for lead ${leadId}: ${errorMessage}`);
-        }
-      }
+      const alexBrushFontBytes = await fs.readFile(ALEX_BRUSH_FONT_FILE);
+      alexBrushFont = await contentPdfDoc.embedFont(alexBrushFontBytes);
+    } catch (fontError) {
+      console.error("Failed to load Alex Brush font, using Helvetica-Bold as fallback for signature:", fontError);
+      alexBrushFont = helveticaBoldFont; // Fallback
     }
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      console.error(`Outer error in generateLoiPdf for lead ${leadId}:`, error.message);
-      console.error('Stack trace:', error.stack);
-    } else {
-      console.error(`Unknown error in generateLoiPdf for lead ${leadId}`);
+
+    // 2. Draw LOI Content Programmatically
+    // Define margins and starting Y position (from top)
+    const margin = 50;
+    let y = height - margin - 30; // Initial Y, adjusted for potential letterhead space
+    const contentWidth = width - 2 * margin;
+    const baseFontSize = 10;
+    const titleFontSize = 16;
+    const subtitleFontSize = 12;
+    const signatureFontSize = 24;
+    const disclaimerFontSize = 8;
+    const lineHeight = baseFontSize * 1.2;
+    const smallLineHeight = disclaimerFontSize * 1.2;
+
+    // --- Title ---
+    page.drawText("LETTER OF INTENT", {
+      x: margin,
+      y: y,
+      font: helveticaBoldFont,
+      size: titleFontSize,
+      color: rgb(0, 0, 0),
+    });
+    y -= titleFontSize * 1.5;
+
+    // --- Property Address Subtitle ---
+    page.drawText(personalizationData.property_address || "N/A Property Address", {
+      x: margin,
+      y: y,
+      font: helveticaFont,
+      size: subtitleFontSize,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+    y -= subtitleFontSize * 1.5;
+    
+    // --- Date ---
+    page.drawText(personalizationData.current_date || "N/A Date", {
+        x: width - margin - helveticaFont.widthOfTextAtSize(personalizationData.current_date || "N/A Date", baseFontSize), // Align right
+        y: y,
+        font: helveticaFont,
+        size: baseFontSize,
+        color: rgb(0,0,0)
+    });
+    y -= lineHeight * 2;
+
+
+    // --- Salutation ---
+    page.drawText(`Dear ${personalizationData.greeting_name || "Sir/Madam"},`, {
+      x: margin,
+      y: y,
+      font: helveticaFont,
+      size: baseFontSize,
+      color: rgb(0, 0, 0),
+    });
+    y -= lineHeight * 1.5;
+
+    // --- Body Paragraph 1 (Simplified) ---
+    const introParagraph = `We are pleased to submit this Letter of Intent ("LOI") to purchase the property located at ${personalizationData.property_address || "N/A"} (the "Property") under the terms and conditions set forth herein. This LOI is an expression of our serious interest in acquiring the Property.`;
+    y = await drawWrappedText(page, introParagraph, {font: timesRomanFont, fontSize: baseFontSize, x: margin, y, maxWidth: contentWidth, lineHeight, color: rgb(0,0,0) });
+    y -= lineHeight; 
+
+    // --- Offer Summary (Simplified Key-Value) ---
+    const offerDetails = [
+      { label: "Purchase Price:", value: personalizationData.offer_price || "N/A" },
+      { label: "Earnest Money Deposit (EMD):", value: personalizationData.emd_amount || "N/A" },
+      { label: "Closing Date:", value: personalizationData.closing_date || "N/A" },
+      { label: "Title Company:", value: personalizationData.title_company || "N/A" },
+    ];
+
+    for (const detail of offerDetails) {
+      page.drawText(detail.label, { x: margin, y: y, font: timesRomanFont, size: baseFontSize, color: rgb(0,0,0) });
+      page.drawText(detail.value, { x: margin + 150, y: y, font: helveticaBoldFont, size: baseFontSize, color: rgb(0,0,0) });
+      y -= lineHeight;
+    }
+    y -= lineHeight;
+
+
+    // --- Closing Paragraph (Simplified) ---
+    const closingParagraph = "We look forward to the possibility of working with you on this transaction and are excited about the prospect of acquiring this Property. Please indicate your acceptance of these terms by signing below.";
+    y = await drawWrappedText(page, closingParagraph, {font: timesRomanFont, fontSize: baseFontSize, x: margin, y, maxWidth: contentWidth, lineHeight, color: rgb(0,0,0) });
+    y -= lineHeight * 2;
+
+    // --- "Warm regards," ---
+    page.drawText("Warm regards,", {
+      x: margin,
+      y: y,
+      font: helveticaFont,
+      size: baseFontSize,
+      color: rgb(0, 0, 0),
+    });
+    y -= lineHeight * 2; // Space for signature
+
+    // --- Sender Signature Block ---
+    page.drawText(personalizationData.sender_name || "N/A Sender Name", {
+      x: margin,
+      y: y,
+      font: alexBrushFont, // Use AlexBrush or fallback
+      size: signatureFontSize,
+      color: rgb(0.05, 0.2, 0.5), // A blueish color for signature
+    });
+    y -= signatureFontSize * 0.8; 
+
+    page.drawText(personalizationData.sender_name || "N/A Sender Name", {
+      x: margin,
+      y: y,
+      font: helveticaFont,
+      size: baseFontSize,
+      color: rgb(0, 0, 0),
+    });
+    y -= lineHeight;
+    page.drawText(personalizationData.sender_title || "N/A Sender Title", {
+      x: margin,
+      y: y,
+      font: helveticaFont,
+      size: baseFontSize,
+      color: rgb(0, 0, 0),
+    });
+    y -= lineHeight;
+    page.drawText(personalizationData.company_name || "N/A Company Name", {
+      x: margin,
+      y: y,
+      font: helveticaFont,
+      size: baseFontSize,
+      color: rgb(0, 0, 0),
+    });
+    y -= lineHeight * 3; // More space before disclaimer
+
+    // --- Disclaimer Footer (Simplified) ---
+    const disclaimer = "This Letter of Intent is non-binding and is intended solely as a basis for further discussion and negotiation. No contractual obligations will arise between the parties unless and until a definitive written agreement is executed by both parties.";
+    y = height - (height - (y - disclaimerFontSize * 3)); // Approximate bottom placement
+    if (y < margin + smallLineHeight * 3) y = margin + smallLineHeight * 3; // Ensure it's not too low
+    
+    await drawWrappedText(page, disclaimer, {font: timesRomanItalicFont, fontSize: disclaimerFontSize, x: margin, y, maxWidth: contentWidth, lineHeight: smallLineHeight, color: rgb(0.3,0.3,0.3) });
+
+    // 3. Save the dynamically generated content PDF
+    const contentPdfBytes = await contentPdfDoc.save();
+
+    // 4. Merge with Blank Letterhead
+    const letterheadPdfBytes = await fs.readFile(BLANK_LETTERHEAD_PDF_FILE);
+    
+    const letterheadPdfDoc = await PDFDocument.load(letterheadPdfBytes);
+    const contentPdfToEmbed = await PDFDocument.load(contentPdfBytes);
+
+    // Embed the first page of the content PDF onto the first page of the letterhead
+    const [contentFirstPage] = await letterheadPdfDoc.embedPdf(contentPdfToEmbed.getPages()[0]);
+    
+    const firstPageOfLetterhead = letterheadPdfDoc.getPages()[0];
+    if (!firstPageOfLetterhead) {
+      throw new Error('Blank letterhead PDF does not contain any pages.');
     }
     
-    // Log to Supabase if needed
-    // if (error instanceof Error) {
-    //   await logToSupabase({ 
-    //     lead_id: leadId, 
-    //     contact_email: contactEmail, 
-    //     status: 'PDF_GENERATION_UNHANDLED_ERROR', 
-    //     error_message: error.message, 
-    //     stack_trace: error.stack || 'No stack trace' 
-    //   });
-    // }
-    
+    // Draw the content page onto the letterhead page
+    // Adjust x, y, width, height as needed for desired positioning on letterhead
+    // For a full overlay, use dimensions of the content page, assuming letterhead is background
+    firstPageOfLetterhead.drawPage(contentFirstPage, {
+      x: 0, // Adjust if content needs to be offset from letterhead edges
+      y: 0, // Adjust if content needs to be offset from letterhead edges
+      width: contentFirstPage.width,
+      height: contentFirstPage.height,
+    });
+
+    const mergedPdfBytes = await letterheadPdfDoc.save();
+    console.log(`Successfully generated LOI PDF (pdf-lib) for lead ID: ${leadId}`);
+    return Buffer.from(mergedPdfBytes);
+
+  } catch (error: any) {
+    console.error(`Error in generateLoiPdf (pdf-lib) for lead ${leadId}: ${error.message}`, error.stack);
     return null;
   }
 };
-
-export default generateLoiPdf;
