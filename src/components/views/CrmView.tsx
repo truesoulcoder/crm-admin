@@ -14,37 +14,9 @@ import {
   deleteCrmLeadAction
 } from '../../app/crm/actions'; // Server action imports
 
-// Define types (adjust based on your actual schema)
-// NormalizedLead interface removed, CrmLead will be inserted below
+import type { CrmLead } from '@/types/crm'; // Import the CrmLead type
 
-// CrmLead interface (from previous CrmView.tsx)
-export interface CrmLead {
-  id: number; // bigserial maps to number in TS
-  normalized_lead_id: number; // bigint maps to number or string, number is fine if IDs are within JS safe integer range
-  contact_name?: string | null;
-  contact_email?: string | null;
-  contact_type: string; // not null
-  market_region?: string | null;
-  property_address?: string | null;
-  property_city?: string | null;
-  property_state?: string | null;
-  property_postal_code?: string | null;
-  property_type?: string | null;
-  baths?: string | null;
-  beds?: string | null;
-  year_built?: string | null;
-  square_footage?: string | null;
-  lot_size_sqft?: string | null;
-  assessed_total?: number | null; // numeric
-  mls_curr_status?: string | null;
-  mls_curr_days_on_market?: string | null;
-  converted: boolean; // not null, default false
-  status?: string | null;
-  notes?: string | null;
-  created_at: string; // timestamp with time zone
-  updated_at: string; // timestamp with time zone
-  email_sent?: boolean | null; // default false
-}
+// Define types (adjust based on your actual schema)
 
 interface ColumnConfig {
   key: keyof CrmLead | string; // Changed NormalizedLead to CrmLead

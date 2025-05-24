@@ -1,6 +1,6 @@
 "use server";
 
-import { type CrmLead } from '@/components/views/CrmView'; // Assuming CrmLead is exported from CrmView.tsx
+import type { CrmLead } from '@/types/crm'; // Import CrmLead from the centralized types file
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 
