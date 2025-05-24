@@ -10,23 +10,15 @@
       "dest": "/"
     }
   ],
-  "env": {
-    "NODE_ENV": "production",
-    "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true",
-    "LD_LIBRARY_PATH": "/tmp/lib:/var/task/lib:/var/task/node_modules/@sparticuz/chromium-min/lib",
-    "CHROME_EXECUTABLE_PATH": "/var/task/node_modules/@sparticuz/chromium-min/bin/chromium"
-  },
   "functions": {
     "pages/api/eli5-engine/**/*.ts": {
       "maxDuration": 30,
-      "memory": 1024,
-      "runtime": "nodejs@20.15.0"
+      "memory": 1024
     }
   },
   "build": {
     "env": {
-      "NODE_ENV": "production",
-      "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD": "true"
+      "NODE_ENV": "production"
     }
   },
   "regions": ["iad1"]
