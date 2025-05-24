@@ -139,7 +139,7 @@ export const generateLoiPdf = async (
     const disclaimerColor = rgb(0.3,0.3,0.3);
 
     // --- Title ---
-    page.drawText("LETTER OF INTENT", { // Main Title - Assuming this is the one for increased spacing
+    page.drawText("LETTER OF INTENT TO PURCHASE REAL ESTATE", { // Main Title - Assuming this is the one for increased spacing
       x: textX, // Or centered: (width - helveticaBoldFont.widthOfTextAtSize("LETTER OF INTENT", titleFontSize)) / 2
       y: currentY,
       font: helveticaBoldFont,
@@ -202,7 +202,7 @@ export const generateLoiPdf = async (
       { label: "Earnest Money Deposit (EMD):", value: personalizationData.emd_amount || "N/A" },
       { label: "Closing Date:", value: personalizationData.closing_date || "N/A" },
       { label: "Title Company:", value: personalizationData.title_company || "N/A" },
-      { label: "Buyer’s Assignment Consideration (BAC):", value: "$10" }, 
+      { label: "Buyer’s Assignment Consideration:", value: "$10" }, 
     ];
     
     const labelX = textX + 10; // Use textX (which is pageMargin) or add a small indent

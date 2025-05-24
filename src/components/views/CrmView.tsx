@@ -3,8 +3,8 @@
 // Removed UploadCloud, kept PlusCircle & Eye for now
 import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle, XCircle, Save, Eye, Mail, Phone, MapPin } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
-import { useJsApiLoader, Autocomplete, StreetViewPanorama } from '@react-google-maps/api';
-
+import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api'; // Removed useJsApiLoader
+import { useGoogleMapsApi } from '../maps/GoogleMapsLoader'; // Import the context hook
 
 // Using shared Supabase client
 import { supabase } from '@/lib/supabase/client';
@@ -94,14 +94,13 @@ const CrmLeads: React.FC = () => {
   const [selectedLead, setSelectedLead] = useState<CrmLead | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<CrmLead>>(initialNewLeadData);
 
-  // Google Maps
-  const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useJsApiLoader({
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
-    libraries: ['places', 'streetView'] as any, // Cast to 'any' to bypass type issue if specific library names are not in @types
-  });
+  // Google Maps - Consume from context
+  const { isLoaded: isGoogleMapsLoaded, loadError: googleMapsLoadError } = useGoogleMapsApi();
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
   const addressInputRef = useRef<HTMLInputElement>(null);
   const [streetViewPosition, setStreetViewPosition] = useState<{ lat: number; lng: number } | null>(null);
+  // Add a ref for the geocoder instance
+  const geocoderRef = useRef<google.maps.Geocoder | null>(null);
 
 
   // Define columns for the table
@@ -188,17 +187,33 @@ const CrmLeads: React.FC = () => {
     fetchMarketRegions();
   }, [fetchLeads, fetchMarketRegions]);
 
-  // Handle Google Maps Autocomplete load
+  // Handle Google Maps Autocomplete load & Geocoder initialization
   useEffect(() => {
-    if (isGoogleMapsLoaded && addressInputRef.current && !autocomplete) {
-      const autoCompInstance = new google.maps.places.Autocomplete(addressInputRef.current, {
-        types: ['address'],
-        componentRestrictions: { country: 'us' }, // Example: Restrict to US
-      });
-      autoCompInstance.addListener('place_changed', handlePlaceSelect);
-      setAutocomplete(autoCompInstance);
+    if (isGoogleMapsLoaded && window.google?.maps?.places && window.google?.maps?.Geocoder) {
+      if (addressInputRef.current && !autocomplete) {
+        const autoCompInstance = new google.maps.places.Autocomplete(addressInputRef.current, {
+          types: ['address'],
+          componentRestrictions: { country: 'us' }, // Example: Restrict to US
+        });
+        autoCompInstance.addListener('place_changed', handlePlaceSelect); // handlePlaceSelect needs to be stable or wrapped in useCallback
+        setAutocomplete(autoCompInstance);
+      }
+      if (!geocoderRef.current) {
+        geocoderRef.current = new window.google.maps.Geocoder();
+      }
     }
-  }, [isGoogleMapsLoaded, autocomplete]); // Removed handlePlaceSelect from deps to avoid re-runs
+    // Cleanup Autocomplete instance and listeners when component unmounts or Maps API is no longer loaded
+    return () => {
+      if (autocomplete) {
+        // google.maps.event.clearInstanceListeners(autocomplete); // Deprecated way
+        // Correct way: Autocomplete instance itself doesn't have a direct "clearListeners" or "unbindAll".
+        // Listeners added with addListener should ideally be stored and removed individually if needed,
+        // or rely on the component unmounting to clean up.
+        // For this case, simply nullifying might be enough if a new one is created on re-load.
+      }
+      // geocoderRef doesn't need explicit cleanup unless it had listeners.
+    };
+  }, [isGoogleMapsLoaded, autocomplete]); // handlePlaceSelect removed from deps, ensure it's stable
 
   // Debounce search term
   useEffect(() => {
@@ -236,16 +251,12 @@ const CrmLeads: React.FC = () => {
     if (lead) {
       setEditFormData({
         ...lead,
-        // Ensure numeric fields that might be null/undefined are handled for form inputs
         normalized_lead_id: lead.normalized_lead_id ?? 0,
         assessed_total: lead.assessed_total ?? null,
-        // Dates are strings from DB, can be used directly or formatted if needed
       });
-      // If address exists, try to set street view
-      if (lead.property_address && lead.property_city && lead.property_state) {
-        const geocoder = new google.maps.Geocoder();
-        geocoder.geocode({ address: `${lead.property_address}, ${lead.property_city}, ${lead.property_state}` }, (results, status) => {
-          if (status === 'OK' && results && results[0] && results[0].geometry && results[0].geometry.location) {
+      if (isGoogleMapsLoaded && geocoderRef.current && lead.property_address && lead.property_city && lead.property_state) {
+        geocoderRef.current.geocode({ address: `${lead.property_address}, ${lead.property_city}, ${lead.property_state}` }, (results, status) => {
+          if (status === google.maps.GeocoderStatus.OK && results && results[0]?.geometry?.location) {
             setStreetViewPosition({ lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng() });
           } else {
             setStreetViewPosition(null);
@@ -254,6 +265,9 @@ const CrmLeads: React.FC = () => {
         });
       } else {
         setStreetViewPosition(null);
+        if (!isGoogleMapsLoaded && lead.property_address) { // Check if API not loaded was the reason for not geocoding
+            console.warn("Maps API not loaded, cannot geocode address for Street View.");
+        }
       }
     } else {
       setEditFormData(initialNewLeadData);
@@ -271,19 +285,17 @@ const CrmLeads: React.FC = () => {
     setSelectedLead(null);
     setEditFormData(initialNewLeadData);
     setStreetViewPosition(null);
-    if (autocomplete) {
-        // Clear any listeners or reset autocomplete if needed upon modal close
-        google.maps.event.clearInstanceListeners(autocomplete);
-        // Re-initialize if necessary, or ensure it's ready for next use
-        if (addressInputRef.current) {
-            const autoCompInstance = new google.maps.places.Autocomplete(addressInputRef.current, {
-                types: ['address'],
-                componentRestrictions: { country: 'us' }, 
-            });
-            autoCompInstance.addListener('place_changed', handlePlaceSelect);
-            setAutocomplete(autoCompInstance);
-        }
+    // Autocomplete re-initialization logic on modal close might need review.
+    // It's re-created in the useEffect based on isGoogleMapsLoaded and addressInputRef.current.
+    // Clearing instance listeners on the old autocomplete instance might be good practice if it's being replaced.
+    // However, the current useEffect for autocomplete setup will create a new one if addressInputRef.current exists.
+    // Consider if the autocomplete instance needs to be reset or if its input element (addressInputRef.current)
+    // is detached/re-attached from the DOM, which might require re-initialization.
+    if (autocomplete && typeof google !== 'undefined' && google.maps?.event) {
+        google.maps.event.clearInstanceListeners(autocomplete); // Clear listeners to prevent memory leaks or duplicate calls
     }
+    // No need to manually re-create autocomplete here; the useEffect will handle it if the input is visible.
+    // If addressInputRef.current is null (e.g., modal not fully closed or input removed), then it won't re-init.
   };
 
   const handleModalInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -371,10 +383,13 @@ const CrmLeads: React.FC = () => {
     }
   };
 
-  const handlePlaceSelect = () => {
+  // Wrapped handlePlaceSelect in useCallback to stabilize its reference
+  // This is important if it's used in `useEffect` dependencies, though it was removed from there.
+  // It's good practice if it's passed to other components or used in event listeners that are set up once.
+  const handlePlaceSelect = useCallback(() => {
     if (autocomplete) {
       const place = autocomplete.getPlace();
-      if (place && place.address_components) {
+      if (place?.address_components) {
         const addressComponents = place.address_components;
         const getAddressComponent = (type: string, part: 'long_name' | 'short_name' = 'long_name') => {
           return addressComponents.find(c => c.types.includes(type))?.[part] || '';
@@ -382,11 +397,9 @@ const CrmLeads: React.FC = () => {
 
         const streetNumber = getAddressComponent('street_number');
         const route = getAddressComponent('route');
-        const locality = getAddressComponent('locality'); // city
-        const administrativeAreaLevel1 = getAddressComponent('administrative_area_level_1', 'short_name'); // state
+        const locality = getAddressComponent('locality');
+        const administrativeAreaLevel1 = getAddressComponent('administrative_area_level_1', 'short_name');
         const postalCode = getAddressComponent('postal_code');
-        const country = getAddressComponent('country', 'short_name');
-
 
         const newAddress = `${streetNumber} ${route}`.trim();
         setEditFormData(prev => ({
@@ -395,7 +408,6 @@ const CrmLeads: React.FC = () => {
           property_city: locality,
           property_state: administrativeAreaLevel1,
           property_postal_code: postalCode,
-          // property_country: country, // If you have a country field
         }));
 
         if (place.geometry?.location) {
@@ -408,10 +420,9 @@ const CrmLeads: React.FC = () => {
         }
       } else {
         console.error('Place selected but no address components found or place invalid:', place);
-        // Potentially clear address fields or show error
       }
     }
-  };
+  }, [autocomplete]); // Dependency: autocomplete instance
 
 
   // Sort Indicator Component
@@ -649,24 +660,33 @@ const CrmLeads: React.FC = () => {
                     ref={addressInputRef} 
                     type="text" 
                     id="property_address" 
-                    name="property_address" 
-                    value={editFormData.property_address || ''} 
-                    onChange={handleModalInputChange} 
-                    className="input input-bordered w-full" 
-                    placeholder="Start typing address..."
+                    name="property_address"
+                    value={editFormData.property_address || ''}
+                    onChange={handleModalInputChange}
+                    className="input input-bordered w-full"
+                    placeholder={isGoogleMapsLoaded ? "Start typing address..." : "Loading Maps API..."}
+                    disabled={!isGoogleMapsLoaded || !!googleMapsLoadError} // Disable if not loaded or error
                   />
-                  {googleMapsLoadError && <p className="text-error text-xs mt-1">Error loading Google Maps: {googleMapsLoadError.message}</p>}
+                  {googleMapsLoadError && <p className="text-error text-xs mt-1">Maps Error: {googleMapsLoadError.message}</p>}
+                  {!isGoogleMapsLoaded && !googleMapsLoadError && <p className="text-info text-xs mt-1">Initializing address search...</p>}
                 </div>
 
                 {isGoogleMapsLoaded && streetViewPosition && (
                   <div className="md:col-span-2 h-64 rounded-lg overflow-hidden border border-base-300">
-                    <StreetViewPanorama 
-                      position={streetViewPosition} 
-                      visible={true} 
+                    <StreetViewPanorama
+                      position={streetViewPosition}
+                      visible={true}
                       options={{ addressControl: false, linksControl: false, panControl: true, zoomControl: true, enableCloseButton: false, fullscreenControl: false }}
                     />
                   </div>
                 )}
+                {/* Show a placeholder or message if Maps API is not loaded yet for StreetView */}
+                {!isGoogleMapsLoaded && selectedLead?.property_address && (
+                     <div className="md:col-span-2 h-64 rounded-lg border border-base-300 flex items-center justify-center bg-base-200">
+                        <p className="text-base-content opacity-70">Loading Street View...</p>
+                    </div>
+                )}
+
 
                 <div className="form-control">
                   <label htmlFor="property_city" className="label"><span className="label-text">City</span></label>
