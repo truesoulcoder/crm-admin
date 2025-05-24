@@ -20,7 +20,7 @@
     "pages/api/eli5-engine/**/*.ts": {
       "maxDuration": 30,
       "memory": 1024,
-      "runtime": "nodejs@20"
+      "runtime": "nodejs@20.x"
     }
   },
   "build": {
