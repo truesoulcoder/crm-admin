@@ -2,6 +2,7 @@ import React from 'react';
 
 import CrmTable from '@/components/crm/CrmTable';
 import { createClient } from '@/lib/supabase/server';
+import { handleLeadUpdateAction } from './actions';
 
 import type { Lead } from '@/components/crm/CrmTable';
 import type { Metadata } from 'next';
@@ -35,17 +36,13 @@ if (error) {
   );
 }
 
-  const handleLeadUpdate = async (updatedLead: Lead) => {
-    // Update logic here
-  };
-
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Seller Management</h1>
       <CrmTable 
         data={leads || []}
         isLoading={false}
-        onRowUpdate={handleLeadUpdate}
+        onRowUpdate={handleLeadUpdateAction}
       />
     </div>
   );
