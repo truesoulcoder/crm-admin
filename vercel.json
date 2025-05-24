@@ -10,10 +10,7 @@
       "dest": "/"
     }
   ],
-    "functions": {
-      "pages/api/eli5-engine/**/*.ts": {
-        "includeFiles": "node_modules/@sparticuz/chromium/lib/**"
-    },
+  "functions": {
     "pages/api/**/*.ts": {
       "maxDuration": 30,
       "memory": 1024
