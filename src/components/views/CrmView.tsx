@@ -23,6 +23,7 @@ interface CrmFormData extends Omit<Partial<CrmLead>, 'id' | 'created_at' | 'upda
   contact_first_name?: string;
   contact_last_name?: string;
   phone?: string; // New field from modal design
+  contact_type?: string; // Added contact type
 }
 
 const CrmView: React.FC = () => {
@@ -55,7 +56,6 @@ const CrmView: React.FC = () => {
     { key: 'created_at', label: 'Date Added', sortable: true },
   ];
 
-  // handlePageChange and handleRowsPerPageChange are already defined elsewhere in the component
 
   const { isLoaded, loadError } = useGoogleMapsApi(); // Use the context hook
 
@@ -81,6 +81,7 @@ const CrmView: React.FC = () => {
     square_footage: 0,
     notes: '',
     market_region: '', // Added for completeness, might be set differently
+    contact_type: 'Owner', // Default contact type
   };
 
   // Fetch available markets on component mount
@@ -186,6 +187,12 @@ const CrmView: React.FC = () => {
       // Potentially add logic here if total pages are known, to prevent going beyond last page
     }
   };
+
+  const handleRowsPerPageChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setRowsPerPage(Number(event.target.value));
+    setCurrentPage(1); // Reset to first page on rows per page change
+  };
+
   const handleModalInputChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = event.target;
     let processedValue: string | number | null = value;
@@ -296,6 +303,7 @@ const CrmView: React.FC = () => {
     const leadDataToSave = {
       ...editFormData,
       contact_name: `${editFormData.contact_first_name || ''} ${editFormData.contact_last_name || ''}`.trim(),
+      contact_type: editFormData.contact_type, // Ensure contact_type is included
     };
 
     if (!leadDataToSave.id) {
@@ -617,6 +625,14 @@ const CrmView: React.FC = () => {
                   <label className="label"><span className="label-text">Phone</span></label>
                   <input type="tel" name="phone" placeholder="Phone" className="input input-bordered w-full" value={editFormData.phone || ''} onChange={handleModalInputChange} />
                 </div>
+                <div>
+                  <label className="label"><span className="label-text">Contact Type</span></label>
+                  <select name="contact_type" className="select select-bordered w-full" value={editFormData.contact_type || 'Owner'} onChange={handleModalInputChange}>
+                    <option value="Owner">Owner</option>
+                    <option value="Agent">Agent</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
               </div>
 
               {/* Property Info */}
@@ -674,11 +690,15 @@ const CrmView: React.FC = () => {
               {error && <p className="text-red-500 text-sm">{error}</p>}
 
               <div className="modal-action mt-6">
-                {editFormData.id && (
-                  <button type="button" onClick={() => { void handleDeleteLead(); }} className="btn btn-error mr-auto" disabled={isSaving}>
-                    <Trash2 className="mr-2 h-4 w-4" /> Delete
-                  </button>
-                )}
+                {/* Delete Button - visible but disabled if no ID or saving */}
+                <button 
+                  type="button" 
+                  onClick={() => { void handleDeleteLead(); }} 
+                  className={`btn btn-error mr-auto ${!editFormData.id ? 'btn-disabled' : ''}`} 
+                  disabled={!editFormData.id || isSaving}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete
+                </button>
                 <button type="button" onClick={handleCloseModal} className="btn btn-ghost" disabled={isSaving}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={isSaving || !isLoaded}>
                   {isSaving ? <span className="loading loading-spinner loading-xs"></span> : <Save className="mr-2 h-4 w-4" />} 
@@ -692,6 +712,6 @@ const CrmView: React.FC = () => {
 
     </div> 
   );
-};
+}
 
 export default CrmView;
