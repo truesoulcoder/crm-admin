@@ -48,7 +48,6 @@ interface CrmFormData {
   owner_occupied?: boolean;
   notes?: string;
   tags?: string[];
-  custom_fields?: Record<string, any>;
   property_latitude?: number;
   property_longitude?: number;
   mls_curr_status?: string;
@@ -116,8 +115,7 @@ const CrmView: React.FC = () => {
     last_sale_date: '',
     last_sale_price: undefined,
     notes: '',
-    tags: [],
-    custom_fields: {},
+    tags: [],   
   };
 
   const handleOpenModal = (lead?: CrmLead, normalizedLeadId?: number) => {
@@ -242,11 +240,6 @@ const CrmView: React.FC = () => {
 
     delete leadToSave.contact_first_name;
     delete leadToSave.contact_last_name;
-
-    // Handle custom_fields safely
-    if (leadToSave.custom_fields && Object.keys(leadToSave.custom_fields as Record<string, any>).length === 0) {
-      delete leadToSave.custom_fields;
-    }
 
     const result = editFormData.id
       ? await updateCrmLeadAction(editFormData.id, leadToSave)
