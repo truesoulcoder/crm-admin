@@ -84,7 +84,6 @@ const CrmView: React.FC = () => {
     sq_ft: 0,
     notes: '',
     market_region: '', // Added for completeness, might be set differently
-    normalized_lead_id: null, // Added for completeness
   };
 
   // Fetch available markets on component mount
@@ -353,7 +352,7 @@ const CrmView: React.FC = () => {
     } else {
       console.warn('[DEBUG] onPlaceChangedStreetView: autocompleteRef.current is null.');
     }
-  }, [handleModalInputChange, setEditFormData, setModalTitleAddress, setPanoramaPosition, setPanoramaPov]); // Dependencies kept as per your last successful structure
+  }, [handleModalInputChange, setEditFormData, setModalTitleAddress, setPanoramaPosition]); // Dependencies kept as per your last successful structure
 
   const columns: ColumnConfig[] = [
     { key: 'contact_name', label: 'Contact Name', sortable: true },
@@ -416,4 +415,12 @@ const CrmView: React.FC = () => {
             <input
               type="text"
               placeholder="Search by name, email, address..."
-              className="input input-
+              className="input input-bordered w-full" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CrmView;
