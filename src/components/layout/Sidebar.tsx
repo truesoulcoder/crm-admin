@@ -6,8 +6,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import React, { useState } from 'react';
 
-import { useUser } from '@/contexts/UserContext'; // Added UserContext import
+import { useUser } from '@/contexts/UserContext'; 
 import { LetterFx } from '@/once-ui/components';
+
+import PigAnimation from './PigAnimation';
 
 import type { CrmView } from '@/types/index';
 
@@ -56,8 +58,7 @@ const Sidebar: React.FC = () => {
     templates: '/templates',
     senders: '/email-senders',
     crm: '/crm',
-    settings: '/settings',
-    'email-analytics': '/dashboard/email-analytics'
+    settings: '/settings'
   };
 
   const getFilteredMenuItems = () => {
@@ -140,6 +141,10 @@ const Sidebar: React.FC = () => {
         ))}
       </ul>
       <div className="mt-auto">
+        {/* Animated Pig */}
+        <div className="mb-2">
+          <PigAnimation />
+        </div>
         <p className="text-xs text-center text-base-content/70">
           &copy; {new Date().getFullYear()} {companyName || 'True Soul Partners'}
         </p>
