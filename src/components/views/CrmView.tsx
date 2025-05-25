@@ -13,7 +13,8 @@ import {
   MapPin, // For Street View icon if needed
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
-import { Autocomplete, StreetViewPanorama, useJsApiLoader } from '@react-google-maps/api';
+import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api';
+import { useGoogleMapsApi } from '../maps/GoogleMapsLoader'; // Import the hook
 import { supabase } from '@/lib/supabase/client';
 import type { CrmLead } from '@/types/crm';
 import {
@@ -22,8 +23,6 @@ import {
   deleteCrmLeadAction
 } from '../../app/crm/actions';
 
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
-const libraries: ('places' | 'streetView')[] = ['places', 'streetView'];
 
 interface ColumnConfig {
   key: keyof CrmLead | string;
@@ -60,10 +59,7 @@ const CrmView: React.FC = () => {
 
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-    libraries,
-  });
+  const { isLoaded, loadError } = useGoogleMapsApi(); // Use the context hook
 
   const initialEditFormData: CrmFormData = {
     contact_first_name: '',
