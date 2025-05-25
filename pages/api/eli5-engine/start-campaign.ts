@@ -224,10 +224,28 @@ interface StartCampaignRequestBody {
   campaign_run_id?: string; // Optional: Unique ID for this specific execution batch, defaults if not provided
   selected_sender_ids?: string[]; // Optional: filter senders to this specific list of IDs
   selected_lead_ids?: string[]; // Optional: process only these specific lead IDs from normalized_leads
-  dryRun?: boolean; // Optional: If true, simulates sending without actual email dispatch, defaults to false
+  dry_run?: boolean; // Optional: If true, simulates sending without actual email dispatch, defaults to false
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+interface StartCampaignRequestBody {
+  campaign_id: string
+  campaign_run_id?: string
+  selected_sender_ids?: string[]
+  selected_lead_ids?: string[]
+  dry_run?: boolean
+}
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  const { campaign_id, dry_run } = req.body as StartCampaignRequestBody;
+  const dryRun = dry_run ?? false;
+
+  if (!campaign_id) {
+    return res.status(400).json({ error: 'Missing campaign_id' });
+  }
+
   let successCount = 0;
   let failureCount = 0;
   const processingErrors: { leadId?: string; contact_email?: string; error: string; details?: string }[] = [];
@@ -434,7 +452,7 @@ for (const lead of leads) {
     contactName = lead.contact3_name || 'Valued Prospect';
   }
 
-  let logId: number | null = null;
+  let logId: number | null = null; // Will be set to a number if lead processing proceeds
   const noContactError = 'No valid primary contact email found for lead.';
   let senderAssignedAndEmailProcessed = false;
 
@@ -461,6 +479,32 @@ for (const lead of leads) {
     continue; // Next lead
   }
 
+  // If we're here, contactEmail is valid. Now, establish a logId for this lead.
+  try {
+    logId = await logInitialAttempt(supabase, {
+      original_lead_id: leadId,
+      contact_name: contactName || '',
+      contact_email: contactEmail, // Known to be non-null here
+      campaign_id,
+      campaign_run_id,
+      email_status: 'PENDING_PROCESSING' // Initial status for a lead that has a contact
+    });
+
+    if (logId === null) {
+      console.error(`ELI5_CAMPAIGN_HANDLER: CRITICAL - Failed to create initial 'PENDING_PROCESSING' log entry for lead ${leadId}. Skipping.`);
+      processingErrors.push({ leadId, contact_email: contactEmail, error: 'initial_log_creation_failed', details: `Failed to create PENDING_PROCESSING log for ${contactEmail}.` });
+      failureCount++;
+      continue; // Skip to the next lead
+    }
+    // If we are here, logId is a valid number.
+  } catch (initialLogErr: any) {
+    console.error(`ELI5_CAMPAIGN_HANDLER: CRITICAL - Exception during initial 'PENDING_PROCESSING' logging for lead ${leadId}: ${initialLogErr.message || initialLogErr}. Skipping.`);
+    processingErrors.push({ leadId, contact_email: contactEmail, error: 'initial_log_exception', details: `Exception for PENDING_PROCESSING log: ${initialLogErr.message || initialLogErr}` });
+    failureCount++;
+    continue; // Skip to the next lead
+  }
+  // At this point, logId is GUARANTEED to be a number.
+
   // ...
 
   // TODO: Implement proper sender selection logic (rotation, limits, cooling periods)
@@ -469,8 +513,8 @@ for (const lead of leads) {
       console.error(`ELI5_CAMPAIGN_HANDLER: No sender available for lead ${leadId}. Skipping.`);
       processingErrors.push({ leadId, error: 'no_sender_for_lead', details: 'Sender selection failed.' });
       failureCount++;
-      if (logId) await updateEmailLogStatus(supabase, logId, 'FAILED_NO_SENDER', null, 'No sender available for this lead.');
-      else await logInitialAttempt(supabase, { original_lead_id: leadId, contact_email: contactEmail || 'N/A', campaign_id, campaign_run_id, email_status: 'FAILED_NO_SENDER', email_error_message: 'No sender available for this lead.' });
+      // logId is guaranteed to be a number here due to the preceding initialization block.
+      await updateEmailLogStatus(supabase, logId, 'FAILED_NO_SENDER', null, 'No sender available for this lead.');
       continue; // Skip to the next lead
     }
 
@@ -496,9 +540,9 @@ for (const lead of leads) {
       mls_curr_days_on_market: lead.mls_curr_days_on_market || '',
       campaign_name: campaignDetails.name || '',
       // Add any other fields from 'lead' or 'campaignDetails' needed by templates, with defaults
-      original_lead_data: lead.original_lead_data || {},
+      original_lead_data: (lead as any).original_lead_data ?? {}, // TODO: Regenerate Supabase types if this field is valid
       market_region: lead.market_region || '',
-      last_contacted_at: lead.last_contacted_at || ''
+      last_contacted_at: (lead as any).last_contacted_at ?? '' // TODO: Regenerate Supabase types if this field is valid
     };
 
     let emailSubject: string = '';
@@ -507,13 +551,17 @@ for (const lead of leads) {
       emailSubject = nunjucksRenderString(emailTemplate.subject, personalizationDataForEmail);
       emailBody = nunjucksRenderString(emailTemplate.body_html || emailTemplate.body_text || '', personalizationDataForEmail);
   } catch (renderError: any) {
-    const renderErrorMsg = `Email template rendering failed for lead ${leadId}: ${renderError.message}`;
+    const renderErrorMsg = `Email template rendering failed for lead ${leadId}: ${renderError.message || String(renderError)}`;
     console.error(`ELI5_CAMPAIGN_HANDLER: ${renderErrorMsg}`);
-    if (logId !== null) {
-      if (logId !== null) {
-          await updateEmailLogStatus(supabase, logId, 'FAILED_PREPARATION', null, renderErrorMsg);
-        }
-        const emailConfig: EmailConfig = {
+    // logId is guaranteed to be a number here due to the robust initialization earlier.
+    await updateEmailLogStatus(supabase, logId, 'FAILED_PREPARATION', null, renderErrorMsg);
+    processingErrors.push({ leadId, contact_email: contactEmail, error: 'template_render_failed', details: renderErrorMsg });
+    failureCount++;
+    continue; // CRITICAL: Skip to the next lead, do not proceed to create emailConfig or send.
+  }
+  // If rendering was successful, execution continues here.
+  // The emailConfig declaration and subsequent logic will only be reached if the try block for rendering succeeded.
+  const emailConfig: EmailConfig = {
           recipientEmail: contactEmail as string, // Ensure contactEmail is treated as string
           recipientName: contactName as string, // Ensure contactName is treated as string
           leadId,
@@ -568,7 +616,7 @@ for (const lead of leads) {
             failureCount++;
           }
         }
-        const senderAssignedAndEmailProcessed = true; // Mark as processed to break from this lead's sender loop
+        senderAssignedAndEmailProcessed = true; // Mark as processed to break from this lead's sender loop
 
       } else { // No senders currently available (all on cooldown or over quota)
         const sendersStillInRotation = allSenders.filter(s => s.in_memory_sent_today < s.daily_limit);
@@ -600,7 +648,7 @@ for (const lead of leads) {
           // Check if logId is valid before attempting to update the log
           if (logId !== null) {
             await updateEmailLogStatus(supabase, logId, 'PENDING_SENDER_COOLDOWN', null, `Waiting for sender cooldown: ${Math.ceil(waitTime / 1000)}s`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
+            await new Promise(resolve => setTimeout(resolve, waitTime));
             // Loop will continue to find an available sender
           } else {
             // This case should ideally not be reached if the initial logId check and 'continue' (in the outer loop) are working.
