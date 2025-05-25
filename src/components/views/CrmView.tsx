@@ -303,9 +303,13 @@ const CrmView: React.FC = () => {
         await fetchLeads(); // Ensure data consistency
         handleCloseModal();
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Error saving lead:', e);
-      setError(`Failed to save lead: ${e.message}`);
+      if (e instanceof Error) {
+        setError(`Failed to save lead: ${e.message}`);
+      } else {
+        setError('An unknown error occurred while saving the lead.');
+      }
     }
     setIsSaving(false);
   };
@@ -391,7 +395,7 @@ const CrmView: React.FC = () => {
 
   // For client-side pagination and sorting after fetching all (or filtered) leads
   const sortedLeads = useMemo(() => {
-    let sortableLeads = [...leads];
+    const sortableLeads = [...leads];
     if (sortConfig !== null) {
       sortableLeads.sort((a, b) => {
         const aValue = a[sortConfig.key as keyof CrmLead] ?? '';
