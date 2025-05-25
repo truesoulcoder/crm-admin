@@ -18,14 +18,43 @@ interface ColumnConfig {
 }
 
 // Define a more specific type for form data if needed, especially for new fields like phone
-interface CrmFormData extends Omit<Partial<CrmLead>, 'id' | 'created_at' | 'updated_at' | 'contact_name'> {
-  id?: number; // id is present for existing leads
+// Define a more specific type for form data, with string types for numeric fields
+interface CrmFormData {
+  id?: number;
   contact_first_name?: string;
   contact_last_name?: string;
-  phone?: string; // New field from modal design
-  contact_type?: string; // Added contact type
-  beds?: number; // Change to number | undefined
-  baths?: number; // Change to number | undefined
+  contact_email?: string | null;
+  phone?: string;
+  contact_type?: string;
+  market_region?: string;
+  property_address?: string;
+  property_city?: string;
+  property_state?: string;
+  property_postal_code?: string;
+  property_type?: string;
+  beds?: string; // String for form input
+  baths?: string; // String for form input
+  year_built?: string;
+  square_footage?: number;
+  lot_size_sqft?: string; // String for form input
+  last_sale_date?: string;
+  last_sale_price?: number;
+  assessed_total?: number;
+  owner_name?: string;
+  owner_mailing_address?: string;
+  owner_mailing_city?: string;
+  owner_mailing_state?: string;
+  owner_mailing_postal_code?: string;
+  owner_occupied?: boolean;
+  notes?: string;
+  tags?: string[];
+  custom_fields?: Record<string, any>;
+  property_latitude?: number;
+  property_longitude?: number;
+  mls_curr_status?: string;
+  mls_curr_days_on_market?: string;
+  converted?: boolean;
+  status?: string;
 }
 
 const CrmView: React.FC = () => {
@@ -58,7 +87,6 @@ const CrmView: React.FC = () => {
     { key: 'created_at', label: 'Date Added', sortable: true },
   ];
 
-
   const { isLoaded, loadError } = useGoogleMapsApi(); // Use the context hook
 
   // Memoize Autocomplete options for stability
@@ -80,19 +108,13 @@ const CrmView: React.FC = () => {
     property_state: '',
     property_postal_code: '',
     property_type: '',
-    beds: undefined, // Initialize as undefined
-    baths: undefined, // Initialize as undefined
+    beds: '', // Initialize as empty string
+    baths: '', // Initialize as empty string
     year_built: '',
     square_footage: undefined,
-    lot_size: undefined,
+    lot_size_sqft: '', // Initialize as empty string
     last_sale_date: '',
     last_sale_price: undefined,
-    owner_name: '',
-    owner_mailing_address: '',
-    owner_mailing_city: '',
-    owner_mailing_state: '',
-    owner_mailing_postal_code: '',
-    owner_occupied: false,
     notes: '',
     tags: [],
     custom_fields: {},
@@ -119,11 +141,11 @@ const CrmView: React.FC = () => {
         property_state: lead.property_state || '',
         property_postal_code: lead.property_postal_code || '',
         property_type: lead.property_type || '',
-        beds: lead.beds === null ? undefined : lead.beds, // Handle null for numeric fields
-        baths: lead.baths === null ? undefined : lead.baths,
+        beds: lead.beds === null ? '' : String(lead.beds), // Convert to string for form
+        baths: lead.baths === null ? '' : String(lead.baths), // Convert to string for form
         year_built: lead.year_built || '',
         square_footage: lead.square_footage === null ? undefined : lead.square_footage,
-        lot_size_sqft: lead.lot_size_sqft || '',
+        lot_size_sqft: lead.lot_size_sqft === null ? '' : String(lead.lot_size_sqft), // Convert to string for form
         assessed_total: lead.assessed_total === null ? undefined : lead.assessed_total,
         mls_curr_status: lead.mls_curr_status || '',
         mls_curr_days_on_market: lead.mls_curr_days_on_market || '',
@@ -199,6 +221,62 @@ const CrmView: React.FC = () => {
     autocompleteRef.current = null; 
   };
 
+  const handleSaveLead = async () => {
+    setIsSaving(true);
+    setError(null);
+
+    // Convert string form values to numbers for database
+    // Create a new object with the correct types for the database
+    const { contact_first_name, contact_last_name, beds, baths, lot_size_sqft, ...restFormData } = editFormData;
+    
+    const leadToSave: Record<string, any> = {
+      ...restFormData,
+      contact_name: `${contact_first_name || ''} ${contact_last_name || ''}`.trim(),
+      beds: beds ? Number(beds) : null,
+      baths: baths ? Number(baths) : null,
+      lot_size_sqft: lot_size_sqft ? Number(lot_size_sqft) : null,
+      square_footage: restFormData.square_footage === undefined ? null : restFormData.square_footage,
+      assessed_total: restFormData.assessed_total === undefined ? null : restFormData.assessed_total,
+      last_sale_price: restFormData.last_sale_price === undefined ? null : restFormData.last_sale_price
+    }
+
+    delete leadToSave.contact_first_name;
+    delete leadToSave.contact_last_name;
+
+    // Handle custom_fields safely
+    if (leadToSave.custom_fields && Object.keys(leadToSave.custom_fields as Record<string, any>).length === 0) {
+      delete leadToSave.custom_fields;
+    }
+
+    const result = editFormData.id
+      ? await updateCrmLeadAction(editFormData.id, leadToSave)
+      : await createCrmLeadAction(leadToSave);
+
+    if (result.success) {
+      toast.success('Lead saved successfully!');
+      handleCloseModal();
+      await fetchLeads();
+    } else {
+      setError(result.error || 'Failed to save lead.');
+      toast.error(`Failed to save lead: ${result.error}`);
+    }
+    setIsSaving(false);
+  };
+
+  const handleDeleteLead = async (id: number) => {
+    if (window.confirm('Are you sure you want to delete this lead?')) {
+      setIsLoading(true);
+      const result = await deleteCrmLeadAction(id);
+      if (result.success) {
+        toast.success('Lead deleted successfully!');
+        await fetchLeads();
+      } else {
+        toast.error(`Failed to delete lead: ${result.error}`);
+      }
+      setIsLoading(false);
+    }
+  };
+
   const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSaving(true);
@@ -222,9 +300,15 @@ const CrmView: React.FC = () => {
     try {
       let successOp = false; // Use a different variable name to avoid conflict if 'success' is used elsewhere
       // Remove frontend-only fields before sending to backend
-      const finalDataForAction = { ...leadDataToSave };
-      delete (finalDataForAction as any).contact_first_name;
-      delete (finalDataForAction as any).contact_last_name;
+      // Convert string form values to numbers for database
+      const { contact_first_name, contact_last_name, beds, baths, lot_size_sqft, ...restData } = leadDataToSave as Record<string, any>;
+      
+      const finalDataForAction: Record<string, any> = {
+        ...restData,
+        beds: beds ? Number(beds) : null,
+        baths: baths ? Number(baths) : null,
+        lot_size_sqft: lot_size_sqft ? Number(lot_size_sqft) : null
+      };
 
       if (editFormData.id) {
         const result = await updateCrmLeadAction(editFormData.id, finalDataForAction);
@@ -237,7 +321,8 @@ const CrmView: React.FC = () => {
       } else {
         // For new leads, ensure id is not sent
         const { id, ...createData } = finalDataForAction;
-        const result = await createCrmLeadAction(createData as typeof createData & { id?: undefined });
+        // Use type assertion to match the expected parameter type
+        const result = await createCrmLeadAction(createData as any);
         if (result.error) throw new Error(result.error);
         if (result.data) {
           successOp = true;
@@ -262,7 +347,7 @@ const CrmView: React.FC = () => {
     setIsSaving(false);
   };
   
-  const handleDeleteLead = async () => {
+  const handleDeleteLeadModal = async () => {
     if (!editFormData.id) return;
     if (!confirm('Are you sure you want to delete this lead? This action cannot be undone.')) return;
 
@@ -337,9 +422,82 @@ const CrmView: React.FC = () => {
     { key: 'actions', label: 'Actions' },
   ];
 
+  const fetchLeads = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { data, error } = await supabase
+        .from('crm_leads')
+        .select('*')
+        .order(sortConfig?.key || 'created_at', { ascending: sortConfig?.direction === 'ascending' })
+        .range((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage - 1);
+
+      if (error) throw error;
+      setLeads(data || []);
+    } catch (err: any) {
+      console.error('Error fetching leads:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch leads');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentPage, rowsPerPage, sortConfig]);
+
+  useEffect(() => {
+    void fetchLeads();
+  }, [fetchLeads]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    setCurrentPage(1); // Reset to first page on new search
+  };
+
+  const handleMarketFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setMarketFilter(e.target.value);
+    setCurrentPage(1); // Reset to first page on new filter
+  };
+
+  const handleSort = (key: keyof CrmLead | string) => {
+    let direction: 'ascending' | 'descending' = 'ascending';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
+
+  const handleRowsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newRowsPerPage = Number(e.target.value);
+    setRowsPerPage(newRowsPerPage);
+    setCurrentPage(1); // Reset to first page when changing rows per page
+  };
+
+  const handleModalInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    
+    if (type === 'checkbox') {
+      setEditFormData(prev => ({
+        ...prev,
+        [name]: (e.target as HTMLInputElement).checked,
+      }));
+    } else if (name === 'tags') {
+      setEditFormData(prev => ({
+        ...prev,
+        tags: value.split(',').map(tag => tag.trim()),
+      }));
+    } else {
+      setEditFormData(prev => ({
+        ...prev,
+        [name]: value,
+      }));
+    }
+  };
+
   const totalPages = Math.ceil(leads.length / rowsPerPage); // This might be incorrect if total count isn't fetched
-                                                          // For client-side pagination after full fetch, this is fine.
-                                                          // If using server-side pagination with limited fetches, need total count from server.
+                                                           // For client-side pagination after full fetch, this is fine.
+                                                           // If using server-side pagination with limited fetches, need total count from server.
 
   // For client-side pagination and sorting after fetching all (or filtered) leads
   const sortedLeads = useMemo(() => {
@@ -605,7 +763,7 @@ const CrmView: React.FC = () => {
                 {/* Delete Button - visible but disabled if no ID or saving */}
                 <button 
                   type="button" 
-                  onClick={() => { void handleDeleteLead(); }} 
+                  onClick={() => { void handleDeleteLeadModal(); }} 
                   className={`btn btn-error mr-auto ${!editFormData.id ? 'btn-disabled' : ''}`} 
                   disabled={!editFormData.id || isSaving}
                 >
