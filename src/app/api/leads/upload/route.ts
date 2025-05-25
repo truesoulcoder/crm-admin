@@ -5,7 +5,64 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import Papa from 'papaparse';
+import { parse } from 'papaparse';
+
+// Configure the API route to handle larger payloads
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '50mb',
+    },
+  },
+};
+
+// Helper function to process file in chunks
+const processFileInChunks = (
+  file: File,
+  chunkSize: number,
+  processChunk: (chunk: any[], isLastChunk: boolean) => Promise<void>
+) => {
+  return new Promise<void>((resolve, reject) => {
+    let chunk: any[] = [];
+    let rowCount = 0;
+
+    parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      step: (results, parser) => {
+        chunk.push(results.data);
+        rowCount++;
+
+        if (chunk.length >= chunkSize) {
+          // Pause parsing while we process this chunk
+          parser.pause();
+          processChunk(chunk, false)
+            .then(() => {
+              chunk = [];
+              parser.resume();
+            })
+            .catch((error) => {
+              parser.abort();
+              reject(error);
+            });
+        }
+      },
+      complete: () => {
+        // Process any remaining rows in the last chunk
+        if (chunk.length > 0) {
+          processChunk(chunk, true)
+            .then(() => resolve())
+            .catch(reject);
+        } else {
+          resolve();
+        }
+      },
+      error: (error) => {
+        reject(error);
+      },
+    });
+  });
+};
 
 
 // Utility function to convert strings to snake_case
@@ -115,128 +172,115 @@ export async function POST(request: NextRequest) {
     }
     console.log('File uploaded to storage:', objectPath);
 
-    console.log('API: Attempting to parse CSV...');
-    const fileContent = Buffer.from(fileBytes).toString('utf8');
-    const parsed = Papa.parse(fileContent, { header: true, skipEmptyLines: true });
+    console.log('API: Starting chunked CSV processing...');
+    let totalProcessed = 0;
+    let allInsertedData: any[] = [];
+    let hasError = false;
+    let processingError: any = null;
 
-    if (parsed.errors.length > 0) {
-      console.error('API Error: CSV parsing errors:', parsed.errors);
-      // Attempt to cleanup the storage file if CSV parsing fails
+    try {
+      await processFileInChunks(
+        file,
+        250, // Process 250 rows at a time
+        async (chunk, isLastChunk) => {
+          if (hasError) return;
+
+          try {
+            console.log(`Processing chunk of ${chunk.length} rows...`);
+            
+            // Process the chunk of rows
+            const leadsToInsert = chunk.map((csvRowData: any) => {
+              const rawDataPayload: { [key: string]: any } = {};
+              for (const key in csvRowData) {
+                if (Object.prototype.hasOwnProperty.call(csvRowData, key)) {
+                  let newKey = convertToSnakeCase(key);
+                  
+                  // Keep existing key transformations for consistency within raw_data
+                  if (newKey === 'lot_size_sq_ft') { 
+                    newKey = 'lot_size_sqft'; 
+                  }
+                  
+                  if (newKey === 'property_postal_code') {
+                    newKey = 'property_zip';
+                  }
+                  
+                  rawDataPayload[newKey] = csvRowData[key];
+                }
+              }
+              
+              // Construct the object that matches the 'leads' table schema
+              return {
+                uploaded_by: userId,
+                original_filename: file.name,
+                market_region: marketRegion,
+                raw_data: rawDataPayload
+              };
+            });
+
+            // Insert the chunk into the database
+            const { data: batchInsertedData, error: batchInsertErr } = await supabaseAdmin
+              .from('leads')
+              .insert(leadsToInsert)
+              .select();
+
+            if (batchInsertErr) {
+              throw batchInsertErr;
+            }
+
+            if (batchInsertedData) {
+              allInsertedData = [...allInsertedData, ...batchInsertedData];
+            }
+
+            totalProcessed += chunk.length;
+            console.log(`Successfully processed ${totalProcessed} rows so far...`);
+
+          } catch (error) {
+            hasError = true;
+            processingError = error;
+            throw error;
+          }
+        }
+      );
+
+      if (hasError && processingError) {
+        throw processingError;
+      }
+
+      console.log('API: Finished processing all chunks. Total rows processed:', totalProcessed);
+
+      if (totalProcessed === 0) {
+        console.error('API Error: No data found in CSV file after parsing.');
+        return NextResponse.json({ ok: false, error: 'No data found in CSV file.' }, { status: 400 });
+      }
+
+    } catch (error: any) {
+      console.error('API Error during chunked processing:', error);
+      // Attempt to cleanup the storage file if processing fails
       if (objectPath) {
-        console.log(`Attempting to cleanup storage file due to CSV parsing failure: ${objectPath}`);
+        console.log(`Attempting to cleanup storage file due to processing failure: ${objectPath}`);
         const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([objectPath]);
         if (cleanupError) {
-          console.error(`Failed to cleanup storage file ${objectPath} after CSV parsing failure:`, cleanupError);
+          console.error(`Failed to cleanup storage file ${objectPath} after processing failure:`, cleanupError);
         } else {
-          console.log(`Successfully cleaned up storage file after CSV parsing failure: ${objectPath}`);
+          console.log(`Successfully cleaned up storage file after processing failure: ${objectPath}`);
         }
       }
+      
+      let errorMessage = 'Failed to process CSV file';
+      if (error.message.includes('violates row-level security policy')) {
+        errorMessage = 'Permission denied. You may not have the necessary permissions to upload leads.';
+      } else if (error.message.includes('invalid input syntax')) {
+        errorMessage = 'Invalid data format in the CSV file. Please check your data and try again.';
+      }
+      
       return NextResponse.json(
-        { ok: false, error: 'Failed to parse CSV.', details: parsed.errors.slice(0, 5) }, 
-        { status: 400 }
+        { ok: false, error: errorMessage, details: error.message },
+        { status: 500 }
       );
     }
 
-    let leadsToInsert = parsed.data.map((csvRowData: any) => {
-      const rawDataPayload: { [key: string]: any } = {};
-      for (const key in csvRowData) {
-        if (Object.prototype.hasOwnProperty.call(csvRowData, key)) {
-          let newKey = convertToSnakeCase(key);
-          
-          // If CSV has an 'id' column, it will be stored as 'id' within raw_data.
-          // This is generally fine as the 'leads' table PK is a separate UUID.
-          
-          // Keep existing key transformations for consistency within raw_data
-          if (newKey === 'lot_size_sq_ft') { 
-            newKey = 'lot_size_sqft'; 
-          }
-          
-          if (newKey === 'property_postal_code') {
-            newKey = 'property_zip';
-          }
-          
-          rawDataPayload[newKey] = csvRowData[key];
-        }
-      }
-      
-      // Construct the object that matches the 'leads' table schema
-      return {
-        uploaded_by: userId, // userId is available from auth context
-        original_filename: file.name, // Use original_filename as per schema
-        market_region: marketRegion,
-        raw_data: rawDataPayload // All CSV data goes here
-      };
-    });
-
-    console.log('API: Number of leads to insert (before check):', leadsToInsert.length); 
-
-    if (leadsToInsert.length === 0) {
-      console.error('API Error: No data found in CSV file after parsing.');
-      return NextResponse.json({ ok: false, error: 'No data found in CSV file.' }, { status: 400 });
-    }
-
-    console.log('API: Sample of leadsToInsert (first 3 rows):');
-    for (let i = 0; i < Math.min(leadsToInsert.length, 3); i++) {
-      console.log(`Row ${i + 1}:`, JSON.stringify(leadsToInsert[i], null, 2));
-    }
-
-    // ------ BATCH INSERTION LOGIC ------
-    const BATCH_SIZE = 250; // Define a suitable batch size
-    let allInsertedData: any[] = [];
-    let overallInsertError: any = null;
-
-    console.log(`API: Attempting to insert ${leadsToInsert.length} leads in batches of ${BATCH_SIZE}...`);
-
-    for (let i = 0; i < leadsToInsert.length; i += BATCH_SIZE) {
-      const batch = leadsToInsert.slice(i, i + BATCH_SIZE);
-      console.log(`API: Inserting batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(leadsToInsert.length / BATCH_SIZE)}, size: ${batch.length}`);
-      
-      const { data: batchInsertedData, error: batchInsertErr } = await supabaseAdmin
-        .from('leads')
-        .insert(batch)
-        .select();
-
-      if (batchInsertErr) {
-        console.error(`Staging insert failed for batch starting at index ${i}:`, batchInsertErr);
-        overallInsertError = batchInsertErr; // Store the first error encountered
-        break; // Stop processing further batches on error
-      }
-
-      if (batchInsertedData) {
-        allInsertedData = allInsertedData.concat(batchInsertedData);
-      }
-      console.log(`API: Batch ${Math.floor(i / BATCH_SIZE) + 1} insert successful. Rows in batch: ${batch.length}, Rows returned from DB: ${batchInsertedData ? batchInsertedData.length : 0}`);
-    }
-
-    if (overallInsertError) {
-      console.error('Staging insert failed:', overallInsertError);
-      let errorMessage = `Failed to insert leads into staging table.`;
-      if (overallInsertError.message.includes("violates row-level security policy")) {
-        errorMessage += " Possible RLS policy violation.";
-      } else if (overallInsertError.message.includes("column") && overallInsertError.message.includes("does not exist")) {
-        errorMessage += ` A specified column might not exist in the 'leads' table. Details: ${overallInsertError.message}`;
-      } else if (overallInsertError.code === '22P02') {
-        errorMessage += ` Invalid input syntax for a column type. Check data for columns like UUIDs, numbers, dates. Details: ${overallInsertError.message}`;
-      } else if (overallInsertError.code === '57014') { // Statement timeout
-        errorMessage += ` Statement timeout during batch insert. Consider reducing batch size or optimizing table/indexes. Details: ${overallInsertError.message}`;
-      } else if (overallInsertError.code) {
-        errorMessage += ` Code: ${overallInsertError.code}. Details: ${overallInsertError.details || overallInsertError.message}`;
-      } else {
-        errorMessage += ` Details: ${overallInsertError.message}`;
-      }
-      console.error('Full staging insert error object:', JSON.stringify(overallInsertError, null, 2));
-      // Attempt to cleanup the storage file if insert fails
-      if (objectPath) {
-        console.log(`Attempting to cleanup storage file due to DB insert failure: ${objectPath}`);
-        const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-        if (cleanupError) {
-          console.error(`Failed to cleanup storage file ${objectPath} after DB insert failure:`, cleanupError);
-        } else {
-          console.log(`Successfully cleaned up storage file after DB insert failure: ${objectPath}`);
-        }
-      }
-      return NextResponse.json({ ok: false, error: errorMessage, details: overallInsertError }, { status: 500 });
-    }
+    // The chunked processing has already inserted all rows and populated allInsertedData
+    console.log('API: All chunks processed. Total rows inserted:', allInsertedData.length);
     
     console.log('API: All batches inserted successfully. Total rows affected/returned:', allInsertedData.length);
     // console.log('API: Sample of insertedData from staging (first row):', allInsertedData.length > 0 ? JSON.stringify(allInsertedData[0], null, 2) : 'No data returned');
@@ -339,18 +383,43 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('API: Unhandled error in POST /api/leads/upload:', error);
+    // Ensure we return a proper JSON response even in case of errors
+    let errorMessage = 'An unexpected error occurred during processing.';
+    let errorDetails = error.message || 'No additional details available.';
+    
+    // Handle specific error cases
+    if (error instanceof Error) {
+      if (error.message.includes('PayloadTooLargeError')) {
+        errorMessage = 'File size exceeds the maximum allowed limit (50MB).';
+        errorDetails = 'The uploaded file is too large. Please reduce the file size and try again.';
+      } else if (error.message.includes('Unexpected token') || error.message.includes('JSON')) {
+        errorMessage = 'Invalid request format.';
+        errorDetails = 'The request could not be processed. Please ensure the file is a valid CSV.';
+      }
+    }
+    
     // If an error occurs after file upload, try to remove the orphaned file from storage
     if (objectPath) {
       console.log(`Attempting to cleanup orphaned storage file: ${objectPath}`);
-      const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-      if (cleanupError) {
-        console.error(`Failed to cleanup orphaned storage file ${objectPath}:`, cleanupError);
-      } else {
-        console.log(`Successfully cleaned up orphaned storage file: ${objectPath}`);
+      try {
+        const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+        if (cleanupError) {
+          console.error(`Failed to cleanup orphaned storage file ${objectPath}:`, cleanupError);
+        } else {
+          console.log(`Successfully cleaned up orphaned storage file: ${objectPath}`);
+        }
+      } catch (cleanupErr) {
+        console.error('Error during cleanup:', cleanupErr);
       }
     }
+    
+    // Return a properly formatted JSON response
     return NextResponse.json(
-      { ok: false, error: 'An unexpected error occurred during processing.', details: error.message },
+      { 
+        ok: false, 
+        error: errorMessage, 
+        details: errorDetails 
+      },
       { status: 500 }
     );
   }
