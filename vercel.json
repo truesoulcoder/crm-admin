@@ -7,9 +7,10 @@
     }
   ],
   "functions": {
-    "pages/api/eli5-engine/**/*.ts": {
-      "maxDuration": 30,
-      "memory": 1024
+    "src/app/api/leads/upload/route.ts": {
+      "maxDuration": 300,
+      "memory": 1024,
+      "maxBodyLength": 52428800 
     }
   },
   "build": {
