@@ -551,18 +551,18 @@ for (const lead of leads) {
     try {
       emailSubject = nunjucksRenderString(emailTemplate.subject, personalizationDataForEmail);
       emailBody = nunjucksRenderString(emailTemplate.body_html || emailTemplate.body_text || '', personalizationDataForEmail);
-  } catch (renderError: any) {
-    const renderErrorMsg = `Email template rendering failed for lead ${leadId}: ${renderError.message || String(renderError)}`;
-    console.error(`ELI5_CAMPAIGN_HANDLER: ${renderErrorMsg}`);
-    // logId is guaranteed to be a number here due to the robust initialization earlier.
-    await updateEmailLogStatus(supabase, logId, 'FAILED_PREPARATION', null, renderErrorMsg);
-    processingErrors.push({ leadId, contact_email: contactEmail, error: 'template_render_failed', details: renderErrorMsg });
-    failureCount++;
-    continue; // CRITICAL: Skip to the next lead, do not proceed to create emailConfig or send.
-  }
-  // If rendering was successful, execution continues here.
-  // The emailConfig declaration and subsequent logic will only be reached if the try block for rendering succeeded.
-  const emailConfig: EmailConfig = {
+    } catch (renderError: any) {
+      const renderErrorMsg = `Email template rendering failed for lead ${leadId}: ${renderError.message || String(renderError)}`;
+      console.error(`ELI5_CAMPAIGN_HANDLER: ${renderErrorMsg}`);
+      // logId is guaranteed to be a number here due to the robust initialization earlier.
+      await updateEmailLogStatus(supabase, logId, 'FAILED_PREPARATION', null, renderErrorMsg);
+      processingErrors.push({ leadId, contact_email: contactEmail, error: 'template_render_failed', details: renderErrorMsg });
+      failureCount++;
+      continue; // CRITICAL: Skip to the next lead, do not proceed to create emailConfig or send.
+    }
+    // If rendering was successful, execution continues here.
+    // The emailConfig declaration and subsequent logic will only be reached if the try block for rendering succeeded.
+    const emailConfig: EmailConfig = {
           recipientEmail: contactEmail as string, // Ensure contactEmail is treated as string
           recipientName: contactName as string, // Ensure contactName is treated as string
           leadId,
@@ -634,26 +634,27 @@ for (const lead of leads) {
   } // End of for...of leads loop
 
   // Final summary response
-  const totalAttempted = successCount + failureCount;
-  const summaryMessage = `Campaign run ${campaign_run_id} for campaign ${campaign_id} completed. Attempted: ${totalAttempted}, Sent: ${successCount}, Failed: ${failureCount}.`;
-  console.log(`ELI5_CAMPAIGN_HANDLER: ${summaryMessage}`);
-  console.log('ELI5_CAMPAIGN_HANDLER: Processing Errors:', JSON.stringify(processingErrors, null, 2));
+  try {
+    const totalAttempted = successCount + failureCount;
+    const summaryMessage = `Campaign run ${campaign_run_id} for campaign ${campaign_id} completed. Attempted: ${totalAttempted}, Sent: ${successCount}, Failed: ${failureCount}.`;
+    console.log(`ELI5_CAMPAIGN_HANDLER: ${summaryMessage}`);
+    console.log('ELI5_CAMPAIGN_HANDLER: Processing Errors:', JSON.stringify(processingErrors, null, 2));
 
-  // Log overall campaign run status (optional, could be a separate table or log entry)
-  // Example: await logCampaignRunSummary(supabase, { campaign_id, campaign_run_id, successCount, failureCount, totalAttempted, processingErrors });
+    // Log overall campaign run status (optional, could be a separate table or log entry)
+    // Example: await logCampaignRunSummary(supabase, { campaign_id, campaign_run_id, successCount, failureCount, totalAttempted, processingErrors });
 
-  return res.status(200).json({
-    success: true,
-    message: summaryMessage,
-    campaign_id,
-    campaign_run_id,
-    summary: {
-      total_leads_processed_in_batch: leads.length, // Number of leads fetched for this batch
-      emails_sent_successfully: successCount,
-      emails_failed_to_send: failureCount,
-      processing_errors_details: processingErrors || [] // Initialize empty array if processingErrors is undefined
-    }
-  });
+    return res.status(200).json({
+      success: true,
+      message: summaryMessage,
+      campaign_id,
+      campaign_run_id,
+      summary: {
+        total_leads_processed_in_batch: leads.length, // Number of leads fetched for this batch
+        emails_sent_successfully: successCount,
+        emails_failed_to_send: failureCount,
+        processing_errors_details: processingErrors || [] // Initialize empty array if processingErrors is undefined
+      }
+    });
   } catch (err) {
     console.error('ELI5_CAMPAIGN_HANDLER: Uncaught exception in handler:', err);
     return res.status(500).json({
