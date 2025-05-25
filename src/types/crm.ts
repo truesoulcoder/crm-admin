@@ -3,6 +3,7 @@ export interface CrmLead {
   normalized_lead_id: number; // bigint maps to number or string, number is fine if IDs are within JS safe integer range
   contact_name?: string | null;
   contact_email?: string | null;
+  phone?: string | null;
   contact_type: string; // not null
   market_region?: string | null;
   property_address?: string | null;

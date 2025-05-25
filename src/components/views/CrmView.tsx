@@ -1,27 +1,15 @@
-'use client'
+'use client';
 
-import {
-  ChevronUp,
-  ChevronDown,
-  Edit3,
-  Trash2,
-  PlusCircle,
-  Search,
-  AlertTriangle,
-  XCircle,
-  Save,
-  MapPin, // For Street View icon if needed
-} from 'lucide-react';
-import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
 import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api';
-import { useGoogleMapsApi } from '../maps/GoogleMapsLoader'; // Import the hook
+import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle, XCircle, Save, MapPin } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
+import toast from 'react-hot-toast';
+
+import { createCrmLeadAction, updateCrmLeadAction, deleteCrmLeadAction } from '@/app/crm/actions';
+import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader';
 import { supabase } from '@/lib/supabase/client';
+
 import type { CrmLead } from '@/types/crm';
-import {
-  createCrmLeadAction,
-  updateCrmLeadAction,
-  deleteCrmLeadAction
-} from '../../app/crm/actions';
 
 
 interface ColumnConfig {
@@ -59,6 +47,16 @@ const CrmView: React.FC = () => {
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const [modalTitleAddress, setModalTitleAddress] = useState<string>('');
 
+  const columnConfigurations: ColumnConfig[] = [
+    { key: 'contact_name', label: 'Contact Name', sortable: true },
+    { key: 'contact_email', label: 'Email', sortable: true },
+    { key: 'property_address', label: 'Property Address', sortable: true },
+    { key: 'market_region', label: 'Market', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
+    { key: 'created_at', label: 'Date Added', sortable: true },
+  ];
+
+  // handlePageChange and handleRowsPerPageChange are already defined elsewhere in the component
 
   const { isLoaded, loadError } = useGoogleMapsApi(); // Use the context hook
 
@@ -143,7 +141,14 @@ const CrmView: React.FC = () => {
   }, [searchTerm, sortConfig, currentPage, rowsPerPage, marketFilter]); // Removed supabase from deps as it's stable
 
   useEffect(() => {
-    void fetchLeads();
+    void (async () => {
+      try {
+        await fetchLeads();
+      } catch (err) {
+        console.error("Failed to fetch leads in useEffect:", err);
+        // setError("Failed to load initial lead data."); // Optionally set error state
+      }
+    })();
   }, [fetchLeads]);
 
   const handleSort = (key: keyof CrmLead | string) => {
@@ -163,6 +168,13 @@ const CrmView: React.FC = () => {
   const handleMarketFilterChange = (event: ChangeEvent<HTMLSelectElement>) => {
     setMarketFilter(event.target.value);
     setCurrentPage(1); // Reset to first page on filter change
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage > 0) {
+      setCurrentPage(newPage);
+      // Potentially add logic here if total pages are known, to prevent going beyond last page
+    }
   };
 
   const handleRowsPerPageChange = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -263,26 +275,34 @@ const CrmView: React.FC = () => {
     }
 
     try {
+      let successOp = false; // Use a different variable name to avoid conflict if 'success' is used elsewhere
       if (editFormData.id) {
         const result = await updateCrmLeadAction(editFormData.id, leadDataToSave);
         if (result.error) throw new Error(result.error);
-        // setLeads(leads.map(l => l.id === editFormData.id ? { ...l, ...result.data } : l)); // result.data may be CrmLead | null
         if (result.data) {
-            setLeads(leads.map(l => l.id === editFormData.id ? result.data! : l));
+            // Local update is fine, fetchLeads will run after for consistency
+            // setLeads(leads.map(l => l.id === editFormData.id ? result.data! : l));
+            successOp = true;
         } else {
-            void fetchLeads(); // Fallback if data is null
+            // If update returns no data but no error, still might need a refresh
+            await fetchLeads(); 
         }
       } else {
         const result = await createCrmLeadAction(leadDataToSave);
         if (result.error) throw new Error(result.error);
         if (result.data) {
-          setLeads([result.data, ...leads]);
+          successOp = true;
         } else {
-            void fetchLeads(); // Fallback if data is null
+          // If create returns no data but no error, still might need a refresh
+          await fetchLeads(); 
         }
       }
-      handleCloseModal();
-      // void fetchLeads(); // Re-fetch might be redundant if local state update is perfect
+
+      if (successOp) {
+        toast.success(editFormData.id ? 'Lead updated successfully!' : 'Lead created successfully!');
+        await fetchLeads(); // Ensure data consistency
+        handleCloseModal();
+      }
     } catch (e: any) {
       console.error('Error saving lead:', e);
       setError(`Failed to save lead: ${e.message}`);
@@ -415,10 +435,131 @@ const CrmView: React.FC = () => {
             <input
               type="text"
               placeholder="Search by name, email, address..."
-              className="input input-bordered w-full" />
+              className="input input-bordered w-full"
+              value={searchTerm}
+              onChange={handleSearchChange}
+            />
+            <span className="absolute inset-y-0 right-0 flex items-center pr-3">
+              <Search className="h-5 w-5 text-gray-400" />
+            </span>
           </div>
         </div>
+
+        {/* Market Region Filter */}
+        <div className="form-control">
+          <label className="label"><span className="label-text">Filter by Market</span></label>
+          <select
+            className="select select-bordered w-full"
+            value={marketFilter} 
+            onChange={handleMarketFilterChange}
+          >
+            <option value="">All Markets</option> {/* Assuming empty string for 'All' to match marketFilter initial state '' */}
+            {availableMarkets.map((region: string) => (
+              <option key={region} value={region}>
+                {region}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Add New Lead Button */}
+        <div className="form-control">
+          <button
+            className="btn btn-primary w-full md:w-auto md:justify-self-end"
+            onClick={() => handleOpenModal()} 
+          >
+            <PlusCircle className="mr-2 h-5 w-5" />
+            Add New Lead
+          </button>
+        </div>
       </div>
+
+      {/* Leads Table */}
+      <div className="overflow-x-auto bg-base-100 shadow-lg rounded-lg mt-6">
+        <table className="table table-zebra w-full">
+          <thead>
+            <tr>
+              {columnConfigurations.map((col) => (
+                <th
+                  key={col.key}
+                  className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${col.sortable ? 'cursor-pointer hover:bg-base-200' : ''}`}
+                  onClick={() => col.sortable && handleSort(col.key)}
+                >
+                  {col.label}
+                  {col.sortable && sortConfig && sortConfig.key === col.key && (
+                    sortConfig.direction === 'ascending' ? <ChevronUp className="inline w-4 h-4 ml-1" /> : <ChevronDown className="inline w-4 h-4 ml-1" />
+                  )}
+                  {col.sortable && (!sortConfig || sortConfig.key !== col.key) && (
+                    <ChevronDown className="inline w-4 h-4 ml-1 text-gray-300" />
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading && (
+              <tr><td colSpan={columnConfigurations.length} className="text-center p-4"><span className="loading loading-spinner"></span> Loading leads...</td></tr>
+            )}
+            {!isLoading && error && (
+              <tr><td colSpan={columnConfigurations.length} className="text-center p-4 text-error">{error}</td></tr>
+            )}
+            {!isLoading && !error && leads.length === 0 && (
+              <tr><td colSpan={columnConfigurations.length} className="text-center p-4">No leads found. Adjust filters or add new leads.</td></tr>
+            )}
+            {!isLoading && !error && leads.map((lead) => (
+              <tr key={lead.id} className="hover:bg-base-200 cursor-pointer" onClick={() => handleOpenModal(lead)}>
+                {columnConfigurations.map(col => (
+                  <td key={`${lead.id}-${col.key}`} className="px-4 py-3 whitespace-nowrap text-sm">
+                    {col.key === 'created_at' || col.key === 'updated_at'
+                      ? new Date(lead[col.key as keyof CrmLead] as string).toLocaleDateString()
+                      : String(lead[col.key as keyof CrmLead] ?? '')}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination Controls */}
+      {!isLoading && !error && (leads.length > 0 || currentPage > 1) && (
+        <div className="mt-6 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-700">Rows per page:</span>
+            <select
+              value={rowsPerPage}
+              onChange={handleRowsPerPageChange}
+              className="select select-bordered select-sm"
+              disabled={isLoading}
+            >
+              {[10, 25, 50, 100].map(size => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-700">
+              Page {currentPage}
+            </span>
+            <div className="join">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1 || isLoading}
+                className="join-item btn btn-sm btn-outline"
+              >
+                « Prev
+              </button>
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={leads.length < rowsPerPage || isLoading}
+                className="join-item btn btn-sm btn-outline"
+              >
+                Next »
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
