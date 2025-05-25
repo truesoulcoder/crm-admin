@@ -1,7 +1,9 @@
 "use server";
 
-import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+
+import { createClient } from '@/lib/supabase/server';
+
 import type { CrmLead } from '@/types/crm'; // Import CrmLead from the centralized types file
 
 interface ServerActionResponse<T = CrmLead | CrmLead[]> {
@@ -16,16 +18,10 @@ export async function createCrmLeadAction(newLeadData: Partial<Omit<CrmLead, 'id
   const supabase = await createClient();
   console.log('Server Action createCrmLeadAction called with:', newLeadData);
 
-  // Ensure required fields like contact_type and normalized_lead_id are present if your DB requires them
   if (!newLeadData.contact_type) {
     return { success: false, error: 'Contact type is required.' };
   }
-  // If normalized_lead_id is not provided, it will be undefined.
-  // If your DB schema allows null for normalized_lead_id, then `undefined` will map to `null`.
-  // If your DB schema has a default value or requires a value, you might need to handle it here.
-  // If it's explicitly set to 0, and your DB has a foreign key constraint,
-  // it might still cause an error if 0 is not a valid normalized_lead ID.
-  // newLeadData.normalized_lead_id = newLeadData.normalized_lead_id || 0; // Removed strict enforcement
+
 
   try {
     const { data, error } = await supabase
