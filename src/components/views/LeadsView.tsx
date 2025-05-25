@@ -1,11 +1,11 @@
 'use client'
 
 import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, UploadCloud, AlertTriangle, XCircle, Save, Eye, Mail, Phone, MapPin } from 'lucide-react';
-import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
-
-// Using shared Supabase client
+import { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
 import { Badge } from 'react-daisyui';
+
 import { supabase } from '@/lib/supabase/client';
+import { NormalizedLead } from '@/types/crm_types';
 
 // Define types (adjust based on your actual schema)
 interface ColumnConfig {
@@ -14,65 +14,9 @@ interface ColumnConfig {
   sortable?: boolean;
 }
 
-export interface NormalizedLead {
-  id: string;
-  market_region?: string | null;
-  contact_name?: string | null;
-  contact_email?: string | null;
-  mls_curr_list_agent_name?: string | null;
-  mls_curr_list_agent_email?: string | null;
-  property_address?: string | null;
-  property_city?: string | null;
-  property_state?: string | null;
-  property_postal_code?: string | null;
-  property_type?: string | null;
-  beds?: string | null; // Assuming text, adjust if numeric
-  baths?: string | null; // Assuming text, adjust if numeric
-  year_built?: string | null; // Assuming text, adjust if numeric
-  square_footage?: string | null; // Assuming text, adjust if numeric (schema has it as 'text')
-  lot_size_sqft?: string | null; // Assuming text, adjust if numeric
-  wholesale_value?: number | null; // numeric
-  assessed_total?: number | null; // numeric
-  avm_value?: number | null; // numeric
-  price_per_sq_ft?: number | null; // numeric
-  mls_curr_status?: string | null;
-  mls_curr_days_on_market?: string | null;
-  converted: boolean; // not null default false
-  status?: string | null; // This is lead_status in table view, aligning with 'status' field in schema
-  source?: string | null; // This is lead_source in table view
-  notes?: string | null;
-  created_at: string; // timestamp with time zone
-  updated_at: string; // timestamp with time zone
-  // Fields from previous interface not directly in new schema but kept for potential future use or if schema expands:
-  company_name?: string | null;
-  company_industry?: string | null;
-  company_website?: string | null;
-  company_notes?: string | null;
-  county?: string | null;
-  country?: string | null;
-  lead_score?: number | null;
-  assigned_to?: string | null;
-  last_contacted_date?: string | null; // separate from updated_at
-  next_follow_up_date?: string | null;
-  conversion_date?: string | null;
-  lost_reason?: string | null;
-  tags?: string[] | null;
-  custom_fields?: Record<string, any> | null;
-  property_sf?: number | null; // old name for square_footage, kept if used in old data
-  // The 'lead_status' and 'lead_source' used in UI might map to 'status' and 'source' from the schema respectively.
-  // For clarity, the UI will use lead.status and lead.source which map to these schema fields.
-  // The table column header 'lead_status' will display data from 'lead.status'.
-  _primaryContact?: {
-    name: string | null;
-    email: string;
-    type: string;
-    contactType: 'owner' | 'agent';
-  } | null;
-}
-
 const initialNewLeadData: Partial<NormalizedLead> = {
-  contact_name: '',
-  contact_email: '',
+  contact1_name: '',
+  contact1_email: '',
   notes: '',
   market_region: '',
   status: 'UNQUALIFIED', // Default status for new leads
@@ -107,7 +51,7 @@ const LeadsView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const columnConfigurations: ColumnConfig[] = [
-    { key: 'contact_name', label: 'Contact Info', sortable: true },
+    { key: 'contact1_name', label: 'Contact Info', sortable: true },
     { key: 'property_address', label: 'Property Address', sortable: true }, 
     { key: 'market_region', label: 'Market Region', sortable: true },
     { key: 'status', label: 'Lead Status', sortable: true },
@@ -141,7 +85,7 @@ const LeadsView: React.FC = () => {
         if (error) throw error;
         
         const uniqueRegions = Array.from(
-          new Set(data.map(item => item.market_region).filter(Boolean))
+          new Set(data.map((item: { market_region: string | null }) => item.market_region).filter(Boolean))
         ).sort() as string[];
         
         console.log(`Found ${uniqueRegions.length} unique market regions`);
@@ -165,7 +109,7 @@ const LeadsView: React.FC = () => {
           if (error) throw error;
           
           // Add new regions to our set (automatically handles duplicates)
-          data.forEach(item => {
+          data.forEach((item: { market_region: string | null }) => {
             if (item.market_region) {
               allRegions.add(item.market_region);
             }
@@ -187,15 +131,64 @@ const LeadsView: React.FC = () => {
         console.log(`Found ${sortedRegions.length} unique market regions`);
         setMarketRegions(sortedRegions);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching market regions:', err);
       setMarketRegions([]);
     }
-  }, [setMarketRegions]); // Fix variable scope issue by adding setMarketRegions to the dependency array
+  }, [setMarketRegions]);
+
+  // Fetch Leads from useful_leads view
+  const fetchLeads = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      let query = supabase.from('normalized_leads').select('*', { count: 'exact' });
+
+      if (filterMarketRegion !== 'All') {
+        query = query.eq('market_region', filterMarketRegion);
+      }
+
+      if (tableSearchTerm && tableSearchTerm.trim() !== '') {
+        const searchTermQuery = `%${tableSearchTerm.trim()}%`;
+        query = query.or(
+          `contact1_name.ilike.${searchTermQuery},` +
+          `contact1_email.ilike.${searchTermQuery},` +
+          `property_address.ilike.${searchTermQuery},` +
+          `property_city.ilike.${searchTermQuery},` +
+          `property_state.ilike.${searchTermQuery},` +
+          `property_postal_code.ilike.${searchTermQuery},` +
+          `mls_curr_list_agent_name.ilike.${searchTermQuery},` +
+          `mls_curr_list_agent_email.ilike.${searchTermQuery}`
+        );
+      }
+
+      const from = (currentPage - 1) * rowsPerPage;
+      const to = from + rowsPerPage - 1;
+
+      const { data, error, count } = await query
+        .order(sortField, { ascending: sortDirection === 'asc' })
+        .range(from, to);
+
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        setLeads(data as NormalizedLead[]);
+        setTotalLeads(count || 0);
+      }
+    } catch (err: any) {
+      console.error('Error fetching leads:', err);
+      setError(err.message || 'Failed to fetch leads');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentPage, rowsPerPage, filterMarketRegion, tableSearchTerm, sortField, sortDirection]);
 
   // Check if a lead has any valid email address
   const hasValidEmail = (lead: NormalizedLead) => {
-    return !!lead.contact_email || !!lead.mls_curr_list_agent_email;
+    return !!lead.contact1_email || !!lead.mls_curr_list_agent_email;
   };
 
   // Get status badge color based on status
@@ -219,111 +212,43 @@ const LeadsView: React.FC = () => {
     }
   };
 
-  // Fetch Leads from useful_leads view
-  const fetchLeads = useCallback(async () => {
+  const handleModalInputChange = useCallback((e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setEditFormData(prev => ({
+      ...prev,
+      [name]: value,
+    }));
+  }, []);
+
+  const handleSaveLead = async () => {
+    if (!selectedLead) return;
+
     setIsLoading(true);
     setError(null);
-    try {
-      let query = supabase
-        .from('useful_leads')
-        .select('*', { count: 'exact' });
 
-      // Apply market region filter if one is selected
-      if (filterMarketRegion && filterMarketRegion !== 'All') {
-        query = query.eq('market_region', filterMarketRegion);
-      }
-
-      // Apply search term filter
-      if (tableSearchTerm && tableSearchTerm.trim() !== '') {
-        const searchTermQuery = `%${tableSearchTerm.trim()}%`;
-        query = query.or(
-          `contact_name.ilike.${searchTermQuery},` +
-          `contact_email.ilike.${searchTermQuery},` +
-          `property_address.ilike.${searchTermQuery},` +
-          `property_city.ilike.${searchTermQuery},` +
-          `property_state.ilike.${searchTermQuery},` +
-          `property_postal_code.ilike.${searchTermQuery},` +
-          `notes.ilike.${searchTermQuery},` +
-          `status.ilike.${searchTermQuery}`
-        );
-      }
-
-      // Apply sorting
-      query = query.order(sortField, { ascending: sortDirection === 'asc' });
-
-      const from = (currentPage - 1) * rowsPerPage;
-      const to = from + rowsPerPage - 1;
-      query = query.range(from, to);
-
-      const { data, error: supabaseError, count } = await query;
-
-      if (supabaseError) throw supabaseError;
-
-      setLeads(data || []);
-      setTotalLeads(count || 0);
-
-    } catch (err: any) {
-      console.error('Error fetching leads:', err);
-      setError(err.message || 'Failed to fetch leads.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filterMarketRegion, sortField, sortDirection, currentPage, rowsPerPage, tableSearchTerm]);
-
-  const fetchNormalizedLeads = async () => {
-    setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('normalized_leads')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .update(editFormData)
+        .eq('id', selectedLead.id)
+        .select();
 
-      if (error) throw error;
-      setLeads(data);
-    } catch (error) {
-      console.error('Error fetching leads:', error);
-      alert('Error loading leads');
+      if (error) {
+        throw error;
+      }
+
+      if (data) {
+        setLeads(prevLeads =>
+          prevLeads.map(lead => (lead.id === selectedLead.id ? data[0] : lead))
+        );
+        handleCloseModal();
+      }
+    } catch (err: any) {
+      console.error('Error saving lead:', err);
+      setError(err.message || 'Failed to save lead');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    const loadInitialData = async () => {
-      // Assuming these can be fetched in parallel.
-      // If fetchNormalizedLeads depends on fetchMarketRegions, they should be awaited sequentially.
-      await Promise.all([
-        fetchMarketRegions(),
-        fetchLeads()
-      ]);
-    };
-
-    loadInitialData().catch(error => {
-      // This catches errors if loadInitialData itself fails, 
-      // or if Promise.all rejects due to an unhandled error in one of the fetches.
-      // Individual fetches also have their own error handling, which is good.
-      console.error('Error during initial data loading:', error);
-      // Optionally set a general error state if appropriate
-      // setError('Failed to load initial page data.'); 
-    });
-  }, [fetchMarketRegions, fetchLeads]); // Initial fetch
-
-  // Effect to reset page to 1 when search term or region filter changes
-  useEffect(() => {
-    if (tableSearchTerm || (filterMarketRegion && filterMarketRegion !== 'All')) {
-      setCurrentPage(1);
-    }
-  }, [tableSearchTerm, filterMarketRegion]);
-
-  // Handlers
-  const handleSort = (field: keyof NormalizedLead) => {
-    if (sortField === field) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-    setCurrentPage(1); // Reset to first page on sort change
   };
 
   const handleOpenModal = (lead: NormalizedLead) => {
@@ -337,36 +262,6 @@ const LeadsView: React.FC = () => {
     setSelectedLead(null);
     setEditFormData(initialNewLeadData);
   };
-
-  const handleModalInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setEditFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleSaveLead = async () => {
-    if (!selectedLead?.id) return;
-
-    setIsLoading(true); // Consider a more specific loading state like isSaving
-    try {
-      const { error: updateError } = await supabase
-        .from('normalized_leads')
-        .update(editFormData)
-        .eq('id', selectedLead.id);
-      if (updateError) throw updateError;
-
-      await fetchNormalizedLeads(); // Refresh data
-      handleCloseModal();
-    } catch (err: any) {
-      console.error('Error saving lead:', err);
-      alert(`Failed to save lead: ${err?.message || JSON.stringify(err) || 'Unknown error'}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
 
   const handleDeleteLead = async () => {
     if (!selectedLead || !confirm('Are you sure you want to delete this lead? This action cannot be undone.')) {
@@ -431,7 +326,7 @@ const LeadsView: React.FC = () => {
       setUploadStatus(`Successfully uploaded ${result.count || 0} leads.`);
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
-      await fetchNormalizedLeads(); // Refresh leads list
+      await fetchLeads(); // Refresh leads list
     } catch (err: any) {
       console.error('Upload error:', err);
       setUploadStatus(`Upload failed: ${err.message}`);
@@ -467,6 +362,44 @@ const LeadsView: React.FC = () => {
       return 'No Email';
     }
     return emailParts[0]; 
+  };
+
+  useEffect(() => {
+    const loadInitialData = async () => {
+      // Assuming these can be fetched in parallel.
+      // If fetchNormalizedLeads depends on fetchMarketRegions, they should be awaited sequentially.
+      await Promise.all([
+        fetchMarketRegions(),
+        fetchLeads()
+      ]);
+    };
+
+    loadInitialData().catch(error => {
+      // This catches errors if loadInitialData itself fails, 
+      // or if Promise.all rejects due to an unhandled error in one of the fetches.
+      // Individual fetches also have their own error handling, which is good.
+      console.error('Error during initial data loading:', error);
+      // Optionally set a general error state if appropriate
+      // setError('Failed to load initial page data.'); 
+    });
+  }, [fetchMarketRegions, fetchLeads]); // Initial fetch
+
+  // Effect to reset page to 1 when search term or region filter changes
+  useEffect(() => {
+    if (tableSearchTerm || (filterMarketRegion && filterMarketRegion !== 'All')) {
+      setCurrentPage(1);
+    }
+  }, [tableSearchTerm, filterMarketRegion]);
+
+  // Handlers
+  const handleSort = (field: keyof NormalizedLead) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1); // Reset to first page on sort change
   };
 
   return (
@@ -619,13 +552,13 @@ const LeadsView: React.FC = () => {
             ) : (
               leads.map((lead) => (
                 <tr key={lead.id} className="hover cursor-pointer" onClick={() => handleOpenModal(lead)}>
-                  <td>{lead.contact_name}</td>
-                  <td>{lead.contact_email}</td>
+                  <td>{lead.contact1_name}</td>
+                  <td>{lead.contact1_email}</td>
                   <td>{lead.market_region}</td>
                   <td>{lead.property_address}</td>
                   <td>{lead.status}</td>
                   <td className="text-right">
-                    <Badge variant={lead.converted ? 'success' : 'warning'}> 
+                    <Badge color={lead.converted ? 'success' : 'warning'}> 
                       {lead.converted ? 'Converted' : 'Pending'}
                     </Badge>
                   </td>
@@ -676,16 +609,16 @@ const LeadsView: React.FC = () => {
         <div className="modal modal-open">
           <div className="modal-box w-11/12 max-w-3xl">
             <button onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"><XCircle size={20}/></button>
-            <h3 className="font-bold text-xl mb-4">Edit Lead: {editFormData.contact_name || 'N/A'}</h3>
+            <h3 className="font-bold text-xl mb-4">Edit Lead: {editFormData.contact1_name || 'N/A'}</h3>
             
             <form onSubmit={(e) => { e.preventDefault(); void handleSaveLead(); }} className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
               <div>
-                <label htmlFor="modal-contact_name" className="label"><span className="label-text">Contact Name</span></label>
-                <input type="text" id="modal-contact_name" name={`contact_name`} value={editFormData[`contact_name`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                <label htmlFor="modal-contact1_name" className="label"><span className="label-text">Contact Name</span></label>
+                <input type="text" id="modal-contact1_name" name={`contact1_name`} value={editFormData[`contact1_name`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div>
-                <label htmlFor="modal-contact_email" className="label"><span className="label-text">Contact Email</span></label>
-                <input type="email" id="modal-contact_email" name={`contact_email`} value={editFormData[`contact_email`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
+                <label htmlFor="modal-contact1_email" className="label"><span className="label-text">Contact Email</span></label>
+                <input type="email" id="modal-contact1_email" name={`contact1_email`} value={editFormData[`contact1_email`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div>
                 <label htmlFor="modal-market_region" className="label"><span className="label-text">Market Region</span></label>

@@ -1,11 +1,12 @@
 'use client';
 
 import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api';
-import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle, XCircle, Save, MapPin } from 'lucide-react';
+import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 
 import { createCrmLeadAction, updateCrmLeadAction, deleteCrmLeadAction } from '@/app/crm/actions';
+import { LeadFormModal } from '@/components/leads/LeadFormModal';
 import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader';
 import { supabase } from '@/lib/supabase/client';
 
@@ -17,37 +18,91 @@ interface ColumnConfig {
   sortable?: boolean;
 }
 
-// Define a more specific type for form data if needed, especially for new fields like phone
-// Define a more specific type for form data, with string types for numeric fields
-interface CrmFormData {
-  id?: number;
-  contact_first_name?: string;
-  contact_last_name?: string;
+// Define a more specific type for form data that matches the normalized_leads table structure
+export interface CrmFormData {
+  id?: number | undefined;
+  original_lead_id?: string | null;
+  market_region?: string | null;
+  
+  // Contact fields
+  contact_name?: string | null;
   contact_email?: string | null;
-  phone?: string;
-  contact_type?: string;
-  market_region?: string;
-  property_address?: string;
-  property_city?: string;
-  property_state?: string;
-  property_postal_code?: string;
-  property_type?: string;
-  beds?: string; // String for form input
-  baths?: string; // String for form input
-  year_built?: string;
-  square_footage?: number;
-  lot_size_sqft?: string; // String for form input
-  assessed_total?: number;
-  notes?: string;
-  property_latitude?: number;
-  property_longitude?: number;
-  mls_curr_status?: string;
-  mls_curr_days_on_market?: string;
+  contact_phone?: string | null;
+  mls_curr_list_agent_name?: string | null;
+  mls_curr_list_agent_email?: string | null;
+  
+  // Property details
+  property_address?: string | null;
+  property_city?: string | null;
+  property_state?: string | null;
+  property_postal_code?: string | null;
+  property_type?: string | null;
+  baths?: string | null;
+  beds?: string | null;
+  year_built?: string | null;
+  square_footage?: string | null;
+  lot_size_sqft?: string | null;
+  
+  // Financial and AVM details
+  wholesale_value?: number | null;
+  assessed_total?: number | null;
+  avm_value?: number | null;
+  price_per_sq_ft?: number | null;
+  
+  // MLS details
+  mls_curr_status?: string | null;
+  mls_curr_days_on_market?: string | null;
+  
+  // Status and metadata
   converted?: boolean;
-  status?: string;
+  status?: string | null;
+  source?: string | null;
+  notes?: string | null;
+  
+  // Timestamps
+  created_at?: string | undefined;
+  updated_at?: string | undefined;
 }
 
 const CrmView: React.FC = () => {
+  // ...existing state and hooks
+
+  // Handler to process geocode results and update form fields
+  const handleGeocodeResult = (results: google.maps.GeocoderResult[] | null, status: google.maps.GeocoderStatus) => {
+    if (status === 'OK' && results && results[0]) {
+      const formattedAddress = results[0].formatted_address;
+      setEditFormData(prev => ({
+        ...prev,
+        property_address: formattedAddress
+      }));
+      if (results[0].address_components) {
+        let city = '';
+        let state = '';
+        let postalCode = '';
+        for (const component of results[0].address_components) {
+          const types = component.types;
+          if (types.includes('locality')) {
+            city = component.long_name;
+          } else if (types.includes('administrative_area_level_1')) {
+            state = component.short_name;
+          } else if (types.includes('postal_code')) {
+            postalCode = component.long_name;
+          }
+        }
+        setEditFormData(prev => ({
+          ...prev,
+          property_city: city,
+          property_state: state,
+          property_postal_code: postalCode
+        }));
+      }
+      // Set panorama position if available
+      if (results[0].geometry && results[0].geometry.location) {
+        setPanoramaPosition({ lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng() });
+      }
+    }
+  };
+
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,12 +142,9 @@ const CrmView: React.FC = () => {
   }), []);
 
   const initialEditFormData: CrmFormData = {
-    contact_first_name: '',
-    contact_last_name: '',
+    contact_name: '',
     contact_email: '',
-    phone: '', // Added phone
-    contact_type: 'Owner', // Ensure contact_type is populated
-    market_region: '', // Added for completeness, might be set differently
+    contact_phone: '',
     property_address: '',
     property_city: '',
     property_state: '',
@@ -123,9 +175,9 @@ const CrmView: React.FC = () => {
       const formData: CrmFormData = {
         // Spread all properties from lead first
         id: lead.id,
+        contact_name: lead.contact_name || '',
         contact_email: lead.contact_email || '',
-        phone: lead.phone || '',
-        contact_type: lead.contact_type || 'Owner', // Ensure contact_type is populated
+        contact_phone: lead.contact_phone || '',
         market_region: lead.market_region || '',
         property_address: lead.property_address || '',
         property_city: lead.property_city || '',
@@ -135,7 +187,7 @@ const CrmView: React.FC = () => {
         beds: lead.beds === null ? '' : String(lead.beds), // Convert to string for form
         baths: lead.baths === null ? '' : String(lead.baths), // Convert to string for form
         year_built: lead.year_built || '',
-        square_footage: lead.square_footage === null ? undefined : lead.square_footage,
+        square_footage: lead.square_footage === null ? '' : String(lead.square_footage), // Convert to string for form
         lot_size_sqft: lead.lot_size_sqft === null ? '' : String(lead.lot_size_sqft), // Convert to string for form
         assessed_total: lead.assessed_total === null ? undefined : lead.assessed_total,
         mls_curr_status: lead.mls_curr_status || '',
@@ -144,8 +196,6 @@ const CrmView: React.FC = () => {
         status: lead.status || '',
         notes: lead.notes || '',
         // Then set the split names
-        contact_first_name: firstName,
-        contact_last_name: lastName,
       };
       setEditFormData(formData);
       const addressDisplayParts = [];
@@ -175,7 +225,7 @@ const CrmView: React.FC = () => {
       if (lead.property_address && isLoaded && window.google && window.google.maps && window.google.maps.Geocoder) {
         const geocoder = new window.google.maps.Geocoder();
         const fullAddress = `${lead.property_address}, ${lead.property_city}, ${lead.property_state} ${lead.property_postal_code}`;
-        geocoder.geocode({ address: fullAddress }, (results, status) => {
+        void geocoder.geocode({ address: fullAddress }, (results, status) => {
           if (status === 'OK' && results && results[0] && results[0].geometry && results[0].geometry.location) {
             setPanoramaPosition({ lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng() });
           } else {
@@ -216,22 +266,23 @@ const CrmView: React.FC = () => {
     setIsSaving(true);
     setError(null);
 
-    // Convert string form values to numbers for database
     // Create a new object with the correct types for the database
-    const { contact_first_name, contact_last_name, beds, baths, lot_size_sqft, ...restFormData } = editFormData;
-    
     const leadToSave: Record<string, any> = {
-      ...restFormData,
-      contact_name: `${contact_first_name || ''} ${contact_last_name || ''}`.trim(),
-      beds: beds ? Number(beds) : null,
-      baths: baths ? Number(baths) : null,
-      lot_size_sqft: lot_size_sqft ? Number(lot_size_sqft) : null,
-      square_footage: restFormData.square_footage === undefined ? null : restFormData.square_footage,
-      assessed_total: restFormData.assessed_total === undefined ? null : restFormData.assessed_total,
-    }
-
-    delete leadToSave.contact_first_name;
-    delete leadToSave.contact_last_name;
+      ...editFormData,
+      // Convert string values to numbers where needed
+      beds: editFormData.beds ? String(editFormData.beds) : null,
+      baths: editFormData.baths ? String(editFormData.baths) : null,
+      square_footage: editFormData.square_footage || null,
+      assessed_total: editFormData.assessed_total || null,
+      avm_value: editFormData.avm_value || null,
+      wholesale_value: editFormData.wholesale_value || null,
+      price_per_sq_ft: editFormData.price_per_sq_ft || null,
+      lot_size_sqft: editFormData.lot_size_sqft || null,
+      year_built: editFormData.year_built || null,
+      mls_curr_days_on_market: editFormData.mls_curr_days_on_market || null,
+      status: editFormData.status || 'New',
+      converted: editFormData.converted || false
+    };
 
     const result = editFormData.id
       ? await updateCrmLeadAction(editFormData.id, leadToSave)
@@ -262,65 +313,51 @@ const CrmView: React.FC = () => {
     }
   };
 
-  const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleFormSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     setIsSaving(true);
     setError(null);
 
-    // Combine first and last name into contact_name
-    const contact_name = `${editFormData.contact_first_name || ''} ${editFormData.contact_last_name || ''}`.trim();
-
-    // Prepare the object to be saved, excluding frontend-only fields
-    const { contact_first_name, contact_last_name, ...dataForBackend } = editFormData;
-    const leadDataToSave = {
-      ...dataForBackend,
-      contact_name: contact_name || null, // Ensure contact_name is null if empty, matching DB schema
-      contact_type: editFormData.contact_type || 'Owner', // Ensure contact_type has a default if somehow empty
-    };
-
-    if (!leadDataToSave.id) {
-      delete leadDataToSave.id;
-    }
-
     try {
-      let successOp = false; // Use a different variable name to avoid conflict if 'success' is used elsewhere
-      // Remove frontend-only fields before sending to backend
-      // Convert string form values to numbers for database
-      const { contact_first_name, contact_last_name, beds, baths, lot_size_sqft, ...restData } = leadDataToSave as Record<string, any>;
-      
+      // Prepare the object to be saved
+      const leadDataToSave = { ...editFormData };
+
+      if (!leadDataToSave.id) {
+        delete leadDataToSave.id;
+      }
+
+      // Ensure all fields have the correct types before saving
       const finalDataForAction: Record<string, any> = {
-        ...restData,
-        beds: beds ? Number(beds) : null,
-        baths: baths ? Number(baths) : null,
-        lot_size_sqft: lot_size_sqft ? Number(lot_size_sqft) : null
+        ...leadDataToSave,
+        // Convert values to appropriate types for the database
+        beds: leadDataToSave.beds || null,
+        baths: leadDataToSave.baths || null,
+        square_footage: leadDataToSave.square_footage || null,
+        assessed_total: leadDataToSave.assessed_total || null,
+        avm_value: leadDataToSave.avm_value || null,
+        wholesale_value: leadDataToSave.wholesale_value || null,
+        price_per_sq_ft: leadDataToSave.price_per_sq_ft || null,
+        lot_size_sqft: leadDataToSave.lot_size_sqft || null,
+        year_built: leadDataToSave.year_built || null,
+        mls_curr_days_on_market: leadDataToSave.mls_curr_days_on_market || null,
+        status: leadDataToSave.status || 'New',
+        converted: leadDataToSave.converted || false
       };
 
       if (editFormData.id) {
         const result = await updateCrmLeadAction(editFormData.id, finalDataForAction);
         if (result.error) throw new Error(result.error);
-        if (result.data) {
-            successOp = true;
-        } else {
-            await fetchLeads(); 
-        }
+        await fetchLeads();
       } else {
         // For new leads, ensure id is not sent
         const { id, ...createData } = finalDataForAction;
-        // Use type assertion to match the expected parameter type
         const result = await createCrmLeadAction(createData as any);
         if (result.error) throw new Error(result.error);
-        if (result.data) {
-          successOp = true;
-        } else {
-          await fetchLeads(); 
-        }
+        await fetchLeads();
       }
 
-      if (successOp) {
-        toast.success(editFormData.id ? 'Lead updated successfully!' : 'Lead created successfully!');
-        await fetchLeads(); // Ensure data consistency
-        handleCloseModal();
-      }
+      toast.success(editFormData.id ? 'Lead updated successfully!' : 'Lead created successfully!');
+      handleCloseModal();
     } catch (e: unknown) {
       console.error('Error saving lead:', e);
       if (e instanceof Error) {
@@ -328,8 +365,14 @@ const CrmView: React.FC = () => {
       } else {
         setError('An unknown error occurred while saving the lead.');
       }
+      // Re-throw the error to be handled by the form's error boundary if needed
+      if (e instanceof Error) {
+        throw e;
+      }
+      throw new Error('An unknown error occurred');
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
   
   const handleDeleteLeadModal = async () => {
@@ -655,259 +698,40 @@ const CrmView: React.FC = () => {
       )}
 
       {/* Modal for Adding/Editing Leads */}
-      {isModalOpen && (
-        <div className="modal modal-open">
-          <div className="modal-box w-11/12 max-w-4xl">
-            <button onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
-            <h3 className="font-bold text-lg mb-4">{modalTitleAddress || (editFormData.id ? 'Edit Lead' : 'Add New Lead')}</h3>
-            
-            <form onSubmit={(e) => { e.preventDefault(); void handleFormSubmit(e); }} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Contact Info */}
-                <div>
-                  <label className="label"><span className="label-text">First Name</span></label>
-                  <input type="text" name="contact_first_name" placeholder="First Name" className="input input-bordered w-full" value={editFormData.contact_first_name || ''} onChange={handleModalInputChange} />
-                </div>
-                <div>
-                  <label className="label"><span className="label-text">Last Name</span></label>
-                  <input type="text" name="contact_last_name" placeholder="Last Name" className="input input-bordered w-full" value={editFormData.contact_last_name || ''} onChange={handleModalInputChange} />
-                </div>
-                <div>
-                  <label className="label"><span className="label-text">Email</span></label>
-                  <input type="email" name="contact_email" placeholder="Email" className="input input-bordered w-full" value={editFormData.contact_email || ''} onChange={handleModalInputChange} />
-                </div>
-                <div>
-                  <label className="label"><span className="label-text">Phone</span></label>
-                  <input type="tel" name="phone" placeholder="Phone" className="input input-bordered w-full" value={editFormData.phone || ''} onChange={handleModalInputChange} />
-                </div>
-                <div>
-                  <label className="label"><span className="label-text">Contact Type</span></label>
-                  <select name="contact_type" className="select select-bordered w-full" value={editFormData.contact_type || 'Owner'} onChange={handleModalInputChange}>
-                    <option value="Owner">Owner</option>
-                    <option value="Agent">Agent</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Property Info */}
-              <h4 className="text-md font-semibold mt-4">Property Information</h4>
-              <div>
-                <label className="label"><span className="label-text">Property Address</span></label>
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    name="property_address" 
-                          if (status === 'OK' && results && results[0]) {
-                            // Update address with formatted address
-                            const formattedAddress = results[0].formatted_address;
-                            setEditFormData(prev => ({
-                              ...prev,
-                              property_address: formattedAddress
-                            }));
-                            
-                            // Extract address components
-                            if (results[0].address_components) {
-                              let city = '';
-                              let state = '';
-                              let postalCode = '';
-                              
-                              for (const component of results[0].address_components) {
-                                const types = component.types;
-                                if (types.includes('locality')) {
-                                  city = component.long_name;
-                                } else if (types.includes('administrative_area_level_1')) {
-                                  state = component.short_name;
-                                } else if (types.includes('postal_code')) {
-                                  postalCode = component.long_name;
-                                }
-                              }
-                              
-                              setEditFormData(prev => ({
-                                ...prev,
-                                property_city: city,
-                                property_state: state,
-                                property_postal_code: postalCode
-                              }));
-                            }
-                            
-                            // Set panorama position
-                            if (results[0].geometry && results[0].geometry.location) {
-                              setPanoramaPosition({
-                                lat: results[0].geometry.location.lat(),
-                                lng: results[0].geometry.location.lng()
-                              });
-                            }
-                          }
-                        })
-                        .catch(error => {
-                          console.error('Geocoding error:', error);
-                        });
-                    }
-                  }}
-                />
-                {isLoaded ? (
-                  <button 
-                    type="button"
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-primary"
-                    onClick={() => {
-                      if (
-                        editFormData.property_address &&
-                        isLoaded &&
-                        typeof window !== 'undefined' &&
-                        window.google &&
-                        window.google.maps &&
-                        window.google.maps.Geocoder
-                      ) {
-                        const geocoder = new window.google.maps.Geocoder();
-                        geocoder
-                          .geocode({ address: editFormData.property_address }, (results, status) => {
-                            if (
-                              status === 'OK' &&
-                              results &&
-                              results[0] &&
-                              results[0].geometry &&
-                              results[0].geometry.location
-                            ) {
-                              setPanoramaPosition({
-                                lat: results[0].geometry.location.lat(),
-                                lng: results[0].geometry.location.lng(),
-                              });
-                            }
-                          })
-                          .catch(error => {
-                            console.error('Error in geocode Promise:', error);
-                          });
-                      }
-                    }}
-                  >
-                    <MapPin size={18} />
-                  </button>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="label"><span className="label-text">City</span></label>
-                  <input type="text" name="property_city" placeholder="City" className="input input-bordered w-full" value={editFormData.property_city || ''} onChange={handleModalInputChange} />
-                </div>
-                <div>
-                  <label className="label"><span className="label-text">State</span></label>
-                  <input type="text" name="property_state" placeholder="State" className="input input-bordered w-full" value={editFormData.property_state || ''} onChange={handleModalInputChange} />
-                </div>
-                <div>
-                  <label className="label"><span className="label-text">Postal Code</span></label>
-                  <input type="text" name="property_postal_code" placeholder="Postal Code" className="input input-bordered w-full" value={editFormData.property_postal_code || ''} onChange={handleModalInputChange} />
-                </div>
-              </div>
-               <div>
-                  <label className="label"><span className="label-text">Property Type</span></label>
-                  <div className="flex items-center space-x-4">
-                    <label className="flex items-center cursor-pointer">
-                      <input 
-                        type="radio" 
-                        name="property_type" 
-                        className="radio radio-primary" 
-                        value="Single Family" 
-                        checked={editFormData.property_type === 'Single Family'} 
-                        onChange={handleModalInputChange} 
-                      />
-                      <span className="ml-2">Single Family</span>
-                    </label>
-                    <label className="flex items-center cursor-pointer">
-                      <input 
-                        type="radio" 
-                        name="property_type" 
-                        className="radio radio-primary" 
-                        value="Vacant Land" 
-                        checked={editFormData.property_type === 'Vacant Land'} 
-                        onChange={handleModalInputChange} 
-                      />
-                      <span className="ml-2">Vacant Land</span>
-                    </label>
-                  </div>
-                </div>
-                <div>
-                  <label className="label"><span className="label-text">Assessed Value</span></label>
-                  <input type="number" name="assessed_total" placeholder="e.g., 250000" className="input input-bordered w-full" value={editFormData.assessed_total || ''} onChange={handleModalInputChange} />
-                </div>
-                
-                {/* Conditional fields based on property type */}
-                {editFormData.property_type === 'Vacant Land' ? (
-                  <div>
-                    <label className="label"><span className="label-text">Lot Size Sq Ft</span></label>
-                    <input type="number" name="lot_size_sqft" placeholder="e.g., 10000" className="input input-bordered w-full" value={editFormData.lot_size_sqft || ''} onChange={handleModalInputChange} />
-                  </div>
-                ) : editFormData.property_type === 'Single Family' ? (
-                  <>
-                    <div>
-                      <label className="label"><span className="label-text">Square Footage</span></label>
-                      <input type="number" name="square_footage" placeholder="e.g., 2500" className="input input-bordered w-full" value={editFormData.square_footage || ''} onChange={handleModalInputChange} />
-                    </div>
-                    <div>
-                      <label className="label"><span className="label-text">Year Built</span></label>
-                      <input type="text" name="year_built" placeholder="e.g., 1985" className="input input-bordered w-full" value={editFormData.year_built || ''} onChange={handleModalInputChange} />
-                    </div>
-                    <div>
-                      <label className="label"><span className="label-text">Beds</span></label>
-                      <input type="number" name="beds" placeholder="e.g., 4" className="input input-bordered w-full" value={editFormData.beds || ''} onChange={handleModalInputChange} />
-                    </div>
-                    <div>
-                      <label className="label"><span className="label-text">Baths</span></label>
-                      <input type="number" name="baths" placeholder="e.g., 2" className="input input-bordered w-full" value={editFormData.baths || ''} onChange={handleModalInputChange} />
-                    </div>
-                  </>
-                ) : null}
-
-              {/* Street View Panorama - Only if position is set */}
-              {isLoaded && panoramaPosition ? (
-  <div className="mt-4 h-64 w-full bg-gray-200 rounded">
-    <StreetViewPanorama
-      options={{
-        visible: true,
-        position: panoramaPosition,
-        controlSize: 20,
-        enableCloseButton: false,
-        addressControl: false,
-        linksControl: false,
-        panControl: true,
-        zoomControl: true,
-        scrollwheel: true,
-      }}
-    />
-  </div>
-) : isLoaded && !panoramaPosition && editFormData.id ? (
-  <p className='text-xs text-gray-500'>Street View not available or address not geocoded.</p>
-) : !isLoaded ? (
-  <p className='text-xs text-gray-500'>Google Street View loading...</p>
-) : null}
-              {!isLoaded && <p className='text-xs text-gray-500'>Google Street View loading...</p>}
-              {isLoaded && !panoramaPosition && editFormData.id && <p className='text-xs text-gray-500'>Street View not available or address not geocoded.</p>}
-
-              {/* Notes */}
-              <div>
-                <label className="label"><span className="label-text">Notes</span></label>
-                <textarea name="notes" placeholder="Notes about the lead..." className="textarea textarea-bordered w-full" value={editFormData.notes || ''} onChange={handleModalInputChange}></textarea>
-              </div>
-
-              {error && <p className="text-red-500 text-sm">{error}</p>}
-
-              <div className="modal-action mt-6">
-                {/* Delete Button - visible but disabled if no ID or saving */}
-                <button 
-                  type="button" 
-                  onClick={() => { void handleDeleteLeadModal(); }} 
-                  className={`btn btn-error mr-auto ${!editFormData.id ? 'btn-disabled' : ''}`} 
-                  disabled={!editFormData.id || isSaving}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" /> Delete
-                </button>
-                <button type="button" onClick={handleCloseModal} className="btn btn-ghost" disabled={isSaving}>Cancel</button>
-                <button type="submit" className="btn btn-primary" disabled={isSaving || !isLoaded}>
-                  {isSaving ? <span className="loading loading-spinner loading-xs"></span> : <Save className="mr-2 h-4 w-4" />} 
-                  {editFormData.id ? 'Save Changes' : 'Create Lead'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <LeadFormModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onSubmit={async (e: FormEvent<HTMLFormElement>): Promise<void> => {
+          e.preventDefault();
+          try {
+            await handleFormSubmit(e);
+          } catch (error) {
+            console.error('Error submitting form:', error);
+            throw error; // Re-throw to be handled by the form's error boundary if needed
+          }
+        }}
+        formData={editFormData}
+        onInputChange={handleModalInputChange}
+        onGeocode={() => {
+          if (
+            editFormData.property_address &&
+            isLoaded &&
+            typeof window !== 'undefined' &&
+            window.google?.maps?.Geocoder
+          ) {
+            const geocoder = new window.google.maps.Geocoder();
+            void geocoder.geocode({ address: editFormData.property_address }, (results, status) => {
+              handleGeocodeResult(results, status);
+            });
+          }
+        }}
+        modalTitleAddress={modalTitleAddress}
+        isEditMode={!!editFormData.id}
+        isLoaded={isLoaded}
+        panoramaPosition={panoramaPosition}
+        lat={panoramaPosition?.lat || 0}
+        lng={panoramaPosition?.lng || 0}
+      />
 
     </div> 
   );
