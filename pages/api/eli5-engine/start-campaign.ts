@@ -231,173 +231,174 @@ async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Initialize processingErrors array to collect any processing errors
-  const processingErrors: Array<{
-    leadId?: string;
-    contact_email?: string;
-    error: string;
-    details?: string
-  }> = [];
+  try {
+    // Initialize processingErrors array to collect any processing errors
+    const processingErrors: Array<{
+      leadId?: string;
+      contact_email?: string;
+      error: string;
+      details?: string
+    }> = [];
 
-  const { campaign_id, dry_run } = req.body as StartCampaignRequestBody;
-  const dryRun = dry_run ?? false;
+    const { campaign_id, dry_run } = req.body as StartCampaignRequestBody;
+    const dryRun = dry_run ?? false;
 
-  if (!campaign_id) {
-    return res.status(400).json({ error: 'Missing campaign_id' });
-  }
+    if (!campaign_id) {
+      return res.status(400).json({ error: 'Missing campaign_id' });
+    }
 
-  let successCount = 0; // Initialize success counter
-  let failureCount = 0; // Tracks number of failed email sends
-  const campaignRunIdProcessed: string = req.body.campaign_run_id || `run-${Date.now()}`;
-  console.log(`ELI5_CAMPAIGN_HANDLER: Received request to ${req.body.dryRun ? 'DRY RUN' : 'START'} campaign (ID: ${req.body.campaign_id}, Run ID: ${campaignRunIdProcessed}) at ${new Date().toISOString()}`);
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST']);
-    return res.status(405).end(`Method ${req.method} Not Allowed`);
-  }
+    let successCount = 0; // Initialize success counter
+    let failureCount = 0; // Tracks number of failed email sends
+    const campaignRunIdProcessed: string = req.body.campaign_run_id || `run-${Date.now()}`;
+    console.log(`ELI5_CAMPAIGN_HANDLER: Received request to ${req.body.dryRun ? 'DRY RUN' : 'START'} campaign (ID: ${req.body.campaign_id}, Run ID: ${campaignRunIdProcessed}) at ${new Date().toISOString()}`);
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', ['POST']);
+      return res.status(405).end(`Method ${req.method} Not Allowed`);
+    }
 
-  const {
-    market_region,
-    limit_per_run = 100, // Default number of leads to attempt in this run
-    campaign_id,
-    campaign_run_id = campaignRunIdProcessed,
-    selected_sender_ids,
-    selected_lead_ids,
-    dryRun = false,
-  }: StartCampaignRequestBody = req.body;
+    const {
+      market_region,
+      limit_per_run = 100, // Default number of leads to attempt in this run
+      campaign_id,
+      campaign_run_id = campaignRunIdProcessed,
+      selected_sender_ids,
+      selected_lead_ids,
+      dryRun = false,
+    }: StartCampaignRequestBody = req.body;
 
-  console.log('ELI5_CAMPAIGN_HANDLER: Request Body:', JSON.stringify(req.body, null, 2));
+    console.log('ELI5_CAMPAIGN_HANDLER: Request Body:', JSON.stringify(req.body, null, 2));
 
-  if (!campaign_id) {
-    console.error('ELI5_CAMPAIGN_HANDLER: campaign_id is required.');
-    return res.status(400).json({ success: false, error: 'campaign_id is required.' });
-  }
-  if (!market_region && !(selected_lead_ids && selected_lead_ids.length > 0)) {
-    console.error('ELI5_CAMPAIGN_HANDLER: market_region is required when not processing specific lead_ids.');
-    processingErrors.push({ error: 'market_region_required', details: 'Market region is required unless specific lead_ids are provided.' });
-    return res.status(400).json({ 
-        success: false, 
-        message: 'Market region is required unless specific lead_ids are provided.',
+    if (!campaign_id) {
+      console.error('ELI5_CAMPAIGN_HANDLER: campaign_id is required.');
+      return res.status(400).json({ success: false, error: 'campaign_id is required.' });
+    }
+    if (!market_region && !(selected_lead_ids && selected_lead_ids.length > 0)) {
+      console.error('ELI5_CAMPAIGN_HANDLER: market_region is required when not processing specific lead_ids.');
+      processingErrors.push({ error: 'market_region_required', details: 'Market region is required unless specific lead_ids are provided.' });
+      return res.status(400).json({ 
+          success: false, 
+          message: 'Market region is required unless specific lead_ids are provided.',
+          summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id }
+      });
+    }
+
+    console.log(`ELI5_CAMPAIGN_HANDLER: Config - Campaign ID: ${campaign_id}, Run ID: ${campaign_run_id}, Market: ${market_region || 'N/A (specific leads selected)'}, Limit: ${limit_per_run}, Dry Run: ${dryRun}, Senders: ${selected_sender_ids?.join(',') || 'ALL'}, Leads: ${selected_lead_ids?.join(',') || 'MARKET_BASED'}`);
+
+    const supabase = getSupabaseClient();
+    const allSenders = await fetchAndPrepareSenders(supabase, selected_sender_ids);
+
+    if (allSenders.length === 0) {
+      const errorMsg = 'No active senders available or matched the filter. Campaign cannot start.';
+      console.warn(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
+      processingErrors.push({ error: 'no_senders_available', details: errorMsg });
+      return res.status(400).json({
+        success: false,
+        message: errorMsg,
         summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id }
-    });
-  }
+      });
+    }
+    console.log(`ELI5_CAMPAIGN_HANDLER: Initialized ${allSenders.length} senders for campaign ${campaign_id}, run ${campaign_run_id}.`);
 
-  console.log(`ELI5_CAMPAIGN_HANDLER: Config - Campaign ID: ${campaign_id}, Run ID: ${campaign_run_id}, Market: ${market_region || 'N/A (specific leads selected)'}, Limit: ${limit_per_run}, Dry Run: ${dryRun}, Senders: ${selected_sender_ids?.join(',') || 'ALL'}, Leads: ${selected_lead_ids?.join(',') || 'MARKET_BASED'}`);
+    // Fetch leads
+    let leadsQuery = supabase
+      .from('normalized_leads')
+      .select('id, original_lead_data, market_region, contact1_name, contact1_email_1, contact2_name, contact2_email_1, contact3_name, contact3_email_1, property_address, property_city, property_state, property_postal_code, assessed_total, avm_value, baths, beds, year_built, square_footage, lot_size_sqft, mls_curr_status, mls_curr_days_on_market, last_contacted_at') // Ensure all needed fields are selected
+      .order('last_contacted_at', { ascending: true, nullsFirst: true })
+      .limit(limit_per_run);
 
-  const supabase = getSupabaseClient();
-  const allSenders = await fetchAndPrepareSenders(supabase, selected_sender_ids);
+    if (selected_lead_ids && selected_lead_ids.length > 0) {
+      console.log(`ELI5_CAMPAIGN_HANDLER: Filtering leads by specific IDs: ${selected_lead_ids.join(', ')}`);
+      leadsQuery = leadsQuery.in('id', selected_lead_ids);
+    } else if (market_region) {
+      console.log(`ELI5_CAMPAIGN_HANDLER: Filtering leads by market_region: ${market_region}`);
+      leadsQuery = leadsQuery.eq('market_region', market_region);
+    } else {
+      const criticalErrorMsg = 'Critical logic error: Neither market_region nor selected_lead_ids provided for lead fetching.';
+      console.error(`ELI5_CAMPAIGN_HANDLER: ${criticalErrorMsg}`);
+      processingErrors.push({ error: 'internal_logic_error', details: criticalErrorMsg });
+      return res.status(500).json({
+        success: false,
+        message: criticalErrorMsg,
+        summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id }
+      });
+    }
 
-  if (allSenders.length === 0) {
-    const errorMsg = 'No active senders available or matched the filter. Campaign cannot start.';
-    console.warn(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
-    processingErrors.push({ error: 'no_senders_available', details: errorMsg });
-    return res.status(400).json({
-      success: false,
-      message: errorMsg,
-      summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id }
-    });
-  }
-  console.log(`ELI5_CAMPAIGN_HANDLER: Initialized ${allSenders.length} senders for campaign ${campaign_id}, run ${campaign_run_id}.`);
+    const { data: rawLeads, error: leadsError } = await leadsQuery;
+    const leads: Tables<'normalized_leads'>[] | null = rawLeads as Tables<'normalized_leads'>[] | null;
 
-  // Fetch leads
-  let leadsQuery = supabase
-    .from('normalized_leads')
-    .select('id, original_lead_data, market_region, contact1_name, contact1_email_1, contact2_name, contact2_email_1, contact3_name, contact3_email_1, property_address, property_city, property_state, property_postal_code, assessed_total, avm_value, baths, beds, year_built, square_footage, lot_size_sqft, mls_curr_status, mls_curr_days_on_market, last_contacted_at') // Ensure all needed fields are selected
-    .order('last_contacted_at', { ascending: true, nullsFirst: true })
-    .limit(limit_per_run);
+    if (leadsError) {
+      console.error('ELI5_CAMPAIGN_HANDLER: Error fetching leads:', leadsError.message);
+      processingErrors.push({ error: 'leads_fetch_failed', details: leadsError.message });
+      return res.status(500).json({ 
+          success: false, 
+          message: 'Error fetching leads.', 
+          error: leadsError.message, 
+          summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id } 
+      });
+    }
 
-  if (selected_lead_ids && selected_lead_ids.length > 0) {
-    console.log(`ELI5_CAMPAIGN_HANDLER: Filtering leads by specific IDs: ${selected_lead_ids.join(', ')}`);
-    leadsQuery = leadsQuery.in('id', selected_lead_ids);
-  } else if (market_region) {
-    console.log(`ELI5_CAMPAIGN_HANDLER: Filtering leads by market_region: ${market_region}`);
-    leadsQuery = leadsQuery.eq('market_region', market_region);
-  } else {
-    const criticalErrorMsg = 'Critical logic error: Neither market_region nor selected_lead_ids provided for lead fetching.';
-    console.error(`ELI5_CAMPAIGN_HANDLER: ${criticalErrorMsg}`);
-    processingErrors.push({ error: 'internal_logic_error', details: criticalErrorMsg });
-    return res.status(500).json({
-      success: false,
-      message: criticalErrorMsg,
-      summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id }
-    });
-  }
+    if (!leads || leads.length === 0) {
+      console.log('ELI5_CAMPAIGN_HANDLER: No leads found for the given criteria.');
+      return res.status(200).json({ 
+          success: true, 
+          message: 'No leads found for the given criteria.', 
+          summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id } 
+      });
+    }
+    console.log(`ELI5_CAMPAIGN_HANDLER: Fetched ${leads.length} leads to process for campaign ${campaign_id}, run ${campaign_run_id}.`);
 
-  const { data: rawLeads, error: leadsError } = await leadsQuery;
-  const leads: Tables<'normalized_leads'>[] | null = rawLeads as Tables<'normalized_leads'>[] | null;
+    // Fetch campaign details, including templates
+    const { data: rawCampaignDetails, error: campaignError } = await supabase
+      .from('campaigns')
+      .select(`
+        name,
+        email_template_id,
+        email_templates (subject, body_html, body_text, placeholders),
+        document_template_id,
+        document_templates (name, content, type, available_placeholders)
+      `)
+      .eq('id', campaign_id)
+      .single();
+    const campaignDetails: FetchedCampaignDetails | null = rawCampaignDetails as FetchedCampaignDetails | null;
 
-  if (leadsError) {
-    console.error('ELI5_CAMPAIGN_HANDLER: Error fetching leads:', leadsError.message);
-    processingErrors.push({ error: 'leads_fetch_failed', details: leadsError.message });
-    return res.status(500).json({ 
-        success: false, 
-        message: 'Error fetching leads.', 
-        error: leadsError.message, 
-        summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id } 
-    });
-  }
+    if (campaignError || !campaignDetails || !campaignDetails.email_templates || campaignDetails.email_templates.length === 0) {
+      const errorMsg = `Campaign with ID ${campaign_id} not found, or critical email template data is missing. Error: ${campaignError?.message}`;
+      console.error(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
+      // Log this critical setup failure before returning
+      // Consider a specific log status for this scenario if not already covered
+      return res.status(404).json({ success: false, error: errorMsg });
+    }
 
-  if (!leads || leads.length === 0) {
-    console.log('ELI5_CAMPAIGN_HANDLER: No leads found for the given criteria.');
-    return res.status(200).json({ 
-        success: true, 
-        message: 'No leads found for the given criteria.', 
-        summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id } 
-    });
-  }
-  console.log(`ELI5_CAMPAIGN_HANDLER: Fetched ${leads.length} leads to process for campaign ${campaign_id}, run ${campaign_run_id}.`);
+    const emailTemplateFromDetails: FetchedEmailTemplate | undefined = campaignDetails.email_templates?.[0];
+    if (!emailTemplateFromDetails || !emailTemplateFromDetails.subject || !(emailTemplateFromDetails.body_html || emailTemplateFromDetails.body_text)) {
+      const errorMsg = `Essential subject or body missing in email template for campaign ${campaign_id}.`;
+      console.error(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
+      return res.status(404).json({ success: false, error: errorMsg });
+    }
 
-  // Fetch campaign details, including templates
-  const { data: rawCampaignDetails, error: campaignError } = await supabase
-    .from('campaigns')
-    .select(`
-      name,
-      email_template_id,
-      email_templates (subject, body_html, body_text, placeholders),
-      document_template_id,
-      document_templates (name, content, type, available_placeholders)
-    `)
-    .eq('id', campaign_id)
-    .single();
-  const campaignDetails: FetchedCampaignDetails | null = rawCampaignDetails as FetchedCampaignDetails | null;
+    // Document template is optional
+    const documentTemplateFromDetails: FetchedDocumentTemplate | undefined = campaignDetails.document_templates?.[0];
+    if (campaignDetails.document_template_id && (!documentTemplateFromDetails || !documentTemplateFromDetails.name || !documentTemplateFromDetails.content)) {
+      const errorMsg = `Document template ID ${campaignDetails.document_template_id} provided for campaign ${campaign_id}, but template data (name or content) is missing or invalid.`;
+      console.error(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
+      return res.status(404).json({ success: false, error: errorMsg });
+    }
 
-  if (campaignError || !campaignDetails || !campaignDetails.email_templates || campaignDetails.email_templates.length === 0) {
-    const errorMsg = `Campaign with ID ${campaign_id} not found, or critical email template data is missing. Error: ${campaignError?.message}`;
-    console.error(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
-    // Log this critical setup failure before returning
-    // Consider a specific log status for this scenario if not already covered
-    return res.status(404).json({ success: false, error: errorMsg });
-  }
+    console.log(`ELI5_CAMPAIGN_HANDLER: Campaign '${campaignDetails.name}' validated. Email Template Subject: '${emailTemplateFromDetails.subject}'. Document Template: ${documentTemplateFromDetails ? `'${documentTemplateFromDetails.name}'` : 'None'}.`);
 
-  const emailTemplateFromDetails: FetchedEmailTemplate | undefined = campaignDetails.email_templates?.[0];
-  if (!emailTemplateFromDetails || !emailTemplateFromDetails.subject || !(emailTemplateFromDetails.body_html || emailTemplateFromDetails.body_text)) {
-    const errorMsg = `Essential subject or body missing in email template for campaign ${campaign_id}.`;
-    console.error(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
-    return res.status(404).json({ success: false, error: errorMsg });
-  }
+    const emailTemplate = {
+      subject: emailTemplateFromDetails.subject as string, // Cast to string, assuming db_types might be 'any'
+      body_html: emailTemplateFromDetails.body_html as string | undefined,
+      body_text: emailTemplateFromDetails.body_text as string | undefined,
+      placeholders: emailTemplateFromDetails.placeholders
+    };
 
-  // Document template is optional
-  const documentTemplateFromDetails: FetchedDocumentTemplate | undefined = campaignDetails.document_templates?.[0];
-  if (campaignDetails.document_template_id && (!documentTemplateFromDetails || !documentTemplateFromDetails.name || !documentTemplateFromDetails.content)) {
-    const errorMsg = `Document template ID ${campaignDetails.document_template_id} provided for campaign ${campaign_id}, but template data (name or content) is missing or invalid.`;
-    console.error(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
-    return res.status(404).json({ success: false, error: errorMsg });
-  }
-
-  console.log(`ELI5_CAMPAIGN_HANDLER: Campaign '${campaignDetails.name}' validated. Email Template Subject: '${emailTemplateFromDetails.subject}'. Document Template: ${documentTemplateFromDetails ? `'${documentTemplateFromDetails.name}'` : 'None'}.`);
-
-  const emailTemplate = {
-    subject: emailTemplateFromDetails.subject as string, // Cast to string, assuming db_types might be 'any'
-    body_html: emailTemplateFromDetails.body_html as string | undefined,
-    body_text: emailTemplateFromDetails.body_text as string | undefined,
-    placeholders: emailTemplateFromDetails.placeholders
-  };
-
-  const documentTemplate = documentTemplateFromDetails ? {
-    name: documentTemplateFromDetails.name as string,
-    content: documentTemplateFromDetails.content as any, // Keep as any if structure varies
-    type: documentTemplateFromDetails.type as string,
-    available_placeholders: documentTemplateFromDetails.available_placeholders
-  } : null;
+    const documentTemplate = documentTemplateFromDetails ? {
+      name: documentTemplateFromDetails.name as string,
+      content: documentTemplateFromDetails.content as any, // Keep as any if structure varies
+      type: documentTemplateFromDetails.type as string,
+      available_placeholders: documentTemplateFromDetails.available_placeholders
+    } : null;
 
 
 // Fetch Leads (already correctly implemented)
@@ -653,6 +654,14 @@ for (const lead of leads) {
       processing_errors_details: processingErrors || [] // Initialize empty array if processingErrors is undefined
     }
   });
-} // End of handler function
+  } catch (err) {
+    console.error('ELI5_CAMPAIGN_HANDLER: Uncaught exception in handler:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: err instanceof Error ? err.message : 'Unknown error'
+    });
+  }
+}
 
 export default handler;
