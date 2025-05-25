@@ -24,3 +24,5 @@ we need to focus on the core features only.  they are:
 6.  Everything must be operational, communicating to the api and rpc and databases as it should.
 
 We need to have these core things done asap.  Keep your eye on the prize, let's get a viable product with these goals accomplished as soon as possible.
+
+npx supabase gen types typescript --project-id oviiqouhtdajfwhpwbyq --schema public > db_types.ts

@@ -1,17 +1,19 @@
 import fs from 'fs/promises';
 import path from 'path';
-import nunjucks from 'nunjucks';
+
+import { Environment as NunjucksEnvironment, renderString as nunjucksRenderString, configure as nunjucksConfigure } from 'nunjucks';
+
+import { generateLoiPdf } from './_pdfUtils';
 import {
   getSupabaseClient,
   getGmailService,
   logToSupabase,
   isValidEmail,
 } from './_utils';
-import { generateLoiPdf } from './_pdfUtils';
 
-// Nunjucks environment setup (can be shared if multiple routes use Nunjucks)
+// Nunjucks environment setup
 const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
-nunjucks.configure(templateDir, { autoescape: true });
+nunjucksConfigure(templateDir, { autoescape: true });
 
 // Hardcoded sender details (replace with dynamic loading or env variables later)
 // const TEST_SENDER_EMAIL = process.env.TEST_SENDER_EMAIL || 'chrisphillips@truesoulpartners.com'; // Ensure this is a valid sender for the Gmail service
@@ -80,7 +82,20 @@ export interface EmailConfig {
   };
   campaignId?: string | null;
   campaignRunId?: string | null;
+  dryRun?: boolean; // Added for dry run functionality
 }
+
+const CRITICAL_PERSONALIZATION_KEYS = [
+  'property_address', 'property_city', 'property_state', 'property_zip_code', 'current_date'
+  // Add other universally critical keys from personalizationData here
+  // e.g., 'contact_name_for_greeting' if 'recipientName' isn't always used for that.
+];
+
+const CRITICAL_PDF_PERSONALIZATION_KEYS = [
+  // These are critical IF a PDF is being generated
+  'offer_price', 'emd_amount', 'title_company'
+  // Add other critical keys specific to PDF generation here
+];
 
 export const sendConfiguredEmail = async (config: EmailConfig): Promise<{ success: boolean; messageId?: string, error?: string }> => {
   const supabase = getSupabaseClient();
@@ -100,7 +115,78 @@ export const sendConfiguredEmail = async (config: EmailConfig): Promise<{ succes
       campaignRunId,
     } = config;
 
-    // Validate recipient email
+    // --- Comprehensive Validation --- 
+
+    // 1. Validate direct EmailConfig properties
+    const configErrors: string[] = [];
+    if (!recipientEmail || !isValidEmail(recipientEmail)) configErrors.push('recipientEmail (must be a valid email)');
+    if (!recipientName) configErrors.push('recipientName');
+    if (!leadId) configErrors.push('leadId');
+    if (!senderEmail || !isValidEmail(senderEmail)) configErrors.push('senderEmail (must be a valid email)');
+    if (!senderName) configErrors.push('senderName');
+    if (!emailSubjectTemplate) configErrors.push('emailSubjectTemplate');
+    if (!emailBodyTemplate) configErrors.push('emailBodyTemplate');
+    if (!personalizationData) configErrors.push('personalizationData object');
+    if (!pdfSettings) configErrors.push('pdfSettings object');
+
+    if (configErrors.length > 0) {
+      const errorMsg = `Missing or invalid critical EmailConfig fields: ${configErrors.join(', ')}.`;
+      await logToSupabase({
+        original_lead_id: leadId || 'unknown',
+        contact_email: recipientEmail || 'unknown',
+        email_status: 'FAILED_PREPARATION',
+        email_error_message: errorMsg,
+        campaign_id: campaignId,
+        campaign_run_id: campaignRunId,
+      });
+      return { success: false, error: errorMsg };
+    }
+
+    // 2. Validate critical keys in personalizationData
+    const missingPersonalizationKeys: string[] = [];
+    for (const key of CRITICAL_PERSONALIZATION_KEYS) {
+      if (personalizationData[key] === undefined || personalizationData[key] === null || String(personalizationData[key]).trim() === '') {
+        missingPersonalizationKeys.push(key);
+      }
+    }
+
+    if (missingPersonalizationKeys.length > 0) {
+      const errorMsg = `Missing critical keys in personalizationData: ${missingPersonalizationKeys.join(', ')}.`;
+      await logToSupabase({
+        original_lead_id: leadId,
+        contact_email: recipientEmail,
+        email_status: 'FAILED_PREPARATION',
+        email_error_message: errorMsg,
+        campaign_id: campaignId,
+        campaign_run_id: campaignRunId,
+      });
+      return { success: false, error: errorMsg };
+    }
+
+    // 3. Validate critical keys for PDF generation (if applicable)
+    if (pdfSettings.generate) {
+      const pdfDataToCheck = pdfSettings.personalizationData || personalizationData;
+      const missingPdfKeys: string[] = [];
+      for (const key of CRITICAL_PDF_PERSONALIZATION_KEYS) {
+        if (pdfDataToCheck[key] === undefined || pdfDataToCheck[key] === null || String(pdfDataToCheck[key]).trim() === '') {
+          missingPdfKeys.push(key);
+        }
+      }
+      if (missingPdfKeys.length > 0) {
+        const errorMsg = `Missing critical keys for PDF generation in ${pdfSettings.personalizationData ? 'pdfSettings.personalizationData' : 'personalizationData'}: ${missingPdfKeys.join(', ')}.`;
+        await logToSupabase({
+          original_lead_id: leadId,
+          contact_email: recipientEmail,
+          email_status: 'FAILED_PREPARATION',
+          email_error_message: errorMsg,
+          campaign_id: campaignId,
+          campaign_run_id: campaignRunId,
+        });
+        return { success: false, error: errorMsg };
+      }
+    }
+
+    // Original recipient email validation (can be kept if isValidEmail is more specific than just presence)
     if (!isValidEmail(recipientEmail)) {
       await logToSupabase({
         original_lead_id: leadId,
@@ -116,8 +202,9 @@ export const sendConfiguredEmail = async (config: EmailConfig): Promise<{ succes
     
     // Essential data validation from personalizationData
     // This is an example; the calling code should ensure personalizationData is adequate.
-    // For instance, if 'property_address' is vital for the email body or PDF filename:
-    if (!personalizationData.property_address) {
+    // The specific check for 'property_address' is now covered by CRITICAL_PERSONALIZATION_KEYS.
+    // We can remove the old specific check:
+    // if (!personalizationData.property_address) {
         const errorMsg = "Missing 'property_address' in personalizationData, which is required.";
         await logToSupabase({
             original_lead_id: leadId,
@@ -127,12 +214,16 @@ export const sendConfiguredEmail = async (config: EmailConfig): Promise<{ succes
             campaign_id: campaignId,
             campaign_run_id: campaignRunId,
         });
-        return { success: false, error: errorMsg };
-    }
-    // Add more specific essential field checks as needed based on template/PDF requirements.
-    // For example, ensuring 'assessed_total' is a positive number if it's used for calculations
-    // that are *still* done within this function (ideally, calculations are done before calling).
-    if (personalizationData.assessed_total) {
+        // return { success: false, error: errorMsg }; // Covered by loop above
+    // }
+
+    // Example of a more specific type/value check (can be expanded or moved to a dedicated validation function)
+    // This is just an example, 'assessed_total' might not be universally critical.
+    // If it is, add 'assessed_total' to CRITICAL_PERSONALIZATION_KEYS and then perform specific validation if needed.
+    if (Object.prototype.hasOwnProperty.call(personalizationData, 'assessed_total') && personalizationData.assessed_total !== null) {
+      // Only validate if the key exists and is not null, to avoid errors on optional fields not present.
+      // If 'assessed_total' was in CRITICAL_PERSONALIZATION_KEYS, it would be guaranteed to exist here.
+
         const numValue = parseFloat(String(personalizationData.assessed_total));
         if (isNaN(numValue) || numValue <= 0) {
             const errorMsg = "'assessed_total' in personalizationData must be a positive number.";
@@ -178,14 +269,40 @@ export const sendConfiguredEmail = async (config: EmailConfig): Promise<{ succes
     const templateContext = {
       ...personalizationData, // Base data from lead, etc.
       contact_name: recipientName,    // Override or ensure this specific version is used
-      sender_name: senderName,        // Override or ensure this specific version is used
-      // Other direct fields from EmailConfig can be added here if needed for templates
+      sender_name: senderName,        // Ensure sender_name is senderName from config
+      // Add any other fixed/derived values needed in all templates
     };
-    
-    // Personalize Templates (Subject and Body)
-    // The Nunjucks templates should expect fields from templateContext
-    const emailSubject = nunjucks.renderString(emailSubjectTemplate, templateContext);
-    const emailBodyHtml = nunjucks.renderString(emailBodyTemplate, templateContext);
+
+    const nunjucksEnv = new NunjucksEnvironment(null, { 
+      throwOnUndefined: true, 
+      autoescape: true 
+    });
+
+    let emailSubject: string;
+    let emailBodyHtml: string;
+
+    try {
+      emailSubject = nunjucksEnv.renderString(emailSubjectTemplate, templateContext);
+      emailBodyHtml = nunjucksEnv.renderString(emailBodyTemplate, templateContext);
+    } catch (error: any) {
+      let errorMsg = 'Failed to render email template due to an undefined variable or other templating error.';
+      // Nunjucks errors for undefined variables often include the variable name in the message.
+      if (error instanceof Error && error.message) {
+        errorMsg = `Template rendering error (likely an undefined variable): ${error.message}`;
+      } else if (typeof error === 'string') {
+        errorMsg = `Template rendering error: ${error}`;
+      }
+      await logToSupabase({
+        original_lead_id: leadId,
+        contact_email: recipientEmail,
+        email_status: 'FAILED_PREPARATION',
+        email_error_message: errorMsg,
+        campaign_id: campaignId,
+        campaign_run_id: campaignRunId,
+        template_context_dump: JSON.stringify(templateContext, null, 2) // Log context for debugging, pretty-printed
+      });
+      return { success: false, error: errorMsg };
+    }
 
     let pdfBuffer: Buffer | null = null;
     let dynamicPdfFilename: string | undefined;
@@ -249,7 +366,31 @@ export const sendConfiguredEmail = async (config: EmailConfig): Promise<{ succes
     );
     const base64EncodedEmail = Buffer.from(rawEmail).toString('base64url');
 
-    // Send Email
+    // Send Email or Handle Dry Run
+    if (config.dryRun) {
+      // DRY RUN: Log what would have been sent and return success
+      await logToSupabase({
+        original_lead_id: leadId,
+        contact_name: recipientName,
+        contact_email: recipientEmail,
+        sender_name: senderName,
+        sender_email_used: senderEmail,
+        email_subject_sent: emailSubject,
+        email_body_preview_sent: emailBodyHtml.substring(0, 200), // Preview
+        pdf_generated: !!pdfBuffer,
+        pdf_filename: dynamicPdfFilename,
+        email_status: 'DRY_RUN_SUCCESSFUL_PREPARATION',
+        email_sent_at: new Date().toISOString(), // Timestamp of dry run processing
+        campaign_id: campaignId,
+        campaign_run_id: campaignRunId,
+      });
+      return {
+        success: true,
+        messageId: 'dry-run-skipped-send',
+      };
+    }
+
+    // ACTUAL SEND: Proceed with sending the email
     const gmail = getGmailService(senderEmail); // Impersonate the sender from config
     const sendResult = await gmail.users.messages.send({
       userId: 'me', // 'me' refers to the impersonated user (senderEmail)
@@ -279,7 +420,11 @@ export const sendConfiguredEmail = async (config: EmailConfig): Promise<{ succes
         messageId: sendResult.data.id || undefined, // Return messageId from Gmail API response
     };
 
-  } catch (error: any) {
+  } catch (error) {
+    let errorMessage = 'An unknown error occurred during email configuration or sending.';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    }
     console.error(`Error in sendConfiguredEmail for lead ${config.leadId}:`, error);
     await logToSupabase({
       original_lead_id: config.leadId,
@@ -288,12 +433,11 @@ export const sendConfiguredEmail = async (config: EmailConfig): Promise<{ succes
       sender_name: config.senderName,
       sender_email_used: config.senderEmail,
       email_status: 'FAILED_TO_SEND',
-      email_error_message: `Email failed: ${error.message}`,
+      email_error_message: `Email failed: ${errorMessage}`,
       // stack_trace: error.stack, // Optional: log stack trace
       campaign_id: config.campaignId,
       campaign_run_id: config.campaignRunId,
     });
-    // throw error; // Re-throw the error to be caught by the caller
-    return { success: false, error: error.message || 'An unknown error occurred.' };
+    return { success: false, error: errorMessage };
   }
 };
