@@ -586,7 +586,7 @@ for (const lead of leads) {
           if (sendResult.success && sendResult.messageId) {
             console.log(`ELI5_CAMPAIGN_HANDLER: Email sent successfully to ${contactEmail} from ${selectedSender.email} for lead ${leadId}. Message ID: ${sendResult.messageId}`);
             if (logId !== null) {
-              await updateEmailLogStatus(supabase, logId, 'SENT', new Date().toISOString());
+              await updateEmailLogStatus(supabase, logId!, 'SENT', new Date().toISOString());
             }
             successCount++;
             selectedSender.in_memory_sent_today++;
@@ -594,57 +594,32 @@ for (const lead of leads) {
             selectedSender.can_send_after_timestamp = Date.now() + cooldownMs;
             console.log(`ELI5_CAMPAIGN_HANDLER: Sender ${selectedSender.email} on cooldown for ${cooldownMs / 1000 / 60} minutes. Next send at ${new Date(selectedSender.can_send_after_timestamp).toLocaleTimeString()}`);
             await incrementSenderSentCount(supabase, selectedSender.id);
-          } else {
-            const sendFailReason = sendResult.error || 'Unknown send failure';
-            let failureStatus = 'FAILED_SENDING_API_ERROR';
-            if (sendFailReason.startsWith('PDF_GENERATION_FAILED')) failureStatus = 'FAILED_PDF_GENERATION';
-            else if (sendFailReason.startsWith('PDF_GENERATION_EXCEPTION')) failureStatus = 'FAILED_PDF_GENERATION_EXCEPTION';
-            else if (sendFailReason.startsWith('Missing or invalid critical EmailConfig fields') || sendFailReason.startsWith('Missing critical keys in personalizationData')) failureStatus = 'FAILED_PREPARATION';
-            
-            console.error(`ELI5_CAMPAIGN_HANDLER: Failed to send email for lead ${leadId}. Reason: ${sendFailReason}`);
-            if (logId !== null) {
-              await updateEmailLogStatus(supabase, logId, failureStatus, null, sendFailReason);
+          } else { // This 'else' pairs with 'if (sendResult.success && sendResult.messageId)'
+            console.error(`ELI5_CAMPAIGN_HANDLER: Failed to send email to ${contactEmail} for lead ${leadId}. Error: ${sendResult.error}`);
+            if (logId !== null) { // logId is guaranteed to be a number here
+              await updateEmailLogStatus(supabase, logId!, 'FAILED_SENDING', null, sendResult.error || 'Unknown send error');
             }
-            processingErrors.push({ leadId, contact_email: contactEmail, error: 'send_email_failed', details: sendFailReason });
             failureCount++;
-          }
-        }
-        senderAssignedAndEmailProcessed = true; // Mark as processed to break from this lead's sender loop
-      }
-      // The following 'else' now correctly pairs with the 'if (true)' above.
-      } else { // No senders currently available (all on cooldown or over quota)
-        const sendersStillInRotation = allSenders.filter(s => s.in_memory_sent_today < s.daily_limit);
-        if (sendersStillInRotation.length === 0) {
-          const allQuotaMsg = 'All active senders have reached their daily quotas for this run.';
-          console.log(`ELI5_CAMPAIGN_HANDLER: ${allQuotaMsg} Lead ${leadId} cannot be processed further.`);
-          if (logId !== null) {
-            await updateEmailLogStatus(supabase, logId, 'FAILED_ALL_SENDERS_QUOTA', null, allQuotaMsg);
-            processingErrors.push({ leadId, contact_email: contactEmail, error: 'all_senders_quota', details: allQuotaMsg });
-          } else {
-            // This case indicates an earlier failure (initial log creation failed)
-            console.error(`ELI5_CAMPAIGN_HANDLER: Critical error for lead ${leadId}. Initial log ID was null when trying to set status to FAILED_ALL_SENDERS_QUOTA. Initial log creation likely failed. Quota message: ${allQuotaMsg}`);
-            processingErrors.push({
-              leadId,
-              contact_email: contactEmail,
-              error: 'initial_log_missing_then_quota', // More descriptive error
-              details: `Lead processing reached sender quota issue, but initial log ID was null. Original quota message: ${allQuotaMsg}`
-            });
-          }
-          failureCount++;
-          senderAssignedAndEmailProcessed = true; // Break from while loop for current lead
-          // Consider if the entire campaign should stop here. For now, it fails this lead and continues to the next if any.
-        } else { // This 'else' pairs with 'if (availableSender)'
-          // All available are on cooldown, wait for the earliest one
-          const sendersStillInRotation = allSenders.filter(s => s.in_memory_sent_today < s.daily_limit || s.can_send_after_timestamp > Date.now()); // Re-filter to be sure
-          const earliestNextSendTime = Math.min(...sendersStillInRotation.map(s => s.can_send_after_timestamp));
-          const waitTime = Math.max(1000, earliestNextSendTime - Date.now()); // Wait at least 1s to prevent tight loops
-          console.log(`ELI5_CAMPAIGN_HANDLER: No senders immediately available for lead ${leadId}. All are on cooldown. Waiting for ${Math.ceil(waitTime / 1000)}s for sender ${allSenders.find(s=>s.can_send_after_timestamp === earliestNextSendTime)?.email}.`);
-          // Check if logId is valid before attempting to update the log
-          if (logId !== null) {
-            await updateEmailLogStatus(supabase, logId, 'PENDING_SENDER_COOLDOWN', null, `Waiting for sender cooldown: ${Math.ceil(waitTime / 1000)}s`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            // Loop will continue to find an available sender
-          } else {
+          } // Closes 'else' for 'if (sendResult.success ...)'
+        } // Closes 'else' for 'if (dryRun)'
+            senderAssignedAndEmailProcessed = true; // Mark as processed as an attempt was made with the selected sender
+      } // Closes 'if (true)' for sender availability check (the one with TODO for sender selection)
+      else { // No senders currently available (all on cooldown or over quota) - This 'else' pairs with the 'if (true)' for sender availability.
+        const sendersStillInRotation = allSenders.filter((s: SenderState) => s.in_memory_sent_today < s.daily_limit || s.can_send_after_timestamp > Date.now()); // Re-filter to be sure
+        const earliestNextSendTime = Math.min(...sendersStillInRotation.map((s: SenderState) => s.can_send_after_timestamp));
+        const waitTime = Math.max(1000, earliestNextSendTime - Date.now()); // Wait at least 1s to prevent tight loops
+        console.log(`ELI5_CAMPAIGN_HANDLER: No senders immediately available for lead ${leadId}. All are on cooldown. Waiting for ${Math.ceil(waitTime / 1000)}s for sender ${allSenders.find((s: SenderState) => s.can_send_after_timestamp === earliestNextSendTime)?.email}.`);
+        // Check if logId is valid before attempting to update the log
+        if (logId !== null) {
+          await updateEmailLogStatus(supabase, logId!, 'PENDING_SENDER_COOLDOWN', null, `Waiting for sender cooldown: ${Math.ceil(waitTime / 1000)}s`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          // Loop will continue to find an available sender
+        } else {
+          // This case should ideally not be reached if the initial logId check and 'continue' (in the outer loop) are working.
+          // If it is reached, it means we are trying to process a lead for which an initial log entry could not be created.
+          console.error(`ELI5_CAMPAIGN_HANDLER: logId is unexpectedly null when trying to update status to PENDING_SENDER_COOLDOWN for lead ${leadId}. This lead should have been skipped. Marking as failed and stopping its processing.`);
+          failureCount++; // Ensure it's marked as a failure if not already.
+          senderAssignedAndEmailProcessed = true; // This will break the while loop for this lead.
             // This case should ideally not be reached if the initial logId check and 'continue' (in the outer loop) are working.
             // If it is reached, it means we are trying to process a lead for which an initial log entry could not be created.
             console.error(`ELI5_CAMPAIGN_HANDLER: logId is unexpectedly null when trying to update status to PENDING_SENDER_COOLDOWN for lead ${leadId}. This lead should have been skipped. Marking as failed and stopping its processing.`);

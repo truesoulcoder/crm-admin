@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Card, Alert, Input } from 'react-daisyui'; // Added Input
 
 import { supabase } from '@/lib/supabase/client';
-import { Database } from '@/types/supabase';
+import { Database } from '@/types/db_types';
 
 // Assuming eli5_email_log is the primary source of real-time messages for now
 type Eli5EmailLogEntry = Database['public']['Tables']['eli5_email_log']['Row'];
@@ -350,10 +350,9 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-base-content-secondary">No active senders found or failed to load.</div>
+                <div className="text-sm text-gray-500">No senders available</div>
               )}
             </div>
-
             {/* Timeout Interval */}
             <div className="form-control">
               <label className="label" htmlFor="timeoutIntervalInput">
@@ -388,36 +387,11 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
               />
             </div>
           </div>
-        </div>
-        
-        {/* New UI Elements for Senders, Timeout, and Limit */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-4">
-          {/* Sender Selection */}
-          <div className="form-control">
-            <label className="label">
-              <span className="label-text">Filter Senders (Optional)</span>
-            </label>
-            {availableSenders.length > 0 ? (
-              <div className="max-h-40 overflow-y-auto border border-base-300 rounded-md p-2 bg-base-200">
-                {availableSenders.map(sender => (
-                  <label key={sender.id} className="label cursor-pointer">
-                    <span className="label-text">{sender.name} ({sender.email})</span>
-                    <input
-                      type="checkbox"
-                      className="checkbox checkbox-primary"
-                      checked={selectedSenderIds.includes(sender.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedSenderIds([...selectedSenderIds, sender.id]);
-                        } else {
-                          setSelectedSenderIds(selectedSenderIds.filter(id => id !== sender.id));
-                        }
-                      }}
-                      disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running')}
-                    />
-                  </label>
-                ))}
-              onClick={handleStartEngine}
+          <div className="flex gap-2 justify-end">
+            <Button
+              color="primary"
+              startIcon={<PlayCircle />}
+              onClick={() => void handleStartEngine()}
               loading={isLoading && engineStatus === 'starting'}
               disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running') || !marketRegion.trim()}
             >
@@ -426,7 +400,7 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
             <Button 
               color="error" 
               startIcon={<StopCircle />} 
-              onClick={handleStopEngine}
+              onClick={() => void handleStopEngine()}
               loading={isLoading && engineStatus === 'stopping'}
               disabled={isLoading && engineStatus !== 'stopping' || engineStatus === 'idle' || engineStatus === 'stopped'}
             >
