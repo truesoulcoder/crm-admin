@@ -103,8 +103,8 @@ export const generateLoiPdf = async (
     const { width, height } = page.getSize();
 
     // Load Fonts
-    const helveticaFont = await contentPdfDoc.embedFont(StandardFonts.Helvetica);
-    const helveticaBoldFont = await contentPdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const regularFont = await contentPdfDoc.embedFont(StandardFonts.TimesRoman);
+    const boldFont = await contentPdfDoc.embedFont(StandardFonts.TimesRomanBold);
     const timesRomanFont = await contentPdfDoc.embedFont(StandardFonts.TimesRoman);
     const timesRomanItalicFont = await contentPdfDoc.embedFont(StandardFonts.TimesRomanItalic);
     
@@ -113,8 +113,8 @@ export const generateLoiPdf = async (
       const alexBrushFontBytes = await fs.readFile(ALEX_BRUSH_FONT_FILE);
       alexBrushFont = await contentPdfDoc.embedFont(alexBrushFontBytes);
     } catch (fontError) {
-      console.error("Failed to load Alex Brush font, using Helvetica-Bold as fallback for signature:", fontError);
-      alexBrushFont = helveticaBoldFont; // Fallback
+      console.error("Failed to load Alex Brush font, using Times Roman Bold as fallback for signature:", fontError);
+      alexBrushFont = boldFont; // Fallback
     }
 
     // 2. Draw LOI Content Programmatically
@@ -140,9 +140,9 @@ export const generateLoiPdf = async (
 
     // --- Title ---
     page.drawText("LETTER OF INTENT TO PURCHASE REAL ESTATE", { // Main Title - Assuming this is the one for increased spacing
-      x: textX, // Or centered: (width - helveticaBoldFont.widthOfTextAtSize("LETTER OF INTENT", titleFontSize)) / 2
+      x: textX, // Or centered: (width - boldFont.widthOfTextAtSize("LETTER OF INTENT", titleFontSize)) / 2
       y: currentY,
-      font: helveticaBoldFont,
+      font: boldFont,
       size: titleFontSize,
       color: titleColor,
     });
@@ -154,7 +154,7 @@ export const generateLoiPdf = async (
     page.drawText(streetAddress, {
       x: textX,
       y: currentY,
-      font: helveticaFont,
+      font: regularFont,
       size: subtitleFontSize,
       color: subtitleColor,
     });
@@ -164,7 +164,7 @@ export const generateLoiPdf = async (
     page.drawText(cityStateZip, {
       x: textX,
       y: currentY,
-      font: helveticaFont,
+      font: regularFont,
       size: subtitleFontSize,
       color: subtitleColor,
     });
@@ -173,9 +173,9 @@ export const generateLoiPdf = async (
     // --- Date ---
     const dateText = personalizationData.current_date || "N/A Date";
     page.drawText(dateText, {
-        x: width - pageMargin - helveticaFont.widthOfTextAtSize(dateText, baseFontSize), // Align right
+        x: width - pageMargin - regularFont.widthOfTextAtSize(dateText, baseFontSize), // Align right
         y: currentY,
-        font: helveticaFont,
+        font: regularFont,
         size: baseFontSize,
         color: bodyColor
     });
@@ -185,7 +185,7 @@ export const generateLoiPdf = async (
     page.drawText(`Dear ${personalizationData.greeting_name || "Sir/Madam"},`, {
       x: textX,
       y: currentY,
-      font: helveticaFont,
+      font: regularFont,
       size: baseFontSize,
       color: bodyColor,
     });
@@ -219,7 +219,7 @@ export const generateLoiPdf = async (
       page.drawText(detail.value, { 
         x: valueX, // Use the new fixed X for values
         y: currentY, 
-        font: helveticaBoldFont, // Keep helveticaBoldFont for values as per original
+        font: boldFont, // Keep boldFont for values as per original
         size: baseFontSize, 
         color: bodyColor 
       });
@@ -242,7 +242,7 @@ export const generateLoiPdf = async (
     page.drawText("Warm regards,", {
       x: textX,
       y: currentY,
-      font: helveticaFont,
+      font: regularFont,
       size: baseFontSize,
       color: bodyColor,
     });
@@ -261,7 +261,7 @@ export const generateLoiPdf = async (
     page.drawText(personalizationData.sender_name || "N/A Sender Name", {
       x: textX,
       y: currentY,
-      font: helveticaFont,
+      font: regularFont,
       size: baseFontSize,
       color: bodyColor,
     });
@@ -269,7 +269,7 @@ export const generateLoiPdf = async (
     page.drawText(personalizationData.sender_title || "N/A Sender Title", {
       x: textX,
       y: currentY,
-      font: helveticaFont,
+      font: regularFont,
       size: baseFontSize,
       color: bodyColor,
     });
@@ -277,7 +277,7 @@ export const generateLoiPdf = async (
     page.drawText(personalizationData.company_name || "N/A Company Name", {
       x: textX,
       y: currentY,
-      font: helveticaFont,
+      font: regularFont,
       size: baseFontSize,
       color: bodyColor,
     });
