@@ -304,9 +304,37 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`API: Successfully created/populated market-specific table ${targetTableName}.`);
+
+    // ---------- 5. CREATE FINE-CUT LEADS TABLE ----------
+    console.log(`API: Attempting to create fine-cut leads table for market: ${marketRegion} by user: ${userId}`);
+    const { error: fineCutTableError } = await supabaseAdmin.rpc('create_fine_cut_leads_for_market', {
+      p_market_region_raw_name: marketRegion,
+      p_user_id: userId
+    });
+
+    if (fineCutTableError) {
+      console.error(`RPC call to create_fine_cut_leads_for_market for ${marketRegion} failed:`, fineCutTableError);
+      // Attempt to cleanup the storage file if this final step fails
+      if (objectPath) {
+        console.log(`Attempting to cleanup storage file due to fine-cut table creation failure: ${objectPath}`);
+        const { error: cleanupError } = await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+        if (cleanupError) {
+          console.error(`Failed to cleanup storage file ${objectPath} after fine-cut table failure:`, cleanupError);
+        } else {
+          console.log(`Successfully cleaned up storage file: ${objectPath}`);
+        }
+      }
+      return NextResponse.json(
+        { ok: false, error: `Failed to create fine-cut leads table for market '${marketRegion}'.`, details: fineCutTableError.message },
+        { status: 500 }
+      );
+    }
+    console.log(`API: Successfully created/populated fine-cut leads table for market ${marketRegion}.`);
+
     return NextResponse.json({ 
       ok: true, 
-      message: `File processed, leads normalized, and market table '${targetTableName}' created/updated successfully.` 
+      message: `Successfully processed ${allInsertedData.length} leads. Market table '${targetTableName}' and fine-cut leads table for '${marketRegion}' created/updated.`, 
+      lead_count: allInsertedData.length
     });
 
   } catch (error: any) {
