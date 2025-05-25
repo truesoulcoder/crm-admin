@@ -107,8 +107,6 @@ async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_id
   }
 }
 
-// getNextSender function is removed as its logic is replaced by the new sender management within the main handler.
-
 // Function to increment the sent count for a sender
 async function incrementSenderSentCount(supabase: SupabaseClient, senderId: string) {
   try {
@@ -218,74 +216,74 @@ interface FetchedCampaignDetails extends Pick<Tables<'campaigns'>, 'name' | 'ema
 }
 
 interface StartCampaignRequestBody {
-  market_region: string;
-  limit_per_run?: number; // Max leads to attempt processing in this run
-  campaign_id: string; // Mandatory: associates with a campaign entity in DB
-  campaign_run_id?: string; // Optional: Unique ID for this specific execution batch, defaults if not provided
-  selected_sender_ids?: string[]; // Optional: filter senders to this specific list of IDs
-  selected_lead_ids?: string[]; // Optional: process only these specific lead IDs from normalized_leads
-  dry_run?: boolean; // Optional: If true, simulates sending without actual email dispatch, defaults to false
+  campaign_id: string;
+  campaign_run_id?: string;
+  market_region?: string;
+  selected_sender_ids?: string[];
+  selected_lead_ids?: string[];
+  dry_run?: boolean;
+  dryRun?: boolean; // Alias for dry_run
+  limit_per_run?: number;
 }
 
-export default async function handler(
+export async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Initialize all required variables
-  const processingErrors: Array<{error: string; timestamp: string}> = [];
-  let successCount = 0;
-  let failureCount = 0;
-  let campaign_id: string;
-  let campaign_run_id: string;
-
   try {
+    let successCount = 0;
+    let failureCount = 0;
+    const processingErrors: Array<{error: string; timestamp: string; leadId?: string; contact_email?: string}> = [];
+    let leads: any[] = []; // Should be properly typed from db_types
+
     // Get campaign details from request body
-    const body = req.body as StartCampaignRequestBody;
-    campaign_id = body.campaign_id;
-    campaign_run_id = body.campaign_run_id || `run-${Date.now()}`;
+    const { campaign_id, campaign_run_id, market_region, selected_sender_ids, selected_lead_ids, dry_run, dryRun, limit_per_run = 100 } = req.body as StartCampaignRequestBody;
+
+    const isDryRun = dry_run || dryRun; // Consolidate dry run flags
 
     if (!campaign_id) {
-      return res.status(400).json({ error: 'Missing campaign_id' });
+      return res.status(400).json({ success: false, message: 'Campaign ID is required.' });
     }
 
-    let successCount = 0; // Initialize success counter
-    let failureCount = 0; // Tracks number of failed email sends
-    const campaignRunIdProcessed: string = campaign_run_id;
-    console.log(`ELI5_CAMPAIGN_HANDLER: Received request to ${req.body.dryRun ? 'DRY RUN' : 'START'} campaign (ID: ${req.body.campaign_id}, Run ID: ${campaignRunIdProcessed}) at ${new Date().toISOString()}`);
+    // Ensure campaign_id and campaign_run_id are treated as strings
+    const currentCampaignId = campaign_id as string;
+    const currentCampaignRunId = campaign_run_id as string;
+
+    console.log(`ELI5_CAMPAIGN_HANDLER: Received request to ${isDryRun ? 'DRY RUN' : 'START'} campaign (ID: ${currentCampaignId}, Run ID: ${currentCampaignRunId}) at ${new Date().toISOString()}`);
     if (req.method !== 'POST') {
       res.setHeader('Allow', ['POST']);
       return res.status(405).end(`Method ${req.method} Not Allowed`);
     }
 
-    const {
-      market_region,
-      limit_per_run = 100, // Default number of leads to attempt in this run
-      campaign_id,
-      campaign_run_id = campaignRunIdProcessed,
-      selected_sender_ids,
-      selected_lead_ids,
-      dryRun = false,
-    }: StartCampaignRequestBody = req.body;
-
-    console.log('ELI5_CAMPAIGN_HANDLER: Request Body:', JSON.stringify(req.body, null, 2));
-
-    if (!campaign_id) {
-      console.error('ELI5_CAMPAIGN_HANDLER: campaign_id is required.');
-      return res.status(400).json({ success: false, error: 'campaign_id is required.' });
-    }
-    if (!market_region && !(selected_lead_ids && selected_lead_ids.length > 0)) {
-      console.error('ELI5_CAMPAIGN_HANDLER: market_region is required when not processing specific lead_ids.');
-      processingErrors.push({ error: 'market_region_required', timestamp: new Date().toISOString() });
-      return res.status(400).json({ 
-          success: false, 
-          message: 'Market region is required unless specific lead_ids are provided.',
-          summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id }
-      });
-    }
-
-    console.log(`ELI5_CAMPAIGN_HANDLER: Config - Campaign ID: ${campaign_id}, Run ID: ${campaign_run_id}, Market: ${market_region || 'N/A (specific leads selected)'}, Limit: ${limit_per_run}, Dry Run: ${dryRun}, Senders: ${selected_sender_ids?.join(',') || 'ALL'}, Leads: ${selected_lead_ids?.join(',') || 'MARKET_BASED'}`);
-
     const supabase = getSupabaseClient();
+
+    // Fetch campaign details
+    const { data: campaignDetails, error: campaignError } = await supabase
+      .from('campaigns')
+      .select(`
+        name,
+        email_template_id,
+        document_template_id,
+        email_templates(subject, body_html, body_text, placeholders),
+        document_templates(name, content, type, available_placeholders)
+      `)
+      .eq('id', currentCampaignId)
+      .single();
+
+    if (campaignError || !campaignDetails) {
+      console.error('ELI5_CAMPAIGN_HANDLER: Error fetching campaign details:', campaignError?.message || 'Campaign not found');
+      return res.status(404).json({ success: false, message: 'Campaign not found or error fetching details.' });
+    }
+
+    const emailTemplate = campaignDetails.email_templates ? campaignDetails.email_templates[0] : undefined;
+    const documentTemplate = campaignDetails.document_templates ? campaignDetails.document_templates[0] : undefined;
+
+    if (!emailTemplate) {
+      console.error('ELI5_CAMPAIGN_HANDLER: Email template not found for campaign:', currentCampaignId);
+      return res.status(400).json({ success: false, message: 'Email template not found for this campaign.' });
+    }
+
+    // Fetch senders
     const allSenders = await fetchAndPrepareSenders(supabase, selected_sender_ids);
 
     if (allSenders.length === 0) {
@@ -295,24 +293,16 @@ export default async function handler(
       return res.status(400).json({
         success: false,
         message: errorMsg,
-        summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id }
+        processing_errors_details: processingErrors
       });
     }
-    console.log(`ELI5_CAMPAIGN_HANDLER: Initialized ${allSenders.length} senders for campaign ${campaign_id}, run ${campaign_run_id}.`);
 
-    // Fetch leads
-    let leadsQuery = supabase
-      .from('normalized_leads')
-      .select('id, original_lead_data, market_region, contact1_name, contact1_email_1, contact2_name, contact2_email_1, contact3_name, contact3_email_1, property_address, property_city, property_state, property_postal_code, assessed_total, avm_value, baths, beds, year_built, square_footage, lot_size_sqft, mls_curr_status, mls_curr_days_on_market, last_contacted_at') // Ensure all needed fields are selected
-      .order('last_contacted_at', { ascending: true, nullsFirst: true })
-      .limit(limit_per_run);
-
-    if (selected_lead_ids && selected_lead_ids.length > 0) {
-      console.log(`ELI5_CAMPAIGN_HANDLER: Filtering leads by specific IDs: ${selected_lead_ids.join(', ')}`);
-      leadsQuery = leadsQuery.in('id', selected_lead_ids);
-    } else if (market_region) {
-      console.log(`ELI5_CAMPAIGN_HANDLER: Filtering leads by market_region: ${market_region}`);
-      leadsQuery = leadsQuery.eq('market_region', market_region);
+    // Fetch Leads
+    let leadsQuery;
+    if (market_region) {
+      leadsQuery = supabase.from('normalized_leads').select('*').eq('market_region', market_region).limit(limit_per_run);
+    } else if (selected_lead_ids && selected_lead_ids.length > 0) {
+      leadsQuery = supabase.from('normalized_leads').select('*').in('id', selected_lead_ids).limit(limit_per_run);
     } else {
       const criticalErrorMsg = 'Critical logic error: Neither market_region nor selected_lead_ids provided for lead fetching.';
       console.error(`ELI5_CAMPAIGN_HANDLER: ${criticalErrorMsg}`);
@@ -320,110 +310,42 @@ export default async function handler(
       return res.status(500).json({
         success: false,
         message: criticalErrorMsg,
-        summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id }
+        processing_errors_details: processingErrors
       });
     }
 
     const { data: rawLeads, error: leadsError } = await leadsQuery;
-    const leads: Tables<'normalized_leads'>[] | null = rawLeads as Tables<'normalized_leads'>[] | null;
+    leads = rawLeads as any[]; // Temporary any type - should be properly typed
 
     if (leadsError) {
       console.error('ELI5_CAMPAIGN_HANDLER: Error fetching leads:', leadsError.message);
       processingErrors.push({ error: 'leads_fetch_failed', timestamp: new Date().toISOString() });
-      return res.status(500).json({ 
-          success: false, 
-          message: 'Error fetching leads.', 
-          error: leadsError.message, 
-          summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id } 
+      return res.status(500).json({
+          success: false,
+          message: 'Error fetching leads.',
+          error: leadsError.message,
+          processing_errors_details: processingErrors
       });
     }
 
     if (!leads || leads.length === 0) {
-      console.log('ELI5_CAMPAIGN_HANDLER: No leads found for the given criteria.');
-      return res.status(200).json({ 
-          success: true, 
-          message: 'No leads found for the given criteria.', 
-          summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id } 
+      const noLeadsMsg = 'No leads found for the specified criteria.';
+      console.log(`ELI5_CAMPAIGN_HANDLER: ${noLeadsMsg}`);
+      return res.status(200).json({
+        success: true,
+        message: noLeadsMsg,
+        campaign_id: currentCampaignId,
+        campaign_run_id: currentCampaignRunId,
+        summary: {
+          total_leads_processed_in_batch: 0,
+          emails_sent_successfully: 0,
+          emails_failed_to_send: 0,
+          processing_errors_details: []
+        }
       });
     }
-    console.log(`ELI5_CAMPAIGN_HANDLER: Fetched ${leads.length} leads to process for campaign ${campaign_id}, run ${campaign_run_id}.`);
 
-    // Fetch campaign details, including templates
-    const { data: rawCampaignDetails, error: campaignError } = await supabase
-      .from('campaigns')
-      .select(`
-        name,
-        email_template_id,
-        email_templates (subject, body_html, body_text, placeholders),
-        document_template_id,
-        document_templates (name, content, type, available_placeholders)
-      `)
-      .eq('id', campaign_id)
-      .single();
-    const campaignDetails: FetchedCampaignDetails | null = rawCampaignDetails as FetchedCampaignDetails | null;
-
-    if (campaignError || !campaignDetails || !campaignDetails.email_templates || campaignDetails.email_templates.length === 0) {
-      const errorMsg = `Campaign with ID ${campaign_id} not found, or critical email template data is missing. Error: ${campaignError?.message}`;
-      console.error(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
-      // Log this critical setup failure before returning
-      // Consider a specific log status for this scenario if not already covered
-      return res.status(404).json({ success: false, error: errorMsg });
-    }
-
-    const emailTemplateFromDetails: FetchedEmailTemplate | undefined = campaignDetails.email_templates?.[0];
-    if (!emailTemplateFromDetails || !emailTemplateFromDetails.subject || !(emailTemplateFromDetails.body_html || emailTemplateFromDetails.body_text)) {
-      const errorMsg = `Essential subject or body missing in email template for campaign ${campaign_id}.`;
-      console.error(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
-      return res.status(404).json({ success: false, error: errorMsg });
-    }
-
-    // Document template is optional
-    const documentTemplateFromDetails: FetchedDocumentTemplate | undefined = campaignDetails.document_templates?.[0];
-    if (campaignDetails.document_template_id && (!documentTemplateFromDetails || !documentTemplateFromDetails.name || !documentTemplateFromDetails.content)) {
-      const errorMsg = `Document template ID ${campaignDetails.document_template_id} provided for campaign ${campaign_id}, but template data (name or content) is missing or invalid.`;
-      console.error(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
-      return res.status(404).json({ success: false, error: errorMsg });
-    }
-
-    console.log(`ELI5_CAMPAIGN_HANDLER: Campaign '${campaignDetails.name}' validated. Email Template Subject: '${emailTemplateFromDetails.subject}'. Document Template: ${documentTemplateFromDetails ? `'${documentTemplateFromDetails.name}'` : 'None'}.`);
-
-    const emailTemplate = {
-      subject: emailTemplateFromDetails.subject as string, // Cast to string, assuming db_types might be 'any'
-      body_html: emailTemplateFromDetails.body_html as string | undefined,
-      body_text: emailTemplateFromDetails.body_text as string | undefined,
-      placeholders: emailTemplateFromDetails.placeholders
-    };
-
-    const documentTemplate = documentTemplateFromDetails ? {
-      name: documentTemplateFromDetails.name as string,
-      content: documentTemplateFromDetails.content as any, // Keep as any if structure varies
-      type: documentTemplateFromDetails.type as string,
-      available_placeholders: documentTemplateFromDetails.available_placeholders
-    } : null;
-
-    for (const lead of leads) {
-      let logIdForCampaignFailure: number | null = null;
-      try {
-        logIdForCampaignFailure = await logInitialAttempt(supabase, {
-          original_lead_id: String(lead.id),
-          contact_email: (lead.contact1_email_1 && isValidEmail(lead.contact1_email_1)) ? lead.contact1_email_1 : (lead.contact2_email_1 && isValidEmail(lead.contact2_email_1)) ? lead.contact2_email_1 : (lead.contact3_email_1 && isValidEmail(lead.contact3_email_1)) ? lead.contact3_email_1 : 'unknown',
-          campaign_id,
-          campaign_run_id,
-          email_status: 'FAILED_CAMPAIGN_SETUP'
-        });
-        if (logIdForCampaignFailure) {
-          await updateEmailLogStatus(supabase, logIdForCampaignFailure, 'FAILED_CAMPAIGN_SETUP', null, 'Campaign setup failure');
-        }
-      } catch (logErr: any) {
-        let detailMessage = 'Unknown error during FAILED_CAMPAIGN_SETUP logging.';
-        if (logErr instanceof Error) detailMessage = logErr.message;
-        else if (typeof logErr === 'string') detailMessage = logErr;
-        console.error(`ELI5_CAMPAIGN_HANDLER: Logging failure for FAILED_CAMPAIGN_SETUP on lead ${lead.id}: ${detailMessage}`);
-        processingErrors.push({ leadId: String(lead.id), error: 'logging_failed_campaign_setup', timestamp: new Date().toISOString() });
-      }
-      failureCount++;
-    }
-
+    // Main processing loop for leads
     for (const lead of leads) {
       const leadId = String(lead.id);
       // Determine primary contact from lead fields
@@ -449,10 +371,10 @@ export default async function handler(
         console.log(`ELI5_CAMPAIGN_HANDLER: Lead ID ${leadId}: ${noContactError}`);
         try {
           logId = await logInitialAttempt(supabase, {
-            original_lead_id: leadId,
-            contact_email: contactEmail || 'N/A', // Use derived contactEmail or 'N/A'
-            campaign_id,
-            campaign_run_id,
+            original_lead_id: leadId as string,
+            contact_email: contactEmail || 'N/A',
+            campaign_id: currentCampaignId,
+            campaign_run_id: currentCampaignRunId,
             email_status: 'FAILED_NO_CONTACT',
             email_error_message: noContactError
           });
@@ -471,12 +393,12 @@ export default async function handler(
       // If we're here, contactEmail is valid. Now, establish a logId for this lead.
       try {
         logId = await logInitialAttempt(supabase, {
-          original_lead_id: leadId,
+          original_lead_id: leadId as string,
           contact_name: contactName || '',
-          contact_email: contactEmail, // Known to be non-null here
-          campaign_id,
-          campaign_run_id,
-          email_status: 'PENDING_PROCESSING' // Initial status for a lead that has a contact
+          contact_email: contactEmail,
+          campaign_id: currentCampaignId,
+          campaign_run_id: currentCampaignRunId,
+          email_status: 'PENDING_PROCESSING'
         });
 
         if (logId === null) {
@@ -487,163 +409,140 @@ export default async function handler(
         }
         // If we are here, logId is a valid number.
       } catch (initialLogErr: any) {
-        console.error(`ELI5_CAMPAIGN_HANDLER: CRITICAL - Exception during initial 'PENDING_PROCESSING' logging for lead ${leadId}: ${initialLogErr.message || initialLogErr}. Skipping.`);
+        console.error(`ELI5_CAMPAIGN_HANDLER: CRITICAL - Exception during initial 'PENDING_PROCESSING' logging for lead ${leadId}: ${initialLogErr.message || String(initialLogErr)}`);
         processingErrors.push({ leadId, contact_email: contactEmail, error: 'initial_log_exception', timestamp: new Date().toISOString() });
         failureCount++;
         continue; // Skip to the next lead
       }
       // At this point, logId is GUARANTEED to be a number.
 
-      // ...
-
       // TODO: Implement proper sender selection logic (rotation, limits, cooling periods)
-        const selectedSender = allSenders[0]; // Placeholder: always use the first sender
-        if (!selectedSender) {
-          console.error(`ELI5_CAMPAIGN_HANDLER: No sender available for lead ${leadId}. Skipping.`);
-          processingErrors.push({ leadId, error: 'no_sender_for_lead', timestamp: new Date().toISOString() });
+      const selectedSender = allSenders[0]; // Placeholder: always use the first sender
+      if (!selectedSender) {
+        console.error(`ELI5_CAMPAIGN_HANDLER: No sender available for lead ${leadId}. Skipping.`);
+        processingErrors.push({ leadId, error: 'no_sender_for_lead', timestamp: new Date().toISOString() });
+        failureCount++;
+        // logId is guaranteed to be a number here due to the preceding initialization block.
+        await updateEmailLogStatus(supabase, logId, 'FAILED_NO_SENDER', null, 'No sender available for this lead.');
+        continue; // Skip to the next lead
+      }
+
+      // Prepare personalization data for Nunjucks
+      const personalizationDataForEmail = {
+        lead_id: leadId as string,
+        contact_name: contactName || '',
+        contact_email: contactEmail || '',
+        sender_name: selectedSender.name || '',
+        sender_email: selectedSender.email || '',
+        property_address: lead.property_address as string || '',
+        property_city: lead.property_city as string || '',
+        property_state: lead.property_state as string || '',
+        property_postal_code: lead.property_postal_code as string || '',
+        assessed_total: lead.assessed_total as number || 0,
+        avm_value: lead.avm_value as number || 0,
+        baths: lead.baths as string || '',
+        beds: lead.beds as string || '',
+        year_built: lead.year_built as string || '',
+        square_footage: lead.square_footage as string || '',
+        lot_size_sqft: lead.lot_size_sqft as string || '',
+        mls_curr_status: lead.mls_curr_status as string || '',
+        mls_curr_days_on_market: lead.mls_curr_days_on_market as string || '',
+        campaign_name: campaignDetails.name as string || '',
+        // Add any other fields from 'lead' or 'campaignDetails' needed by templates, with defaults
+        original_lead_data: (lead as any).original_lead_data ?? {}, // TODO: Regenerate Supabase types if this field is valid
+        market_region: lead.market_region as string || '',
+        last_contacted_at: (lead as any).last_contacted_at ?? '' // TODO: Regenerate Supabase types if this field is valid
+      };
+
+      let emailSubject: string = '';
+      let emailBody: string = '';
+      try {
+        emailSubject = nunjucksRenderString(String(emailTemplate.subject), personalizationDataForEmail);
+        emailBody = nunjucksRenderString(String(emailTemplate.body_html || emailTemplate.body_text || ''), personalizationDataForEmail);
+      } catch (renderError: any) {
+        const renderErrorMsg = `Email template rendering failed for lead ${leadId}: ${renderError.message || String(renderError)}`;
+        console.error(`ELI5_CAMPAIGN_HANDLER: ${renderErrorMsg}`);
+        // logId is guaranteed to be a number here due to the robust initialization earlier.
+        await updateEmailLogStatus(supabase, logId, 'FAILED_PREPARATION', null, renderErrorMsg);
+        processingErrors.push({ leadId, contact_email: contactEmail, error: 'template_render_failed', timestamp: new Date().toISOString() });
+        failureCount++;
+        continue; // CRITICAL: Skip to the next lead, do not proceed to create emailConfig or send.
+      }
+      // If rendering was successful, execution continues here.
+      // The emailConfig declaration and subsequent logic will only be reached if the try block for rendering succeeded.
+      const emailConfig: EmailConfig = {
+        recipientEmail: contactEmail as string,
+        recipientName: contactName as string,
+        leadId,
+        senderEmail: selectedSender.email as string,
+        senderName: selectedSender.name as string,
+        emailSubjectTemplate: emailSubject,
+        emailBodyTemplate: emailBody,
+        personalizationData: personalizationDataForEmail,
+        pdfSettings: {
+          generate: !!documentTemplate,
+          personalizationData: personalizationDataForEmail,
+          filenamePrefix: documentTemplate?.name as string || `LOI_${(campaignDetails.name || 'Campaign').replace(/\s+/g, '_')}`,
+        },
+        campaignId: currentCampaignId, 
+        campaignRunId: currentCampaignRunId,
+        dryRun: isDryRun,
+      };
+
+      if (isDryRun) {
+        console.log(`ELI5_CAMPAIGN_HANDLER: [DRY RUN] Would send email to ${contactEmail} from ${selectedSender.email} for lead ${leadId}.`);
+        if (logId !== null) {
+          await updateEmailLogStatus(supabase, logId, 'DRY_RUN_SENT', new Date().toISOString(), 'Dry run simulation.');
+        }
+        successCount++;
+        // selectedSender.in_memory_sent_today++; 
+        // selectedSender.can_send_after_timestamp = Date.now() + (Math.floor(Math.random() * (5.5 * 60000 - 3.5 * 60000 + 1)) + 3.5 * 60000);
+      } else {
+        const sendResult = await sendConfiguredEmail(emailConfig);
+        if (sendResult.success && sendResult.messageId) {
+          console.log(`ELI5_CAMPAIGN_HANDLER: Email sent successfully to ${contactEmail} from ${selectedSender.email} for lead ${leadId}. Message ID: ${sendResult.messageId}`);
+          if (logId !== null) {
+            await updateEmailLogStatus(supabase, logId!, 'SENT', new Date().toISOString());
+          }
+          successCount++;
+          selectedSender.in_memory_sent_today++;
+          const cooldownMs = Math.floor(Math.random() * (5.5 * 60 * 1000 - 3.5 * 60 * 1000 + 1)) + 3.5 * 60 * 1000; // 3.5 to 5.5 minutes
+          selectedSender.can_send_after_timestamp = Date.now() + cooldownMs;
+          console.log(`ELI5_CAMPAIGN_HANDLER: Sender ${selectedSender.email} on cooldown for ${cooldownMs / 1000 / 60} minutes. Next send at ${new Date(selectedSender.can_send_after_timestamp).toLocaleTimeString()}`);
+          await incrementSenderSentCount(supabase, selectedSender.id as string);
+        } else { // This 'else' pairs with 'if (sendResult.success && sendResult.messageId)'
+          console.error(`ELI5_CAMPAIGN_HANDLER: Failed to send email to ${contactEmail} for lead ${leadId}. Error: ${sendResult.error}`);
+          if (logId !== null) { // logId is guaranteed to be a number here
+            await updateEmailLogStatus(supabase, logId!, 'FAILED_SENDING', null, sendResult.error || 'Unknown send error');
+          }
           failureCount++;
-          // logId is guaranteed to be a number here due to the preceding initialization block.
-          await updateEmailLogStatus(supabase, logId, 'FAILED_NO_SENDER', null, 'No sender available for this lead.');
-          continue; // Skip to the next lead
-        }
+        } // Closes 'else' for 'if (sendResult.success ...)'
+      } // Closes 'else' for 'if (dryRun)'
+      senderAssignedAndEmailProcessed = true; // Mark as processed as an attempt was made with the selected sender
+    } // End of for...of leads loop
 
-        // Prepare personalization data for Nunjucks
-        if (true) { // TODO: Replace true with actual sender availability check (e.g., if (availableSender) { ... } )
-          const personalizationDataForEmail = {
-          lead_id: leadId,
-          contact_name: contactName || '',
-          contact_email: contactEmail || '',
-          sender_name: selectedSender.name || '',
-          sender_email: selectedSender.email || '',
-          property_address: lead.property_address || '',
-          property_city: lead.property_city || '',
-          property_state: lead.property_state || '',
-          property_postal_code: lead.property_postal_code || '',
-          assessed_total: lead.assessed_total || 0,
-          avm_value: lead.avm_value || 0,
-          baths: lead.baths || '',
-          beds: lead.beds || '',
-          year_built: lead.year_built || '',
-          square_footage: lead.square_footage || '',
-          lot_size_sqft: lead.lot_size_sqft || '',
-          mls_curr_status: lead.mls_curr_status || '',
-          mls_curr_days_on_market: lead.mls_curr_days_on_market || '',
-          campaign_name: campaignDetails.name || '',
-          // Add any other fields from 'lead' or 'campaignDetails' needed by templates, with defaults
-          original_lead_data: (lead as any).original_lead_data ?? {}, // TODO: Regenerate Supabase types if this field is valid
-          market_region: lead.market_region || '',
-          last_contacted_at: (lead as any).last_contacted_at ?? '' // TODO: Regenerate Supabase types if this field is valid
-        };
+    // Final summary response
+    const totalAttempted = successCount + failureCount;
+    const summaryMessage = `Campaign run ${currentCampaignRunId} for campaign ${currentCampaignId} completed. Attempted: ${totalAttempted}, Sent: ${successCount}, Failed: ${failureCount}.`;
+    
+    console.log(`ELI5_CAMPAIGN_HANDLER: ${summaryMessage}`);
+    console.log('ELI5_CAMPAIGN_HANDLER: Processing Errors:', JSON.stringify(processingErrors, null, 2));
 
-        let emailSubject: string = '';
-        let emailBody: string = '';
-        try {
-          emailSubject = nunjucksRenderString(emailTemplate.subject, personalizationDataForEmail);
-          emailBody = nunjucksRenderString(emailTemplate.body_html || emailTemplate.body_text || '', personalizationDataForEmail);
-        } catch (renderError: any) {
-          const renderErrorMsg = `Email template rendering failed for lead ${leadId}: ${renderError.message || String(renderError)}`;
-          console.error(`ELI5_CAMPAIGN_HANDLER: ${renderErrorMsg}`);
-          // logId is guaranteed to be a number here due to the robust initialization earlier.
-          await updateEmailLogStatus(supabase, logId, 'FAILED_PREPARATION', null, renderErrorMsg);
-          processingErrors.push({ leadId, contact_email: contactEmail, error: 'template_render_failed', timestamp: new Date().toISOString() });
-          failureCount++;
-          continue; // CRITICAL: Skip to the next lead, do not proceed to create emailConfig or send.
-        }
-        // If rendering was successful, execution continues here.
-        // The emailConfig declaration and subsequent logic will only be reached if the try block for rendering succeeded.
-        const emailConfig: EmailConfig = {
-              recipientEmail: contactEmail as string, // Ensure contactEmail is treated as string
-              recipientName: contactName as string, // Ensure contactName is treated as string
-              leadId,
-              senderEmail: selectedSender.email,
-              senderName: selectedSender.name,
-              emailSubjectTemplate: emailSubject, // Already rendered
-              emailBodyTemplate: emailBody,       // Already rendered
-              personalizationData: personalizationDataForEmail,
-              pdfSettings: {
-                generate: !!documentTemplate,
-                personalizationData: personalizationDataForEmail,
-                filenamePrefix: documentTemplate?.name || `LOI_${(campaignDetails.name || 'Campaign').replace(/\s+/g, '_')}`,
-              },
-              campaignId: campaign_id, 
-              campaignRunId: campaign_run_id,
-              dryRun,
-            };
+    // Log overall campaign run status (optional, could be a separate table or log entry)
+    // Example: await logCampaignRunSummary(supabase, { campaign_id, campaign_run_id, successCount, failureCount, totalAttempted, processingErrors });
 
-            if (dryRun) {
-              console.log(`ELI5_CAMPAIGN_HANDLER: [DRY RUN] Would send email to ${contactEmail} from ${selectedSender.email} for lead ${leadId}.`);
-              if (logId !== null) {
-                await updateEmailLogStatus(supabase, logId, 'DRY_RUN_SENT', new Date().toISOString(), 'Dry run simulation.');
-              }
-              successCount++;
-              // selectedSender.in_memory_sent_today++; 
-              // selectedSender.can_send_after_timestamp = Date.now() + (Math.floor(Math.random() * (5.5 * 60000 - 3.5 * 60000 + 1)) + 3.5 * 60000);
-            } else {
-              const sendResult = await sendConfiguredEmail(emailConfig);
-              if (sendResult.success && sendResult.messageId) {
-                console.log(`ELI5_CAMPAIGN_HANDLER: Email sent successfully to ${contactEmail} from ${selectedSender.email} for lead ${leadId}. Message ID: ${sendResult.messageId}`);
-                if (logId !== null) {
-                  await updateEmailLogStatus(supabase, logId!, 'SENT', new Date().toISOString());
-                }
-                successCount++;
-                selectedSender.in_memory_sent_today++;
-                const cooldownMs = Math.floor(Math.random() * (5.5 * 60 * 1000 - 3.5 * 60 * 1000 + 1)) + 3.5 * 60 * 1000; // 3.5 to 5.5 minutes
-                selectedSender.can_send_after_timestamp = Date.now() + cooldownMs;
-                console.log(`ELI5_CAMPAIGN_HANDLER: Sender ${selectedSender.email} on cooldown for ${cooldownMs / 1000 / 60} minutes. Next send at ${new Date(selectedSender.can_send_after_timestamp).toLocaleTimeString()}`);
-                await incrementSenderSentCount(supabase, selectedSender.id);
-              } else { // This 'else' pairs with 'if (sendResult.success && sendResult.messageId)'
-                console.error(`ELI5_CAMPAIGN_HANDLER: Failed to send email to ${contactEmail} for lead ${leadId}. Error: ${sendResult.error}`);
-                if (logId !== null) { // logId is guaranteed to be a number here
-                  await updateEmailLogStatus(supabase, logId!, 'FAILED_SENDING', null, sendResult.error || 'Unknown send error');
-                }
-                failureCount++;
-              } // Closes 'else' for 'if (sendResult.success ...)'
-            } // Closes 'else' for 'if (dryRun)'
-                senderAssignedAndEmailProcessed = true; // Mark as processed as an attempt was made with the selected sender
-          } // Closes 'if (true)' for sender availability check (the one with TODO for sender selection)
-          else { // No senders currently available (all on cooldown or over quota) - This 'else' pairs with the 'if (true)' for sender availability.
-            const sendersStillInRotation = allSenders.filter((s: SenderState) => s.in_memory_sent_today < s.daily_limit || s.can_send_after_timestamp > Date.now()); // Re-filter to be sure
-            const earliestNextSendTime = Math.min(...sendersStillInRotation.map((s: SenderState) => s.can_send_after_timestamp));
-            const waitTime = Math.max(1000, earliestNextSendTime - Date.now()); // Wait at least 1s to prevent tight loops
-            console.log(`ELI5_CAMPAIGN_HANDLER: No senders immediately available for lead ${leadId}. All are on cooldown. Waiting for ${Math.ceil(waitTime / 1000)}s for sender ${allSenders.find((s: SenderState) => s.can_send_after_timestamp === earliestNextSendTime)?.email}.`);
-            // Check if logId is valid before attempting to update the log
-            if (logId !== null) {
-              await updateEmailLogStatus(supabase, logId!, 'PENDING_SENDER_COOLDOWN', null, `Waiting for sender cooldown: ${Math.ceil(waitTime / 1000)}s`);
-              await new Promise(resolve => setTimeout(resolve, waitTime));
-              // Loop will continue to find an available sender
-            } else {
-              // This case should ideally not be reached if the initial logId check and 'continue' (in the outer loop) are working.
-              // If it is reached, it means we are trying to process a lead for which an initial log entry could not be created.
-              console.error(`ELI5_CAMPAIGN_HANDLER: logId is unexpectedly null when trying to update status to PENDING_SENDER_COOLDOWN for lead ${leadId}. This lead should have been skipped. Marking as failed and stopping its processing.`);
-              failureCount++; // Ensure it's marked as a failure if not already.
-              senderAssignedAndEmailProcessed = true; // This will break the while loop for this lead (if a while loop is intended here).
-            }
-          } // Closes the 'else' for 'if (true)' [sender available]
-        } // End of for...of leads loop
-      } // End of for...of leads loop
-
-      // Final summary response
-      const totalAttempted = successCount + failureCount;
-      const summaryMessage = `Campaign run ${campaign_run_id} for campaign ${campaign_id} completed. Attempted: ${totalAttempted}, Sent: ${successCount}, Failed: ${failureCount}.`;
-      
-      console.log(`ELI5_CAMPAIGN_HANDLER: ${summaryMessage}`);
-      console.log('ELI5_CAMPAIGN_HANDLER: Processing Errors:', JSON.stringify(processingErrors, null, 2));
-
-      // Log overall campaign run status (optional, could be a separate table or log entry)
-      // Example: await logCampaignRunSummary(supabase, { campaign_id, campaign_run_id, successCount, failureCount, totalAttempted, processingErrors });
-
-      return res.status(200).json({
-        success: true,
-        message: summaryMessage,
-        campaign_id,
-        campaign_run_id,
-        summary: {
-          total_leads_processed_in_batch: leads.length, // Number of leads fetched for this batch
-          emails_sent_successfully: successCount,
-          emails_failed_to_send: failureCount,
-          processing_errors_details: processingErrors || [] // Initialize empty array if processingErrors is undefined
-        }
-      });
+    return res.status(200).json({
+      success: true,
+      message: summaryMessage,
+      campaign_id: currentCampaignId,
+      campaign_run_id: currentCampaignRunId,
+      summary: {
+        total_leads_processed_in_batch: leads.length, // Number of leads fetched for this batch
+        emails_sent_successfully: successCount,
+        emails_failed_to_send: failureCount,
+        processing_errors_details: processingErrors || [] // Initialize empty array if processingErrors is undefined
+      }
+    });
   } catch (err) {
     console.error('ELI5_CAMPAIGN_HANDLER: Uncaught exception in handler:', err);
     return res.status(500).json({
@@ -653,3 +552,5 @@ export default async function handler(
     });
   }
 }
+
+export default handler;
