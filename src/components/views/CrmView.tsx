@@ -54,67 +54,98 @@ const CrmView: React.FC = () => {
   const [availableMarkets, setAvailableMarkets] = useState<string[]>([]);
 
   const [panoramaPosition, setPanoramaPosition] = useState<{ lat: number; lng: number } | null>(null);
-  const [panoramaPov, setPanoramaPov] = useState<{ heading: number; pitch: number }>({ heading: 0, pitch: 0 });
-  const [modalTitleAddress, setModalTitleAddress] = useState<string>('');
+  const [panoramaPov, setPanoramaPov] = useState<google.maps.StreetViewPov>({ heading: 34, pitch: 10 });
 
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const [modalTitleAddress, setModalTitleAddress] = useState<string>('');
+
 
   const { isLoaded, loadError } = useGoogleMapsApi(); // Use the context hook
+
+  // Memoize Autocomplete options for stability
+  const autocompleteOptions = useMemo(() => ({
+    types: ['address'] as const,
+    componentRestrictions: { country: 'us' },
+    fields: ['address_components', 'formatted_address', 'geometry', 'name', 'place_id', 'type'],
+  }), []);
 
   const initialEditFormData: CrmFormData = {
     contact_first_name: '',
     contact_last_name: '',
-    contact_email: '',
-    phone: '',
-    contact_type: 'manual_entry', // Default for manually added leads
-    market_region: '',
+    email: '',
+    phone: '', // Added phone
     property_address: '',
     property_city: '',
     property_state: '',
     property_postal_code: '',
-    beds: '',
-    baths: '',
-    square_footage: '',
-    assessed_total: null,
-    status: 'New', // Default status
+    appraised_value: 0,
+    beds: 0,
+    baths: 0,
+    sq_ft: 0,
     notes: '',
-    normalized_lead_id: 0, // Default or handle as needed
-    converted: false,
-    email_sent: false,
+    market_region: '', // Added for completeness, might be set differently
+    normalized_lead_id: null, // Added for completeness
   };
 
-  const statusOptions = ['New', 'Attempting Contact', 'Contacted', 'Follow-up', 'Scheduled Meeting', 'Proposal Sent', 'Negotiation', 'Won', 'Lost', 'On Hold', 'Unqualified'];
+  // Fetch available markets on component mount
+  useEffect(() => {
+    const fetchMarkets = async () => {
+      const { data, error: dbError } = await supabase
+        .from('crm_leads') // Assuming markets are derived from existing leads
+        .select('market_region');
+      
+      if (dbError) {
+        console.error('Error fetching markets:', dbError);
+        setError('Failed to load market regions.');
+        return;
+      }
+      if (data) {
+        const uniqueMarkets = Array.from(new Set(data.map(item => item.market_region).filter(Boolean))) as string[];
+        setAvailableMarkets(uniqueMarkets.sort());
+      }
+    };
+    void fetchMarkets();
+  }, []);
 
-  const fetchCrmLeads = useCallback(async () => {
+
+  const fetchLeads = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    try {
-      let query = supabase.from('crm_leads').select('*');
-      if (marketFilter) {
-        query = query.eq('market_region', marketFilter);
-      }
-      // Add other filters like searchTerm if needed here, before sorting and pagination
 
-      const { data, error: fetchError } = await query;
+    let query = supabase.from('crm_leads').select('*');
 
-      if (fetchError) throw fetchError;
-      if (data) {
-        setLeads(data as CrmLead[]);
-        // Extract unique markets for filter dropdown
-        const markets = Array.from(new Set(data.map(lead => lead.market_region).filter(Boolean) as string[]));
-        setAvailableMarkets(markets.sort());
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch CRM leads.');
-      console.error('Fetch CRM leads error:', err);
-    } finally {
-      setIsLoading(false);
+    if (marketFilter) {
+      query = query.eq('market_region', marketFilter);
     }
-  }, [marketFilter]);
+
+    if (searchTerm) {
+      query = query.or(`email.ilike.%${searchTerm}%,property_address.ilike.%${searchTerm}%,contact_first_name.ilike.%${searchTerm}%,contact_last_name.ilike.%${searchTerm}%`);
+    }
+
+    if (sortConfig !== null) {
+      query = query.order(sortConfig.key as string, {
+        ascending: sortConfig.direction === 'ascending',
+      });
+    } else {
+      query = query.order('created_at', { ascending: false }); // Default sort
+    }
+
+    const { data, error: dbError } = await query // Removed count for simplicity, handle pagination based on data length
+      .range((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage - 1);
+
+    if (dbError) {
+      console.error('Error fetching leads:', dbError);
+      setError('Failed to load leads. ' + dbError.message);
+      setLeads([]);
+    } else {
+      setLeads(data || []);
+    }
+    setIsLoading(false);
+  }, [searchTerm, sortConfig, currentPage, rowsPerPage, marketFilter]); // Removed supabase from deps as it's stable
 
   useEffect(() => {
-    fetchCrmLeads();
-  }, [fetchCrmLeads]);
+    void fetchLeads();
+  }, [fetchLeads]);
 
   const handleSort = (key: keyof CrmLead | string) => {
     let direction: 'ascending' | 'descending' = 'ascending';
@@ -122,70 +153,85 @@ const CrmView: React.FC = () => {
       direction = 'descending';
     }
     setSortConfig({ key, direction });
+    setCurrentPage(1); // Reset to first page on sort
   };
 
-  const sortedLeads = useMemo(() => {
-    let sortableItems = [...leads];
-    if (sortConfig !== null) {
-      sortableItems.sort((a, b) => {
-        const aVal = a[sortConfig.key as keyof CrmLead];
-        const bVal = b[sortConfig.key as keyof CrmLead];
-        if (aVal === null || aVal === undefined) return sortConfig.direction === 'ascending' ? 1 : -1;
-        if (bVal === null || bVal === undefined) return sortConfig.direction === 'ascending' ? -1 : 1;
-        if (aVal < bVal) return sortConfig.direction === 'ascending' ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === 'ascending' ? 1 : -1;
-        return 0;
+  const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+    setCurrentPage(1); // Reset to first page on search
+  };
+
+  const handleMarketFilterChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setMarketFilter(event.target.value);
+    setCurrentPage(1); // Reset to first page on filter change
+  };
+
+  const handleRowsPerPageChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setRowsPerPage(Number(event.target.value));
+    setCurrentPage(1); // Reset to first page on rows per page change
+  };
+
+  const handleModalInputChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = event.target;
+    let processedValue: string | number | null = value;
+  
+    if (['appraised_value', 'beds', 'baths', 'sq_ft'].includes(name)) {
+      processedValue = value === '' ? null : Number(value);
+    }
+  
+    setEditFormData(prev => ({
+      ...prev,
+      [name]: processedValue,
+    }));
+  
+    if (['property_address', 'property_city', 'property_state', 'property_postal_code'].includes(name)) {
+      // This logic might need refinement if manual address edits should also update panorama
+      // For now, it primarily updates the title based on manual input.
+      // The Autocomplete's onPlaceChangedStreetView handles panorama for selected addresses.
+      setModalTitleAddress(prev => {
+        // Create a temporary object with current form data for address parts
+        const currentAddressParts = {
+          property_address: name === 'property_address' ? value : editFormData.property_address,
+          property_city: name === 'property_city' ? value : editFormData.property_city,
+          property_state: name === 'property_state' ? value : editFormData.property_state,
+          property_postal_code: name === 'property_postal_code' ? value : editFormData.property_postal_code,
+        };
+        return `${currentAddressParts.property_address || ''}${currentAddressParts.property_city ? `, ${currentAddressParts.property_city}` : ''}${currentAddressParts.property_state ? `, ${currentAddressParts.property_state}` : ''}${currentAddressParts.property_postal_code ? ` ${currentAddressParts.property_postal_code}` : ''}`.trim().replace(/^,|,$/g, '');
       });
     }
-    return sortableItems;
-  }, [leads, sortConfig]);
-
-  const filteredLeads = useMemo(() => {
-    return sortedLeads.filter(lead =>
-      Object.values(lead).some(value =>
-        String(value).toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    );
-  }, [sortedLeads, searchTerm]);
-
-  const paginatedLeads = useMemo(() => {
-    const startIndex = (currentPage - 1) * rowsPerPage;
-    return filteredLeads.slice(startIndex, startIndex + rowsPerPage);
-  }, [filteredLeads, currentPage, rowsPerPage]);
-
-  const totalPages = Math.ceil(filteredLeads.length / rowsPerPage);
-
-  const handleOpenAddModal = () => {
-    setEditFormData(initialEditFormData);
-    setModalTitleAddress('New Lead');
-    setPanoramaPosition(null); // No street view for a brand new lead initially
-    setIsModalOpen(true);
   };
+  
+  const handleOpenModal = (lead?: CrmLead) => {
+    if (lead) {
+      const nameParts = lead.contact_name?.split(' ') || ['',''];
+      const formData: CrmFormData = {
+        ...lead,
+        contact_first_name: nameParts[0] || '',
+        contact_last_name: nameParts.slice(1).join(' ') || '',
+        phone: lead.phone || '', 
+      };
+      setEditFormData(formData);
+      const titleAddr = `${lead.property_address || ''}${lead.property_city ? `, ${lead.property_city}` : ''}${lead.property_state ? `, ${lead.property_state}` : ''}${lead.property_postal_code ? ` ${lead.property_postal_code}` : ''}`.trim().replace(/^,|,$/g, '');
+      setModalTitleAddress(titleAddr);
 
-  const handleOpenEditModal = (lead: CrmLead) => {
-    const [firstName, ...lastNameParts] = (lead.contact_name || '').split(' ');
-    const lastName = lastNameParts.join(' ');
-    
-    setEditFormData({
-      ...lead,
-      contact_first_name: firstName,
-      contact_last_name: lastName,
-      phone: (lead as any).phone || '', // Assuming phone might be an untyped field for now
-    });
-    setModalTitleAddress(lead.property_address || 'Edit Lead');
-    // Attempt to geocode address for StreetView
-    if (lead.property_address && isLoaded) {
-      const geocoder = new google.maps.Geocoder();
-      geocoder.geocode({ address: lead.property_address }, (results, status) => {
-        if (status === 'OK' && results && results[0]) {
-          const location = results[0].geometry.location;
-          setPanoramaPosition({ lat: location.lat(), lng: location.lng() });
-        } else {
-          setPanoramaPosition(null);
-          console.warn('Geocode was not successful for the following reason: ' + status);
-        }
-      });
+      if (lead.property_address && isLoaded && window.google && window.google.maps && window.google.maps.Geocoder) {
+        const geocoder = new window.google.maps.Geocoder();
+        const fullAddress = `${lead.property_address}, ${lead.property_city}, ${lead.property_state} ${lead.property_postal_code}`;
+        geocoder.geocode({ address: fullAddress }, (results, status) => {
+          if (status === 'OK' && results && results[0] && results[0].geometry && results[0].geometry.location) {
+            setPanoramaPosition({ lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng() });
+          } else {
+            console.warn('Geocode was not successful for existing lead: ' + status);
+            setPanoramaPosition(null);
+          }
+        });
+      } else {
+        if (!isLoaded) console.warn('Google Maps API not loaded. Cannot fetch panorama.');
+        setPanoramaPosition(null);
+      }
     } else {
+      setEditFormData(initialEditFormData);
+      setModalTitleAddress('Add New Lead');
       setPanoramaPosition(null);
     }
     setIsModalOpen(true);
@@ -194,392 +240,180 @@ const CrmView: React.FC = () => {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditFormData({}); 
-    autocompleteRef.current = null; // Clear autocomplete instance
-  };
-
-  const handleModalInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    let processedValue: string | number | boolean | null = value;
-    if (type === 'checkbox') {
-      processedValue = (e.target as HTMLInputElement).checked;
-    } else if (name === 'assessed_total' || name === 'normalized_lead_id') {
-      processedValue = value === '' ? null : parseFloat(value);
-      if (isNaN(processedValue as number)) processedValue = null;
+    setModalTitleAddress('');
+    setPanoramaPosition(null);
+    if (autocompleteRef.current) { // Defensive clear
+        // It's good practice to clear, but Google's Autocomplete might not have a formal "destroy" or "unbind" method here.
+        // Setting ref to null is the main thing.
     }
-    setEditFormData(prev => ({ ...prev, [name]: processedValue }));
-  };
-  
-  const onAutocompleteLoad = (ac: google.maps.places.Autocomplete) => {
-    autocompleteRef.current = ac;
+    autocompleteRef.current = null; 
   };
 
-  const onPlaceChanged = () => {
-    if (autocompleteRef.current) {
-      const place = autocompleteRef.current.getPlace();
-      if (place.geometry && place.geometry.location) {
-        setPanoramaPosition({ lat: place.geometry.location.lat(), lng: place.geometry.location.lng() });
-        setModalTitleAddress(place.formatted_address || 'Property Location');
-      }
-      
-      const addressComponents = place.address_components;
-      let streetNumber = '';
-      let route = '';
-      const newFormData: Partial<CrmFormData> = {};
-
-      newFormData.property_address = place.formatted_address || '';
-
-      if (addressComponents) {
-        for (const component of addressComponents) {
-          const types = component.types;
-          if (types.includes('street_number')) streetNumber = component.long_name;
-          if (types.includes('route')) route = component.long_name;
-          if (types.includes('locality')) newFormData.property_city = component.long_name;
-          if (types.includes('administrative_area_level_1')) newFormData.property_state = component.short_name;
-          if (types.includes('postal_code')) newFormData.property_postal_code = component.long_name;
-        }
-      }
-      // If you want a separate street_address field, you can construct it:
-      // newFormData.street_address_line1 = `${streetNumber} ${route}`.trim();
-
-      setEditFormData(prev => ({ 
-        ...prev, 
-        ...newFormData,
-        // property_address is set to full formatted address from autocomplete
-      }));
-    }
-  };
-
-  const handleModalSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setIsSaving(true);
     setError(null);
 
-    const { contact_first_name, contact_last_name, phone, ...restOfFormData } = editFormData;
-    const leadDataPayload: Partial<Omit<CrmLead, 'id' | 'created_at' | 'updated_at'>> & { phone?: string } = {
-      ...restOfFormData,
-      contact_name: `${contact_first_name || ''} ${contact_last_name || ''}`.trim(),
-      phone: phone, // Include phone
-      // Ensure numeric fields are numbers or null
-      assessed_total: typeof editFormData.assessed_total === 'string' ? parseFloat(editFormData.assessed_total) : editFormData.assessed_total,
-      normalized_lead_id: typeof editFormData.normalized_lead_id === 'string' ? parseInt(editFormData.normalized_lead_id, 10) : editFormData.normalized_lead_id ?? 0,
+    const leadDataToSave = {
+      ...editFormData,
+      contact_name: `${editFormData.contact_first_name || ''} ${editFormData.contact_last_name || ''}`.trim(),
     };
 
-    // Remove id from payload if it's for creation
-    if (!editFormData.id) {
-      delete (leadDataPayload as any).id;
+    if (!leadDataToSave.id) {
+      delete leadDataToSave.id;
     }
 
     try {
-      let response;
       if (editFormData.id) {
-        response = await updateCrmLeadAction(editFormData.id, leadDataPayload as Partial<CrmLead>); // Cast might be needed if phone is not in CrmLead
+        const result = await updateCrmLeadAction(editFormData.id, leadDataToSave);
+        if (result.error) throw new Error(result.error);
+        // setLeads(leads.map(l => l.id === editFormData.id ? { ...l, ...result.data } : l)); // result.data may be CrmLead | null
+        if (result.data) {
+            setLeads(leads.map(l => l.id === editFormData.id ? result.data! : l));
+        } else {
+            void fetchLeads(); // Fallback if data is null
+        }
       } else {
-        response = await createCrmLeadAction(leadDataPayload as Partial<Omit<CrmLead, 'id' | 'created_at' | 'updated_at'>>);
+        const result = await createCrmLeadAction(leadDataToSave);
+        if (result.error) throw new Error(result.error);
+        if (result.data) {
+          setLeads([result.data, ...leads]);
+        } else {
+            void fetchLeads(); // Fallback if data is null
+        }
       }
-
-      if (response.success) {
-        await fetchCrmLeads();
-        handleCloseModal();
-      } else {
-        setError(response.error || 'Failed to save lead.');
-      }
-    } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred.');
-      console.error('Save lead error:', err);
-    } finally {
-      setIsSaving(false);
+      handleCloseModal();
+      // void fetchLeads(); // Re-fetch might be redundant if local state update is perfect
+    } catch (e: any) {
+      console.error('Error saving lead:', e);
+      setError(`Failed to save lead: ${e.message}`);
     }
+    setIsSaving(false);
   };
-
+  
   const handleDeleteLead = async () => {
     if (!editFormData.id) return;
-    if (!confirm('Are you sure you want to delete this lead?')) return;
+    if (!confirm('Are you sure you want to delete this lead? This action cannot be undone.')) return;
 
-    setIsSaving(true);
+    setIsSaving(true); 
     setError(null);
     try {
-      const response = await deleteCrmLeadAction(editFormData.id);
-      if (response.success) {
-        await fetchCrmLeads();
-        handleCloseModal();
-      } else {
-        setError(response.error || 'Failed to delete lead.');
-      }
-    } catch (err: any) {
-      setError(err.message || 'An unexpected error occurred.');
-      console.error('Delete lead error:', err);
-    } finally {
-      setIsSaving(false);
+      const result = await deleteCrmLeadAction(editFormData.id);
+      if (result.error) throw new Error(result.error);
+      setLeads(leads.filter(l => l.id !== editFormData.id));
+      handleCloseModal();
+    } catch (e: any) {
+      console.error('Error deleting lead:', e);
+      setError(`Failed to delete lead: ${e.message}`);
     }
+    setIsSaving(false);
   };
+
+  const onLoadStreetViewAutocomplete = useCallback((autocompleteInstance: google.maps.places.Autocomplete) => {
+    console.log('[DEBUG] Autocomplete onLoadStreetViewAutocomplete called. Instance:', autocompleteInstance);
+    autocompleteRef.current = autocompleteInstance;
+  }, []);
+
+  const onPlaceChangedStreetView = useCallback(() => {
+    console.log('[DEBUG] onPlaceChangedStreetView triggered. autocompleteRef.current:', autocompleteRef.current);
+    if (autocompleteRef.current) {
+      const place = autocompleteRef.current.getPlace();
+      console.log('[DEBUG] Place details from getPlace():', place);
+
+      if (place && place.geometry && place.geometry.location && place.address_components) {
+        const streetNumber = place.address_components.find(c => c.types.includes('street_number'))?.long_name || '';
+        const route = place.address_components.find(c => c.types.includes('route'))?.long_name || '';
+        const city = place.address_components.find(c => c.types.includes('locality'))?.long_name ||
+                     place.address_components.find(c => c.types.includes('postal_town'))?.long_name || '';
+        const state = place.address_components.find(c => c.types.includes('administrative_area_level_1'))?.short_name || '';
+        const zip = place.address_components.find(c => c.types.includes('postal_code'))?.long_name || '';
+        const fullAddress = `${streetNumber} ${route}`.trim();
+
+        setEditFormData(prev => ({
+          ...prev,
+          property_address: fullAddress,
+          property_city: city,
+          property_state: state,
+          property_postal_code: zip,
+          // contact_first_name: prev.contact_first_name, // Ensure other fields are not lost
+          // contact_last_name: prev.contact_last_name,
+          // email: prev.email,
+          // phone: prev.phone,
+          // appraised_value: prev.appraised_value,
+          // beds: prev.beds,
+          // baths: prev.baths,
+          // sq_ft: prev.sq_ft,
+          // notes: prev.notes,
+        }));
+        setModalTitleAddress(place.formatted_address || fullAddress);
+        setPanoramaPosition({ lat: place.geometry.location.lat(), lng: place.geometry.location.lng() });
+      } else {
+        console.warn('[DEBUG] Autocomplete: No place selected or place details (geometry/location/address_components) missing after getPlace(). Place:', place);
+      }
+    } else {
+      console.warn('[DEBUG] onPlaceChangedStreetView: autocompleteRef.current is null.');
+    }
+  }, [handleModalInputChange, setEditFormData, setModalTitleAddress, setPanoramaPosition, setPanoramaPov]); // Dependencies kept as per your last successful structure
 
   const columns: ColumnConfig[] = [
     { key: 'contact_name', label: 'Contact Name', sortable: true },
+    { key: 'email', label: 'Email', sortable: true },
+    { key: 'phone', label: 'Phone', sortable: true },
     { key: 'property_address', label: 'Property Address', sortable: true },
-    { key: 'status', label: 'Status', sortable: true },
+    { key: 'property_city', label: 'City', sortable: true },
+    { key: 'property_state', label: 'State', sortable: true },
     { key: 'market_region', label: 'Market', sortable: true },
-    { key: 'contact_email', label: 'Email', sortable: true },
-    { key: 'updated_at', label: 'Last Updated', sortable: true },
+    { key: 'actions', label: 'Actions' },
   ];
 
-  const renderCellContent = (lead: CrmLead, columnKey: keyof CrmLead | string) => {
-    const value = lead[columnKey as keyof CrmLead];
-    if (columnKey === 'updated_at' || columnKey === 'created_at') {
-      return value ? new Date(value as string).toLocaleDateString() : 'N/A';
+  const totalPages = Math.ceil(leads.length / rowsPerPage); // This might be incorrect if total count isn't fetched
+                                                          // For client-side pagination after full fetch, this is fine.
+                                                          // If using server-side pagination with limited fetches, need total count from server.
+
+  // For client-side pagination and sorting after fetching all (or filtered) leads
+  const sortedLeads = useMemo(() => {
+    let sortableLeads = [...leads];
+    if (sortConfig !== null) {
+      sortableLeads.sort((a, b) => {
+        const aValue = a[sortConfig.key as keyof CrmLead] ?? '';
+        const bValue = b[sortConfig.key as keyof CrmLead] ?? '';
+        if (aValue < bValue) {
+          return sortConfig.direction === 'ascending' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'ascending' ? 1 : -1;
+        }
+        return 0;
+      });
     }
-    if (typeof value === 'boolean') {
-      return value ? 'Yes' : 'No';
-    }
-    return value !== null && value !== undefined ? String(value) : 'N/A';
-  };
+    return sortableLeads;
+  }, [leads, sortConfig]);
+
+  const paginatedLeads = useMemo(() => {
+    return sortedLeads.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+  }, [sortedLeads, currentPage, rowsPerPage]);
+
 
   if (loadError) {
-    return <div className="p-4 text-error">Error loading Google Maps: {loadError.message}</div>;
+    return <div className="p-4 text-red-600">Error loading Google Maps: {loadError.message}</div>;
   }
+
+  // if (!isLoaded) { // Commented out to allow page rendering while maps loads, modal will handle disabled state
+  //   return <div className="p-4">Loading Google Maps...</div>;
+  // }
+
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
       <h1 className="text-2xl font-semibold mb-6">CRM Leads Management</h1>
 
-      {error && (
-        <div role="alert" className="alert alert-error mb-4">
-          <AlertTriangle size={20} />
-          <span>{error}</span>
-          <button onClick={() => setError(null)} className="btn btn-xs btn-ghost">
-            <XCircle size={16} />
-          </button>
-        </div>
-      )}
-
-      <div className="mb-4 flex flex-wrap gap-4 items-center">
-        <button onClick={handleOpenAddModal} className="btn btn-primary">
-          <PlusCircle size={18} className="mr-2" /> Add New Lead
-        </button>
-        <div className="form-control flex-grow min-w-[200px]">
-          <input
-            type="text"
-            placeholder="Search leads..."
-            className="input input-bordered w-full"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="form-control min-w-[150px]">
-          <select 
-            className="select select-bordered w-full"
-            value={marketFilter}
-            onChange={(e) => setMarketFilter(e.target.value)}
-          >
-            <option value="">All Markets</option>
-            {availableMarkets.map(market => (
-              <option key={market} value={market}>{market}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {isLoading && <div className="text-center p-4"><span className="loading loading-spinner loading-lg"></span></div>}
-
-      {!isLoading && paginatedLeads.length === 0 && (
-        <p className="text-center text-gray-500 py-8">No CRM leads found.</p>
-      )}
-
-      {!isLoading && paginatedLeads.length > 0 && (
-        <>
-          <div className="overflow-x-auto shadow-lg rounded-lg bg-base-100">
-            <table className="table table-zebra w-full">
-              <thead>
-                <tr>
-                  {columns.map((col) => (
-                    <th key={col.key as string} onClick={() => col.sortable && handleSort(col.key)} className={col.sortable ? 'cursor-pointer hover:bg-base-200' : ''}>
-                      {col.label}
-                      {col.sortable && sortConfig && sortConfig.key === col.key && (
-                        sortConfig.direction === 'ascending' ? <ChevronUp size={16} className="inline ml-1" /> : <ChevronDown size={16} className="inline ml-1" />
-                      )}
-                    </th>
-                  ))}
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedLeads.map((lead) => (
-                  <tr key={lead.id} className="hover" onClick={() => handleOpenEditModal(lead)}>
-                    {columns.map(col => (
-                      <td key={`${lead.id}-${col.key as string}`}>{renderCellContent(lead, col.key)}</td>
-                    ))}
-                    <td onClick={(e) => e.stopPropagation()}> {/* Prevent row click from triggering on action buttons */}
-                      <button onClick={() => handleOpenEditModal(lead)} className="btn btn-xs btn-ghost text-blue-500">
-                        <Edit3 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="mt-6 flex flex-wrap justify-between items-center gap-4">
-            <div className="form-control">
-              <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="select select-bordered select-sm">
-                <option value={10}>10 per page</option>
-                <option value={25}>25 per page</option>
-                <option value={50}>50 per page</option>
-                <option value={100}>100 per page</option>
-              </select>
-            </div>
-            <div className="join">
-              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="join-item btn btn-sm">«</button>
-              <button className="join-item btn btn-sm">Page {currentPage} of {totalPages}</button>
-              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="join-item btn btn-sm">»</button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {isModalOpen && (
-        <div className={`modal modal-open ${isLoaded ? '' : 'pointer-events-none'}`}> {/* Disable interaction if maps not loaded */}
-          <div className="modal-box w-11/12 max-w-3xl bg-base-200 shadow-xl rounded-lg">
-            <button onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2 z-20">✕</button>
-            <h3 className="font-bold text-lg mb-1 flex items-center">
-              <MapPin size={20} className="mr-2 text-primary" /> 
-              {modalTitleAddress}
-            </h3>
-            
-            {isLoaded && panoramaPosition && (
-              <div className="w-full h-64 mb-4 rounded-md overflow-hidden border border-base-300">
-                <StreetViewPanorama
-                  position={panoramaPosition}
-                  pov={panoramaPov}
-                  visible={true}
-                  options={{ addressControl: true, enableCloseButton: false, fullscreenControl: false, linksControl: false, panControl: true, zoomControl: true }}
-                  onPovChanged={(pov) => pov && setPanoramaPov(pov)}
-                />
-              </div>
-            )}
-            {isLoaded && !panoramaPosition && editFormData.property_address && (
-                 <div className="w-full h-64 mb-4 rounded-md overflow-hidden border border-base-300 flex items-center justify-center bg-gray-100 text-gray-500">
-                    Street View not available or address not found.
-                 </div>
-            )}
-            {!isLoaded && <div className="w-full h-64 mb-4 flex items-center justify-center"><span className="loading loading-spinner"></span> Loading Maps...</div>}
-
-            <form onSubmit={handleModalSubmit} className="space-y-4">
-              <h4 className="text-md font-semibold mt-2 border-b pb-1 text-primary">LOCATION</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="modal-status" className="label"><span className="label-text">Status</span></label>
-                  <select id="modal-status" name="status" value={editFormData.status || ''} onChange={handleModalInputChange} className="select select-bordered w-full">
-                    {statusOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label htmlFor="modal-property_address" className="label"><span className="label-text">Property Address (type to search)</span></label>
-                  {isLoaded && (
-                    <Autocomplete
-                      onLoad={onAutocompleteLoad}
-                      onPlaceChanged={onPlaceChanged}
-                      options={{ types: ['address'] }}
-                    >
-                      <input 
-                        type="text" 
-                        id="modal-property_address" 
-                        name="property_address" 
-                        defaultValue={editFormData.property_address || ''} 
-                        className="input input-bordered w-full" 
-                        placeholder="Start typing an address..."
-                      />
-                    </Autocomplete>
-                  )}
-                  {!isLoaded && <input type="text" defaultValue={editFormData.property_address || ''} className="input input-bordered w-full" placeholder="Maps loading..." disabled />}
-                </div>
-                {/* Street Address, City, State, Zip will be auto-filled by Autocomplete, but can be editable */}
-                <div>
-                  <label htmlFor="modal-property_city" className="label"><span className="label-text">City</span></label>
-                  <input type="text" id="modal-property_city" name="property_city" value={editFormData.property_city || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-                <div>
-                  <label htmlFor="modal-property_state" className="label"><span className="label-text">State</span></label>
-                  <input type="text" id="modal-property_state" name="property_state" value={editFormData.property_state || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-                <div>
-                  <label htmlFor="modal-property_postal_code" className="label"><span className="label-text">Zip Code</span></label>
-                  <input type="text" id="modal-property_postal_code" name="property_postal_code" value={editFormData.property_postal_code || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-                 <div>
-                  <label htmlFor="modal-assessed_total" className="label"><span className="label-text">Appraised Value</span></label>
-                  <input type="number" step="any" id="modal-assessed_total" name="assessed_total" value={editFormData.assessed_total || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-                <div>
-                  <label htmlFor="modal-beds" className="label"><span className="label-text">Beds</span></label>
-                  <input type="text" id="modal-beds" name="beds" value={editFormData.beds || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-                <div>
-                  <label htmlFor="modal-baths" className="label"><span className="label-text">Baths</span></label>
-                  <input type="text" id="modal-baths" name="baths" value={editFormData.baths || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-                <div>
-                  <label htmlFor="modal-square_footage" className="label"><span className="label-text">SQ FT</span></label>
-                  <input type="text" id="modal-square_footage" name="square_footage" value={editFormData.square_footage || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-              </div>
-
-              <h4 className="text-md font-semibold mt-6 border-b pb-1 text-primary">CONTACT</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="modal-contact_first_name" className="label"><span className="label-text">First Name</span></label>
-                  <input type="text" id="modal-contact_first_name" name="contact_first_name" value={editFormData.contact_first_name || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-                <div>
-                  <label htmlFor="modal-contact_last_name" className="label"><span className="label-text">Last Name</span></label>
-                  <input type="text" id="modal-contact_last_name" name="contact_last_name" value={editFormData.contact_last_name || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-                <div>
-                  <label htmlFor="modal-contact_email" className="label"><span className="label-text">Email</span></label>
-                  <input type="email" id="modal-contact_email" name="contact_email" value={editFormData.contact_email || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-                <div>
-                  <label htmlFor="modal-phone" className="label"><span className="label-text">Phone</span></label>
-                  <input type="tel" id="modal-phone" name="phone" value={editFormData.phone || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-                </div>
-              </div>
-
-              <h4 className="text-md font-semibold mt-6 border-b pb-1 text-primary">NOTES</h4>
-              <div>
-                <label htmlFor="modal-notes" className="label"><span className="label-text">Notes</span></label>
-                <textarea id="modal-notes" name="notes" value={editFormData.notes || ''} onChange={handleModalInputChange} className="textarea textarea-bordered w-full" rows={3}></textarea>
-              </div>
-              
-              {/* Hidden or less prominent fields if needed, e.g., market_region, normalized_lead_id */}
-              {/* Example: 
-              <div>
-                <label htmlFor="modal-market_region" className="label"><span className="label-text">Market Region</span></label>
-                <input type="text" id="modal-market_region" name="market_region" value={editFormData.market_region || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
-              </div>
-              */}
-
-              <div className="modal-action mt-8 flex justify-between items-center">
-                <div> {/* Delete button on the left */}
-                  {editFormData.id && (
-                    <button type="button" onClick={handleDeleteLead} className="btn btn-error btn-outline" disabled={isSaving} style={{backgroundColor: '#FF6B6B', color: 'white'}}>
-                      <Trash2 size={16}/> DELETE LEAD
-                    </button>
-                  )}
-                </div>
-                <div className="flex gap-2"> {/* Cancel and Save/Update buttons on the right */}
-                  <button type="button" onClick={handleCloseModal} className="btn btn-ghost" disabled={isSaving}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" disabled={isSaving} style={{backgroundColor: '#3B82F6', color: 'white'}}>
-                    <Save size={16}/> {isSaving ? 'Saving...' : (editFormData.id ? 'UPDATE LEAD' : 'SAVE LEAD')}
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-          {/* Click outside to close, if not using modal-backdrop form method */}
-          {/* <div className="modal-backdrop fixed inset-0 bg-black opacity-50 z-0" onClick={handleCloseModal}></div> */}
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default CrmView;
+      {/* Controls: Search, Filter, Add New */}
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        {/* Search Input */}
+        <div className="form-control">
+          <label className="label"><span className="label-text">Search Leads</span></label>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search by name, email, address..."
+              className="input input-
