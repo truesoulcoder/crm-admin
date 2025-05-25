@@ -697,15 +697,6 @@ const CrmView: React.FC = () => {
                   <input 
                     type="text" 
                     name="property_address" 
-                    placeholder="Enter Property Address to get map" 
-                    className="input input-bordered w-full" 
-                    value={editFormData.property_address || ''} 
-                    onChange={handleModalInputChange} 
-                    onBlur={(e) => {
-                      // Only geocode if we have a valid address and Google Maps is loaded
-                      if (e.target.value && isLoaded && window.google && window.google.maps && window.google.maps.Geocoder) {
-                        const geocoder = new window.google.maps.Geocoder();
-                        geocoder.geocode({ address: e.target.value }, (results, status) => {
                           if (status === 'OK' && results && results[0]) {
                             // Update address with formatted address
                             const formattedAddress = results[0].formatted_address;
@@ -747,37 +738,50 @@ const CrmView: React.FC = () => {
                               });
                             }
                           }
-                        }).catch(error => {
+                        })
+                        .catch(error => {
                           console.error('Geocoding error:', error);
                         });
-                      }
-                    }}
-                  />
-                  {isLoaded ? (
-                    <button 
-                      type="button"
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-primary"
-                      onClick={() => {
-                        if (editFormData.property_address && isLoaded && window.google && window.google.maps && window.google.maps.Geocoder) {
-                          const geocoder = new window.google.maps.Geocoder();
-                          geocoder.geocode({ address: editFormData.property_address }, (results, status) => {
-                            if (status === 'OK' && results && results[0] && results[0].geometry && results[0].geometry.location) {
+                    }
+                  }}
+                />
+                {isLoaded ? (
+                  <button 
+                    type="button"
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-primary"
+                    onClick={() => {
+                      if (
+                        editFormData.property_address &&
+                        isLoaded &&
+                        typeof window !== 'undefined' &&
+                        window.google &&
+                        window.google.maps &&
+                        window.google.maps.Geocoder
+                      ) {
+                        const geocoder = new window.google.maps.Geocoder();
+                        geocoder
+                          .geocode({ address: editFormData.property_address }, (results, status) => {
+                            if (
+                              status === 'OK' &&
+                              results &&
+                              results[0] &&
+                              results[0].geometry &&
+                              results[0].geometry.location
+                            ) {
                               setPanoramaPosition({
                                 lat: results[0].geometry.location.lat(),
-                                lng: results[0].geometry.location.lng()
+                                lng: results[0].geometry.location.lng(),
                               });
                             }
-                          }).catch(error => {
+                          })
+                          .catch(error => {
                             console.error('Error in geocode Promise:', error);
                           });
-                        }
-                      }}
-                    >
-                      <MapPin size={18} />
-                    </button>
-                  ) : null}
-                </div>
-              </div>
+                      }
+                    }}
+                  >
+                    <MapPin size={18} />
+                  </button>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="label"><span className="label-text">City</span></label>
@@ -852,13 +856,27 @@ const CrmView: React.FC = () => {
                 ) : null}
 
               {/* Street View Panorama - Only if position is set */}
-              {isLoaded && panoramaPosition && (
-                <div className="mt-4 h-64 w-full bg-gray-200 rounded">
-                  <StreetViewPanorama
-                    options={{ visible: true, position: panoramaPosition, controlSize: 20, enableCloseButton: false, addressControl: false, linksControl: false, panControl: true, zoomControl: true, scrollwheel: true }}
-                  />
-                </div>
-              )}
+              {isLoaded && panoramaPosition ? (
+  <div className="mt-4 h-64 w-full bg-gray-200 rounded">
+    <StreetViewPanorama
+      options={{
+        visible: true,
+        position: panoramaPosition,
+        controlSize: 20,
+        enableCloseButton: false,
+        addressControl: false,
+        linksControl: false,
+        panControl: true,
+        zoomControl: true,
+        scrollwheel: true,
+      }}
+    />
+  </div>
+) : isLoaded && !panoramaPosition && editFormData.id ? (
+  <p className='text-xs text-gray-500'>Street View not available or address not geocoded.</p>
+) : !isLoaded ? (
+  <p className='text-xs text-gray-500'>Google Street View loading...</p>
+) : null}
               {!isLoaded && <p className='text-xs text-gray-500'>Google Street View loading...</p>}
               {isLoaded && !panoramaPosition && editFormData.id && <p className='text-xs text-gray-500'>Street View not available or address not geocoded.</p>}
 

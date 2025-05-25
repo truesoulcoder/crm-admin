@@ -388,25 +388,34 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
             </div>
           </div>
           <div className="flex gap-2 justify-end">
-            <Button
-              color="primary"
-              startIcon={<PlayCircle />}
-              onClick={() => void handleStartEngine()}
-              loading={isLoading && engineStatus === 'starting'}
-              disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running') || !marketRegion.trim()}
-            >
-              Start Engine
-            </Button>
-            <Button 
-              color="error" 
-              startIcon={<StopCircle />} 
-              onClick={() => void handleStopEngine()}
-              loading={isLoading && engineStatus === 'stopping'}
-              disabled={isLoading && engineStatus !== 'stopping' || engineStatus === 'idle' || engineStatus === 'stopped'}
-            >
-              Stop Engine
-            </Button>
-          </div>
+  <Button
+    color="primary"
+    startIcon={<PlayCircle />}
+    onClick={() => void handleStartEngine()}
+    loading={isLoading && engineStatus === 'starting'}
+    disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running') || !marketRegion.trim()}
+  >
+    Start Engine
+  </Button>
+  <Button
+    color="info"
+    startIcon={<Mail />}
+    onClick={() => void handleSendTestEmail()}
+    loading={isLoading && engineStatus === 'test_sending'}
+    disabled={isLoading && engineStatus === 'test_sending'}
+  >
+    Test Email
+  </Button>
+  <Button 
+    color="error" 
+    startIcon={<StopCircle />} 
+    onClick={() => void handleStopEngine()}
+    loading={isLoading && engineStatus === 'stopping'}
+    disabled={isLoading && engineStatus !== 'stopping' || engineStatus === 'idle' || engineStatus === 'stopped'}
+  >
+    Stop Engine
+  </Button>
+</div>
         </Card.Body>
       </Card>
 
