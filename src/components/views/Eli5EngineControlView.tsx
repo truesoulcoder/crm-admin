@@ -28,6 +28,12 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
   const [error, setError] = useState<string | null>(null);
   const consoleEndRef = useRef<null | HTMLDivElement>(null);
 
+  // New state variables for sender selection, timeout, and limit
+  const [availableSenders, setAvailableSenders] = useState<Array<{id: string, name: string, email: string}>>([]);
+  const [selectedSenderIds, setSelectedSenderIds] = useState<string[]>([]);
+  const [timeoutIntervalSeconds, setTimeoutIntervalSeconds] = useState<number>(0); // Default to 0 seconds
+  const [limitPerRun, setLimitPerRun] = useState<number>(10); // Default to 10, API also defaults to 10
+
   const addLog = useCallback((message: string, type: LogEntry['type'], data?: any) => {
     const newLog: LogEntry = {
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
@@ -44,13 +50,43 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
     consoleEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [consoleLogs]);
 
-  // Placeholder for initial engine status check (if needed)
+  // Fetch available senders on component mount
   useEffect(() => {
-    // You might want to fetch the current engine status from an RPC or a dedicated table on load
+    const fetchSenders = async () => {
+      addLog('Fetching available senders...', 'info');
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('senders') // Ensure this is your actual table name for senders
+          .select('id, name, email')
+          .eq('is_active', true) // Assuming you only want active senders
+          // .eq('status', 'active') // Add if you have a status field for more granular control
+          .order('name', { ascending: true });
+
+        if (fetchError) {
+          throw fetchError;
+        }
+
+        if (data) {
+          setAvailableSenders(data.map(s => ({ id: s.id, name: s.name || s.email, email: s.email }))); // Ensure name has a fallback
+          addLog(`Successfully fetched ${data.length} active senders.`, 'success');
+        } else {
+          addLog('No active senders found or unable to fetch.', 'warning');
+          setAvailableSenders([]);
+        }
+      } catch (err: any) {
+        const errorMessage = `Error fetching senders: ${err.message}`;
+        addLog(errorMessage, 'error');
+        setError(errorMessage); // Display error in the main error alert
+        setAvailableSenders([]); // Ensure it's empty on error
+      }
+    };
+
     addLog('ELI5 Engine Control Panel Initialized.', 'info');
-    // Example: async function fetchEngineStatus() { ... setEngineStatus ... } 
-    // void fetchEngineStatus();
-  }, [addLog]);
+    void fetchSenders();
+    // No dependencies needed for addLog if it's stable via useCallback,
+    // but if supabase client can change, it might be needed.
+    // For now, assuming addLog and supabase are stable.
+  }, [addLog, supabase]); // Added supabase as dependency for completeness
 
   // Real-time subscription to eli5_email_log for console updates
   useEffect(() => {
@@ -153,11 +189,23 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
       addLog('Campaign processing flag successfully set to RESUMED.', 'success');
 
       // Step 2: Call start-campaign
-      addLog(`Sending request to /api/eli5-engine/start-campaign for market: ${marketRegion}...`, 'info');
+      addLog(`Sending request to /api/eli5-engine/start-campaign for market: ${marketRegion} with limit: ${limitPerRun}, timeout: ${timeoutIntervalSeconds}s, senders: ${selectedSenderIds.length > 0 ? selectedSenderIds.join(', ') : 'Any'}...`, 'info');
+      
+      const requestBody: any = { 
+        market_region: marketRegion,
+        limit_per_run: Number(limitPerRun) || undefined, // API defaults if undefined
+        selected_sender_ids: selectedSenderIds,
+        timeout_interval_seconds: Number(timeoutIntervalSeconds),
+      };
+      // The API defaults limit_per_run to 10 if not provided or if value is 0.
+      // If Number(limitPerRun) is 0, sending undefined will make API use its default.
+      // If you want 0 to mean "no limit" on API side, API needs to handle that.
+      // For now, 0 from UI means use API default.
+
       const startResponse = await fetch('/api/eli5-engine/start-campaign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ market_region: marketRegion /*, limit_per_run: 10 */ }), // limit_per_run is optional
+        body: JSON.stringify(requestBody),
       });
       const startResult = await startResponse.json();
 
@@ -259,6 +307,86 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
               />
             </div>
           </div>
+
+          {/* Display Current Settings */}
+          <div className="my-4 p-3 bg-base-200 rounded-md">
+            <h3 className="text-lg font-semibold mb-2">Current Campaign Settings:</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+              <p><span className="font-medium">Market:</span> {marketRegion || "Not Set"}</p>
+              <p><span className="font-medium">Limit/Run:</span> {limitPerRun === 0 ? "API Default" : limitPerRun}</p>
+              <p><span className="font-medium">Interval:</span> {timeoutIntervalSeconds}s</p>
+              <p><span className="font-medium">Senders:</span> {selectedSenderIds.length === 0 ? "Any Active" : `${selectedSenderIds.length} Selected`}</p>
+            </div>
+          </div>
+          
+          {/* New UI Elements for Senders, Timeout, and Limit */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-4">
+            {/* Sender Selection */}
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Filter Senders (Optional)</span>
+              </label>
+              {availableSenders.length > 0 ? (
+                <div className="max-h-40 overflow-y-auto border border-base-300 rounded-md p-2 bg-base-200">
+                  {availableSenders.map(sender => (
+                    <label key={sender.id} className="label cursor-pointer">
+                      <span className="label-text">{sender.name} ({sender.email})</span>
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-primary"
+                        checked={selectedSenderIds.includes(sender.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedSenderIds([...selectedSenderIds, sender.id]);
+                          } else {
+                            setSelectedSenderIds(selectedSenderIds.filter(id => id !== sender.id));
+                          }
+                        }}
+                        disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running')}
+                      />
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-base-content-secondary">No active senders found or failed to load.</div>
+              )}
+            </div>
+
+            {/* Timeout Interval */}
+            <div className="form-control">
+              <label className="label" htmlFor="timeoutIntervalInput">
+                <span className="label-text">Email Send Interval (seconds)</span>
+              </label>
+              <Input
+                id="timeoutIntervalInput"
+                type="number"
+                min="0"
+                placeholder="e.g., 5"
+                value={timeoutIntervalSeconds}
+                onChange={(e) => setTimeoutIntervalSeconds(Math.max(0, Number(e.target.value)))}
+                className="input input-bordered w-full"
+                disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running')}
+              />
+            </div>
+
+            {/* Limit Per Run */}
+            <div className="form-control">
+              <label className="label" htmlFor="limitPerRunInput">
+                <span className="label-text">Limit Per Run (0 for API default)</span>
+              </label>
+              <Input
+                id="limitPerRunInput"
+                type="number"
+                min="0"
+                placeholder="e.g., 100"
+                value={limitPerRun}
+                onChange={(e) => setLimitPerRun(Math.max(0, Number(e.target.value)))}
+                className="input input-bordered w-full"
+                disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running')}
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Button 
               color="primary" 
@@ -274,7 +402,7 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
               startIcon={<PlayCircle />} 
               onClick={handleStartEngine}
               loading={isLoading && engineStatus === 'starting'}
-              disabled={isLoading && engineStatus !== 'starting' || engineStatus === 'running' || !marketRegion.trim()}
+              disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running') || !marketRegion.trim()}
             >
               Start Engine
             </Button>
