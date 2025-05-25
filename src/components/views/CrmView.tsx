@@ -37,17 +37,8 @@ interface CrmFormData {
   year_built?: string;
   square_footage?: number;
   lot_size_sqft?: string; // String for form input
-  last_sale_date?: string;
-  last_sale_price?: number;
   assessed_total?: number;
-  owner_name?: string;
-  owner_mailing_address?: string;
-  owner_mailing_city?: string;
-  owner_mailing_state?: string;
-  owner_mailing_postal_code?: string;
-  owner_occupied?: boolean;
   notes?: string;
-  tags?: string[];
   property_latitude?: number;
   property_longitude?: number;
   mls_curr_status?: string;
@@ -111,11 +102,13 @@ const CrmView: React.FC = () => {
     baths: '', // Initialize as empty string
     year_built: '',
     square_footage: undefined,
-    lot_size_sqft: '', // Initialize as empty string
-    last_sale_date: '',
-    last_sale_price: undefined,
+    assessed_total: undefined,
+    lot_size_sqft: undefined,
     notes: '',
-    tags: [],   
+    converted: false,
+    mls_curr_status: '',
+    mls_curr_days_on_market: '',
+    status: 'Active',
   };
 
   const handleOpenModal = (lead?: CrmLead, normalizedLeadId?: number) => {
@@ -235,7 +228,6 @@ const CrmView: React.FC = () => {
       lot_size_sqft: lot_size_sqft ? Number(lot_size_sqft) : null,
       square_footage: restFormData.square_footage === undefined ? null : restFormData.square_footage,
       assessed_total: restFormData.assessed_total === undefined ? null : restFormData.assessed_total,
-      last_sale_price: restFormData.last_sale_price === undefined ? null : restFormData.last_sale_price
     }
 
     delete leadToSave.contact_first_name;
@@ -408,11 +400,11 @@ const CrmView: React.FC = () => {
     { key: 'contact_name', label: 'Contact Name', sortable: true },
     { key: 'email', label: 'Email', sortable: true },
     { key: 'phone', label: 'Phone', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
     { key: 'property_address', label: 'Property Address', sortable: true },
     { key: 'property_city', label: 'City', sortable: true },
-    { key: 'property_state', label: 'State', sortable: true },
-    { key: 'market_region', label: 'Market', sortable: true },
-    { key: 'actions', label: 'Actions' },
+    { key: 'assessed_total', label: 'Assessed Value', sortable: true },
+    { key: 'market_region', label: 'Market', sortable: true }
   ];
 
   const fetchLeads = useCallback(async () => {
@@ -693,7 +685,6 @@ const CrmView: React.FC = () => {
                   <select name="contact_type" className="select select-bordered w-full" value={editFormData.contact_type || 'Owner'} onChange={handleModalInputChange}>
                     <option value="Owner">Owner</option>
                     <option value="Agent">Agent</option>
-                    <option value="Other">Other</option>
                   </select>
                 </div>
               </div>
