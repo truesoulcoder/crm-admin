@@ -227,7 +227,7 @@ interface StartCampaignRequestBody {
   dry_run?: boolean; // Optional: If true, simulates sending without actual email dispatch, defaults to false
 }
 
-export default async function handler(
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
@@ -238,8 +238,8 @@ export default async function handler(
     return res.status(400).json({ error: 'Missing campaign_id' });
   }
 
-  let successCount = 0;
-  let failureCount = 0;
+  let successCount = 0; // Initialize success counter
+  let failureCount = 0; // Tracks number of failed email sends
   const processingErrors: { leadId?: string; contact_email?: string; error: string; details?: string }[] = [];
   const campaignRunIdProcessed: string = req.body.campaign_run_id || `run-${Date.now()}`;
   console.log(`ELI5_CAMPAIGN_HANDLER: Received request to ${req.body.dryRun ? 'DRY RUN' : 'START'} campaign (ID: ${req.body.campaign_id}, Run ID: ${campaignRunIdProcessed}) at ${new Date().toISOString()}`);
@@ -270,7 +270,7 @@ export default async function handler(
     return res.status(400).json({ 
         success: false, 
         message: 'Market region is required unless specific lead_ids are provided.',
-        summary: { successCount, failureCount, processingErrors, campaignRunId: campaign_run_id }
+        summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id }
     });
   }
 
@@ -286,7 +286,7 @@ export default async function handler(
     return res.status(400).json({
       success: false,
       message: errorMsg,
-      summary: { successCount, failureCount, processingErrors, campaignRunId: campaign_run_id }
+      summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id }
     });
   }
   console.log(`ELI5_CAMPAIGN_HANDLER: Initialized ${allSenders.length} senders for campaign ${campaign_id}, run ${campaign_run_id}.`);
@@ -311,7 +311,7 @@ export default async function handler(
     return res.status(500).json({
       success: false,
       message: criticalErrorMsg,
-      summary: { successCount, failureCount, processingErrors, campaignRunId: campaign_run_id }
+      summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id }
     });
   }
 
@@ -325,7 +325,7 @@ export default async function handler(
         success: false, 
         message: 'Error fetching leads.', 
         error: leadsError.message, 
-        summary: { successCount, failureCount, processingErrors, campaignRunId: campaign_run_id } 
+        summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id } 
     });
   }
 
@@ -334,7 +334,7 @@ export default async function handler(
     return res.status(200).json({ 
         success: true, 
         message: 'No leads found for the given criteria.', 
-        summary: { successCount, failureCount, processingErrors, campaignRunId: campaign_run_id } 
+        summary: { successCount, failureCount, processingErrors: processingErrors || [], campaignRunId: campaign_run_id } 
     });
   }
   console.log(`ELI5_CAMPAIGN_HANDLER: Fetched ${leads.length} leads to process for campaign ${campaign_id}, run ${campaign_run_id}.`);
@@ -619,16 +619,10 @@ for (const lead of leads) {
           // If it is reached, it means we are trying to process a lead for which an initial log entry could not be created.
           console.error(`ELI5_CAMPAIGN_HANDLER: logId is unexpectedly null when trying to update status to PENDING_SENDER_COOLDOWN for lead ${leadId}. This lead should have been skipped. Marking as failed and stopping its processing.`);
           failureCount++; // Ensure it's marked as a failure if not already.
-          senderAssignedAndEmailProcessed = true; // This will break the while loop for this lead.
-            // This case should ideally not be reached if the initial logId check and 'continue' (in the outer loop) are working.
-            // If it is reached, it means we are trying to process a lead for which an initial log entry could not be created.
-            console.error(`ELI5_CAMPAIGN_HANDLER: logId is unexpectedly null when trying to update status to PENDING_SENDER_COOLDOWN for lead ${leadId}. This lead should have been skipped. Marking as failed and stopping its processing.`);
-            failureCount++; // Ensure it's marked as a failure if not already.
-            senderAssignedAndEmailProcessed = true; // This will break the while loop for this lead.
-          }
+          senderAssignedAndEmailProcessed = true; // This will break the while loop for this lead (if a while loop is intended here).
         }
-      }
-    } // End of while(!senderAssignedAndEmailProcessed)
+      } // Closes the 'else' for 'if (true)' [sender available]
+    } // End of for...of leads loop
   } // End of for...of leads loop
 
   // Final summary response
@@ -649,7 +643,9 @@ for (const lead of leads) {
       total_leads_processed_in_batch: leads.length, // Number of leads fetched for this batch
       emails_sent_successfully: successCount,
       emails_failed_to_send: failureCount,
-      processing_errors_details: processingErrors,
+      processing_errors_details: processingErrors || [] // Initialize empty array if processingErrors is undefined
     }
   });
 } // End of handler function
+
+export default handler;
