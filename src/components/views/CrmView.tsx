@@ -693,16 +693,77 @@ const CrmView: React.FC = () => {
               <h4 className="text-md font-semibold mt-4">Property Information</h4>
               <div>
                 <label className="label"><span className="label-text">Property Address</span></label>
-                {isLoaded ? (
+                {isLoaded && window.google && window.google.maps ? (
                   <Autocomplete
-                    onLoad={(ref) => autocompleteRef.current = ref}
-                    onPlaceChanged={onPlaceChangedStreetView}
+                    onLoad={(ref) => {
+                      if (ref) {
+                        autocompleteRef.current = ref;
+                      }
+                    }}
+                    onPlaceChanged={() => {
+                      if (autocompleteRef.current) {
+                        const place = autocompleteRef.current.getPlace();
+                        if (place && place.formatted_address) {
+                          setEditFormData(prev => ({
+                            ...prev,
+                            property_address: place.formatted_address
+                          }));
+                          
+                          // Extract address components
+                          if (place.address_components) {
+                            let city = '';
+                            let state = '';
+                            let postalCode = '';
+                            
+                            for (const component of place.address_components) {
+                              const types = component.types;
+                              if (types.includes('locality')) {
+                                city = component.long_name;
+                              } else if (types.includes('administrative_area_level_1')) {
+                                state = component.short_name;
+                              } else if (types.includes('postal_code')) {
+                                postalCode = component.long_name;
+                              }
+                            }
+                            
+                            setEditFormData(prev => ({
+                              ...prev,
+                              property_city: city,
+                              property_state: state,
+                              property_postal_code: postalCode
+                            }));
+                          }
+                          
+                          // Set panorama position if geometry is available
+                          if (place.geometry && place.geometry.location) {
+                            setPanoramaPosition({
+                              lat: place.geometry.location.lat(),
+                              lng: place.geometry.location.lng()
+                            });
+                          }
+                        }
+                      }
+                    }}
                     options={{ fields: ['address_components', 'formatted_address', 'geometry', 'name'], types: ['address'] }}
                   >
-                    <input type="text" name="property_address" placeholder="Enter Property Address" className="input input-bordered w-full" defaultValue={editFormData.property_address || ''} onChange={handleModalInputChange} />
+                    <input 
+                      type="text" 
+                      name="property_address" 
+                      placeholder="Enter Property Address" 
+                      className="input input-bordered w-full" 
+                      defaultValue={editFormData.property_address || ''} 
+                      onChange={handleModalInputChange} 
+                    />
                   </Autocomplete>
                 ) : (
-                  <input type="text" name="property_address" placeholder="Enter Property Address (Maps loading...)" className="input input-bordered w-full" value={editFormData.property_address || ''} onChange={handleModalInputChange} disabled />
+                  <input 
+                    type="text" 
+                    name="property_address" 
+                    placeholder="Enter Property Address (Maps loading...)" 
+                    className="input input-bordered w-full" 
+                    value={editFormData.property_address || ''} 
+                    onChange={handleModalInputChange} 
+                  />
                 )}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
