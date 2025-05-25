@@ -693,78 +693,90 @@ const CrmView: React.FC = () => {
               <h4 className="text-md font-semibold mt-4">Property Information</h4>
               <div>
                 <label className="label"><span className="label-text">Property Address</span></label>
-                {isLoaded && window.google && window.google.maps ? (
-                  <Autocomplete
-                    onLoad={(ref) => {
-                      if (ref) {
-                        autocompleteRef.current = ref;
-                      }
-                    }}
-                    onPlaceChanged={() => {
-                      if (autocompleteRef.current) {
-                        const place = autocompleteRef.current.getPlace();
-                        if (place && place.formatted_address) {
-                          setEditFormData(prev => ({
-                            ...prev,
-                            property_address: place.formatted_address
-                          }));
-                          
-                          // Extract address components
-                          if (place.address_components) {
-                            let city = '';
-                            let state = '';
-                            let postalCode = '';
-                            
-                            for (const component of place.address_components) {
-                              const types = component.types;
-                              if (types.includes('locality')) {
-                                city = component.long_name;
-                              } else if (types.includes('administrative_area_level_1')) {
-                                state = component.short_name;
-                              } else if (types.includes('postal_code')) {
-                                postalCode = component.long_name;
-                              }
-                            }
-                            
-                            setEditFormData(prev => ({
-                              ...prev,
-                              property_city: city,
-                              property_state: state,
-                              property_postal_code: postalCode
-                            }));
-                          }
-                          
-                          // Set panorama position if geometry is available
-                          if (place.geometry && place.geometry.location) {
-                            setPanoramaPosition({
-                              lat: place.geometry.location.lat(),
-                              lng: place.geometry.location.lng()
-                            });
-                          }
-                        }
-                      }
-                    }}
-                    options={{ fields: ['address_components', 'formatted_address', 'geometry', 'name'], types: ['address'] }}
-                  >
-                    <input 
-                      type="text" 
-                      name="property_address" 
-                      placeholder="Enter Property Address" 
-                      className="input input-bordered w-full" 
-                      defaultValue={editFormData.property_address || ''} 
-                      onChange={handleModalInputChange} 
-                    />
-                  </Autocomplete>
-                ) : (
+                <div className="relative">
                   <input 
                     type="text" 
                     name="property_address" 
-                    placeholder="Enter Property Address (Maps loading...)" 
+                    placeholder="Enter Property Address to get map" 
                     className="input input-bordered w-full" 
                     value={editFormData.property_address || ''} 
                     onChange={handleModalInputChange} 
+                    onBlur={(e) => {
+                      // Only geocode if we have a valid address and Google Maps is loaded
+                      if (e.target.value && isLoaded && window.google && window.google.maps && window.google.maps.Geocoder) {
+                        const geocoder = new window.google.maps.Geocoder();
+                        geocoder.geocode({ address: e.target.value }, (results, status) => {
+                          if (status === 'OK' && results && results[0]) {
+                            // Update address with formatted address
+                            const formattedAddress = results[0].formatted_address;
+                            setEditFormData(prev => ({
+                              ...prev,
+                              property_address: formattedAddress
+                            }));
+                            
+                            // Extract address components
+                            if (results[0].address_components) {
+                              let city = '';
+                              let state = '';
+                              let postalCode = '';
+                              
+                              for (const component of results[0].address_components) {
+                                const types = component.types;
+                                if (types.includes('locality')) {
+                                  city = component.long_name;
+                                } else if (types.includes('administrative_area_level_1')) {
+                                  state = component.short_name;
+                                } else if (types.includes('postal_code')) {
+                                  postalCode = component.long_name;
+                                }
+                              }
+                              
+                              setEditFormData(prev => ({
+                                ...prev,
+                                property_city: city,
+                                property_state: state,
+                                property_postal_code: postalCode
+                              }));
+                            }
+                            
+                            // Set panorama position
+                            if (results[0].geometry && results[0].geometry.location) {
+                              setPanoramaPosition({
+                                lat: results[0].geometry.location.lat(),
+                                lng: results[0].geometry.location.lng()
+                              });
+                            }
+                          }
+                        }).catch(error => {
+                          console.error('Geocoding error:', error);
+                        });
+                      }
+                    }}
                   />
-                )}
+                  {isLoaded ? (
+                    <button 
+                      type="button"
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-primary"
+                      onClick={() => {
+                        if (editFormData.property_address && isLoaded && window.google && window.google.maps && window.google.maps.Geocoder) {
+                          const geocoder = new window.google.maps.Geocoder();
+                          geocoder.geocode({ address: editFormData.property_address }, (results, status) => {
+                            if (status === 'OK' && results && results[0] && results[0].geometry && results[0].geometry.location) {
+                              setPanoramaPosition({
+                                lat: results[0].geometry.location.lat(),
+                                lng: results[0].geometry.location.lng()
+                              });
+                            }
+                          }).catch(error => {
+                            console.error('Error in geocode Promise:', error);
+                          });
+                        }
+                      }}
+                    >
+                      <MapPin size={18} />
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
@@ -782,8 +794,62 @@ const CrmView: React.FC = () => {
               </div>
                <div>
                   <label className="label"><span className="label-text">Property Type</span></label>
-                  <input type="text" name="property_type" placeholder="e.g., Single Family" className="input input-bordered w-full" value={editFormData.property_type || ''} onChange={handleModalInputChange} />
+                  <div className="flex items-center space-x-4">
+                    <label className="flex items-center cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="property_type" 
+                        className="radio radio-primary" 
+                        value="Single Family" 
+                        checked={editFormData.property_type === 'Single Family'} 
+                        onChange={handleModalInputChange} 
+                      />
+                      <span className="ml-2">Single Family</span>
+                    </label>
+                    <label className="flex items-center cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="property_type" 
+                        className="radio radio-primary" 
+                        value="Vacant Land" 
+                        checked={editFormData.property_type === 'Vacant Land'} 
+                        onChange={handleModalInputChange} 
+                      />
+                      <span className="ml-2">Vacant Land</span>
+                    </label>
+                  </div>
                 </div>
+                <div>
+                  <label className="label"><span className="label-text">Assessed Value</span></label>
+                  <input type="number" name="assessed_total" placeholder="e.g., 250000" className="input input-bordered w-full" value={editFormData.assessed_total || ''} onChange={handleModalInputChange} />
+                </div>
+                
+                {/* Conditional fields based on property type */}
+                {editFormData.property_type === 'Vacant Land' ? (
+                  <div>
+                    <label className="label"><span className="label-text">Lot Size Sq Ft</span></label>
+                    <input type="number" name="lot_size_sqft" placeholder="e.g., 10000" className="input input-bordered w-full" value={editFormData.lot_size_sqft || ''} onChange={handleModalInputChange} />
+                  </div>
+                ) : editFormData.property_type === 'Single Family' ? (
+                  <>
+                    <div>
+                      <label className="label"><span className="label-text">Square Footage</span></label>
+                      <input type="number" name="square_footage" placeholder="e.g., 2500" className="input input-bordered w-full" value={editFormData.square_footage || ''} onChange={handleModalInputChange} />
+                    </div>
+                    <div>
+                      <label className="label"><span className="label-text">Year Built</span></label>
+                      <input type="text" name="year_built" placeholder="e.g., 1985" className="input input-bordered w-full" value={editFormData.year_built || ''} onChange={handleModalInputChange} />
+                    </div>
+                    <div>
+                      <label className="label"><span className="label-text">Beds</span></label>
+                      <input type="number" name="beds" placeholder="e.g., 4" className="input input-bordered w-full" value={editFormData.beds || ''} onChange={handleModalInputChange} />
+                    </div>
+                    <div>
+                      <label className="label"><span className="label-text">Baths</span></label>
+                      <input type="number" name="baths" placeholder="e.g., 2" className="input input-bordered w-full" value={editFormData.baths || ''} onChange={handleModalInputChange} />
+                    </div>
+                  </>
+                ) : null}
 
               {/* Street View Panorama - Only if position is set */}
               {isLoaded && panoramaPosition && (
