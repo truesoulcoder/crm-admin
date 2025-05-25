@@ -33,12 +33,14 @@ interface BackgroundProps {
   lines: LinesProps;
   mask: MaskProps;
   className?: string;
+  children?: React.ReactNode;
 }
 
 export function Background({
   fill = false,
   height = 100,
   gradient,
+  children,
   lines,
   mask,
   className = '',
@@ -156,6 +158,7 @@ export function Background({
           height: '100%',
         }}
       />
+      {children}
     </div>
   );
 }

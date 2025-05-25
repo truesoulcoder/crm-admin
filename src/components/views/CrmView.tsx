@@ -4,6 +4,7 @@ import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api';
 import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
 import { toast } from 'react-hot-toast';
+import Background from '@/components/ui/Background';
 
 import { createCrmLeadAction, updateCrmLeadAction, deleteCrmLeadAction } from '@/app/crm/actions';
 import { LeadFormModal } from '@/components/leads/LeadFormModal';
@@ -542,198 +543,185 @@ const CrmView: React.FC = () => {
         }
         return 0;
       });
-    }
-    return sortableLeads;
-  }, [leads, sortConfig]);
 
   const paginatedLeads = useMemo(() => {
     return sortedLeads.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
   }, [sortedLeads, currentPage, rowsPerPage]);
 
-
-  if (loadError) {
-    return <div className="p-4 text-red-600">Error loading Google Maps: {loadError.message}</div>;
-  }
-
-  // if (!isLoaded) { // Commented out to allow page rendering while maps loads, modal will handle disabled state
-  //   return <div className="p-4">Loading Google Maps...</div>;
-  // }
-
-
   return (
-    <div className="p-4 md:p-6 lg:p-8">
-      <h1 className="text-2xl font-semibold mb-6">CRM Leads Management</h1>
+    <div className="relative z-10 p-4 md:p-6 lg:p-8 min-h-screen backdrop-blur-sm">
+        <h1 className="text-2xl font-semibold mb-6">CRM Leads Management</h1>
 
-      {/* Controls: Search, Filter, Add New */}
-      <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-        {/* Search Input */}
-        <div className="form-control">
-          <label className="label"><span className="label-text">Search Leads</span></label>
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search by name, email, address..."
-              className="input input-bordered w-full"
-              value={searchTerm}
-              onChange={handleSearchChange} />
-            <span className="absolute inset-y-0 right-0 flex items-center pr-3">
-              <Search className="h-5 w-5 text-gray-400" />
-            </span>
+        {/* Controls: Search, Filter, Add New */}
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          {/* Search Input */}
+          <div className="form-control">
+            <label className="label"><span className="label-text">Search Leads</span></label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search by name, email, address..."
+                className="input input-bordered w-full"
+                value={searchTerm}
+                onChange={handleSearchChange} />
+              <span className="absolute inset-y-0 right-0 flex items-center pr-3">
+                <Search className="h-5 w-5 text-gray-400" />
+              </span>
+            </div>
           </div>
-        </div>
 
-        {/* Market Region Filter */}
-        <div className="form-control">
-          <label className="label"><span className="label-text">Filter by Market</span></label>
-          <select
-            className="select select-bordered w-full"
-            value={marketFilter}
-            onChange={handleMarketFilterChange}
-          >
-            <option value="">All Markets</option> {/* Assuming empty string for 'All' to match marketFilter initial state '' */}
-            {availableMarkets.map((region: string) => (
-              <option key={region} value={region}>
-                {region}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Add New Lead Button */}
-        <div className="form-control">
-          <button
-            className="btn btn-primary w-full md:w-auto md:justify-self-end"
-            onClick={() => handleOpenModal()}
-          >
-            <PlusCircle className="mr-2 h-5 w-5" />
-            Add New Lead
-          </button>
-        </div>
-      </div>
-      {/* Leads Table */}
-      <div className="overflow-x-auto bg-base-100 shadow-lg rounded-lg mt-6">
-        <table className="table table-zebra w-full">
-          <thead>
-            <tr>
-              {columnConfigurations.map((col) => (
-                <th
-                  key={col.key}
-                  className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${col.sortable ? 'cursor-pointer hover:bg-base-200' : ''}`}
-                  onClick={() => col.sortable && handleSort(col.key)}
-                >
-                  {col.label}
-                  {col.sortable && sortConfig && sortConfig.key === col.key && (
-                    sortConfig.direction === 'ascending' ? <ChevronUp className="inline w-4 h-4 ml-1" /> : <ChevronDown className="inline w-4 h-4 ml-1" />
-                  )}
-                  {col.sortable && (!sortConfig || sortConfig.key !== col.key) && (
-                    <ChevronDown className="inline w-4 h-4 ml-1 text-gray-300" />
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr><td colSpan={columnConfigurations.length} className="text-center p-4"><span className="loading loading-spinner"></span> Loading leads...</td></tr>
-            )}
-            {!isLoading && error && (
-              <tr><td colSpan={columnConfigurations.length} className="text-center p-4 text-error">{error}</td></tr>
-            )}
-            {!isLoading && !error && leads.length === 0 && (
-              <tr><td colSpan={columnConfigurations.length} className="text-center p-4">No leads found. Adjust filters or add new leads.</td></tr>
-            )}
-            {!isLoading && !error && leads.map((lead) => (
-              <tr key={lead.id} className="hover:bg-base-200 cursor-pointer" onClick={() => handleOpenModal(lead)}>
-                {columnConfigurations.map(col => (
-                  <td key={`${lead.id}-${col.key}`} className="px-4 py-3 whitespace-nowrap text-sm">
-                    {col.key === 'created_at' || col.key === 'updated_at'
-                      ? new Date(lead[col.key as keyof CrmLead] as string).toLocaleDateString()
-                      : String(lead[col.key as keyof CrmLead] ?? '')}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination Controls */}
-      {!isLoading && !error && (leads.length > 0 || currentPage > 1) && (
-        <div className="mt-6 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-700">Rows per page:</span>
+          {/* Market Region Filter */}
+          <div className="form-control">
+            <label className="label"><span className="label-text">Filter by Market</span></label>
             <select
-              value={rowsPerPage}
-              onChange={handleRowsPerPageChange}
-              className="select select-bordered select-sm"
-              disabled={isLoading}
+              className="select select-bordered w-full"
+              value={marketFilter}
+              onChange={handleMarketFilterChange}
             >
-              {[10, 25, 50, 100].map(size => (
-                <option key={size} value={size}>{size}</option>
+              <option value="">All Markets</option> {/* Assuming empty string for 'All' to match marketFilter initial state '' */}
+              {availableMarkets.map((region: string) => (
+                <option key={region} value={region}>
+                  {region}
+                </option>
               ))}
             </select>
           </div>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-700">
-              Page {currentPage}
-            </span>
-            <div className="join">
-              <button
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1 || isLoading}
-                className="join-item btn btn-sm btn-outline"
-              >
-                « Prev
-              </button>
-              <button
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={leads.length < rowsPerPage || isLoading}
-                className="join-item btn btn-sm btn-outline"
-              >
-                Next »
-              </button>
-            </div>
+
+          {/* Add New Lead Button */}
+          <div className="form-control">
+            <button
+              className="btn btn-primary w-full md:w-auto md:justify-self-end"
+              onClick={() => handleOpenModal()}
+            >
+              <PlusCircle className="mr-2 h-5 w-5" />
+              Add New Lead
+            </button>
           </div>
         </div>
-      )}
+        {/* Leads Table */}
+        <div className="overflow-x-auto bg-base-100 shadow-lg rounded-lg mt-6">
+          <table className="table table-zebra w-full">
+            <thead>
+              <tr>
+                {columnConfigurations.map((col) => (
+                  <th
+                    key={col.key}
+                    className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${col.sortable ? 'cursor-pointer hover:bg-base-200' : ''}`}
+                    onClick={() => col.sortable && handleSort(col.key)}
+                  >
+                    {col.label}
+                    {col.sortable && sortConfig && sortConfig.key === col.key && (
+                      sortConfig.direction === 'ascending' ? <ChevronUp className="inline w-4 h-4 ml-1" /> : <ChevronDown className="inline w-4 h-4 ml-1" />
+                    )}
+                    {col.sortable && (!sortConfig || sortConfig.key !== col.key) && (
+                      <ChevronDown className="inline w-4 h-4 ml-1 text-gray-300" />
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr><td colSpan={columnConfigurations.length} className="text-center p-4"><span className="loading loading-spinner"></span> Loading leads...</td></tr>
+              )}
+              {!isLoading && error && (
+                <tr><td colSpan={columnConfigurations.length} className="text-center p-4 text-error">{error}</td></tr>
+              )}
+              {!isLoading && !error && leads.length === 0 && (
+                <tr><td colSpan={columnConfigurations.length} className="text-center p-4">No leads found. Adjust filters or add new leads.</td></tr>
+              )}
+              {!isLoading && !error && leads.map((lead) => (
+                <tr key={lead.id} className="hover:bg-base-200 cursor-pointer" onClick={() => handleOpenModal(lead)}>
+                  {columnConfigurations.map(col => (
+                    <td key={`${lead.id}-${col.key}`} className="px-4 py-3 whitespace-nowrap text-sm">
+                      {col.key === 'created_at' || col.key === 'updated_at'
+                        ? new Date(lead[col.key as keyof CrmLead] as string).toLocaleDateString()
+                        : String(lead[col.key as keyof CrmLead] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-      {/* Modal for Adding/Editing Leads */}
-      <LeadFormModal
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
-        onSubmit={async (e: FormEvent<HTMLFormElement>): Promise<void> => {
-          e.preventDefault();
-          try {
-            await handleFormSubmit(e);
-          } catch (error) {
-            console.error('Error submitting form:', error);
-            throw error; // Re-throw to be handled by the form's error boundary if needed
-          }
-        }}
-        formData={editFormData}
-        onInputChange={handleModalInputChange}
-        onGeocode={() => {
-          if (
-            editFormData.property_address &&
-            isLoaded &&
-            typeof window !== 'undefined' &&
-            window.google?.maps?.Geocoder
-          ) {
-            const geocoder = new window.google.maps.Geocoder();
-            void geocoder.geocode({ address: editFormData.property_address }, (results, status) => {
-              handleGeocodeResult(results, status);
-            });
-          }
-        }}
-        modalTitleAddress={modalTitleAddress}
-        isEditMode={!!editFormData.id}
-        isLoaded={isLoaded}
-        panoramaPosition={panoramaPosition}
-        lat={panoramaPosition?.lat || 0}
-        lng={panoramaPosition?.lng || 0}
-      />
+        {/* Pagination Controls */}
+        {!isLoading && !error && (leads.length > 0 || currentPage > 1) && (
+          <div className="mt-6 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-700">Rows per page:</span>
+              <select
+                value={rowsPerPage}
+                onChange={handleRowsPerPageChange}
+                className="select select-bordered select-sm"
+                disabled={isLoading}
+              >
+                {[10, 25, 50, 100].map(size => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-700">
+                Page {currentPage}
+              </span>
+              <div className="join">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1 || isLoading}
+                  className="join-item btn btn-sm btn-outline"
+                >
+                  « Prev
+                </button>
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={leads.length < rowsPerPage || isLoading}
+                  className="join-item btn btn-sm btn-outline"
+                >
+                  Next »
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-    </div> 
+        {/* Modal for Adding/Editing Leads */}
+        <LeadFormModal
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+          onSubmit={async (e: FormEvent<HTMLFormElement>): Promise<void> => {
+            e.preventDefault();
+            try {
+              await handleFormSubmit(e);
+            } catch (error) {
+              console.error('Error submitting form:', error);
+              throw error; // Re-throw to be handled by the form's error boundary if needed
+            }
+          }}
+          formData={editFormData}
+          onInputChange={handleModalInputChange}
+          onGeocode={() => {
+            if (
+              editFormData.property_address &&
+              isLoaded &&
+              typeof window !== 'undefined' &&
+              window.google?.maps?.Geocoder
+            ) {
+              const geocoder = new window.google.maps.Geocoder();
+              void geocoder.geocode({ address: editFormData.property_address }, (results, status) => {
+                handleGeocodeResult(results, status);
+              });
+            }
+          }}
+          modalTitleAddress={modalTitleAddress}
+          isEditMode={!!editFormData.id}
+          isLoaded={isLoaded}
+          panoramaPosition={panoramaPosition}
+          lat={panoramaPosition?.lat || 0}
+          lng={panoramaPosition?.lng || 0}
+        />
+      </div>
+    </div>
   );
 }
 

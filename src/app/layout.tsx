@@ -1,5 +1,7 @@
 import { Inter } from 'next/font/google';
 
+// eslint-disable-next-line import/no-named-as-default
+import Background from '@/components/ui/Background';
 import { UserProvider } from '@/contexts/UserContext';
 
 import ClientLayout from './layout-client'; // Import the client layout
@@ -39,9 +41,16 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <UserProvider>
-          <ClientLayout>{children}</ClientLayout> {/* ClientLayout wraps children and includes MainAppShell */}
-        </UserProvider>
+        <Background
+  fill={true}
+  gradient={{ display: true, opacity: 0.8, x: 50, y: 30, colorStart: '#2e026d', colorEnd: '#15162c' }}
+  lines={{ display: true, opacity: 0.07, size: 70, thickness: 2, angle: 45, color: '#fff' }}
+  mask={{ x: 50, y: 50, radius: 0 }}
+>
+          <UserProvider>
+            <ClientLayout>{children}</ClientLayout> {/* ClientLayout wraps children and includes MainAppShell */}
+          </UserProvider>
+        </Background>
       </body>
     </html>
   );
