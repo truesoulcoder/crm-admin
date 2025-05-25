@@ -24,6 +24,8 @@ interface CrmFormData extends Omit<Partial<CrmLead>, 'id' | 'created_at' | 'upda
   contact_last_name?: string;
   phone?: string; // New field from modal design
   contact_type?: string; // Added contact type
+  beds?: number; // Change to number | undefined
+  baths?: number; // Change to number | undefined
 }
 
 const CrmView: React.FC = () => {
@@ -71,159 +73,32 @@ const CrmView: React.FC = () => {
     contact_last_name: '',
     contact_email: '',
     phone: '', // Added phone
+    contact_type: 'Owner', // Ensure contact_type is populated
+    market_region: '', // Added for completeness, might be set differently
     property_address: '',
     property_city: '',
     property_state: '',
     property_postal_code: '',
-    assessed_total: 0,
-    beds: 0,
-    baths: 0,
-    square_footage: 0,
+    property_type: '',
+    beds: undefined, // Initialize as undefined
+    baths: undefined, // Initialize as undefined
+    year_built: '',
+    square_footage: undefined,
+    lot_size: undefined,
+    last_sale_date: '',
+    last_sale_price: undefined,
+    owner_name: '',
+    owner_mailing_address: '',
+    owner_mailing_city: '',
+    owner_mailing_state: '',
+    owner_mailing_postal_code: '',
+    owner_occupied: false,
     notes: '',
-    market_region: '', // Added for completeness, might be set differently
-    contact_type: 'Owner', // Default contact type
+    tags: [],
+    custom_fields: {},
   };
 
-  // Fetch available markets on component mount
-  useEffect(() => {
-    const fetchMarkets = async () => {
-      const { data, error: dbError } = await supabase
-        .from('crm_leads') // Assuming markets are derived from existing leads
-        .select('market_region')
-        .returns<Pick<CrmLead, 'market_region'>[]>(); // Specify the return type
-
-      if (dbError) {
-        console.error('Error fetching markets:', dbError);
-        setError('Failed to load market regions.');
-        return;
-      }
-      if (data) {
-        // data is now Pick<CrmLead, 'market_region'>[]
-        // item.market_region is (string | null | undefined) based on CrmLead interface
-        const uniqueMarkets = Array.from(
-          new Set(
-            data
-              .map(item => item.market_region)
-              // Filter out null, undefined, and empty strings, and assert to TypeScript that the remaining are strings.
-              .filter((market): market is string => typeof market === 'string' && market.trim() !== '')
-          )
-        );
-        // Now uniqueMarkets is string[], no 'as string[]' needed.
-        setAvailableMarkets(uniqueMarkets.sort());
-      }
-    };
-    void fetchMarkets();
-  }, []);
-
-
-  const fetchLeads = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    let query = supabase.from('crm_leads').select('*');
-
-    if (marketFilter) {
-      query = query.eq('market_region', marketFilter);
-    }
-
-    if (searchTerm) {
-      query = query.or(`email.ilike.%${searchTerm}%,property_address.ilike.%${searchTerm}%,contact_first_name.ilike.%${searchTerm}%,contact_last_name.ilike.%${searchTerm}%`);
-    }
-
-    if (sortConfig !== null) {
-      query = query.order(sortConfig.key as string, {
-        ascending: sortConfig.direction === 'ascending',
-      });
-    } else {
-      query = query.order('created_at', { ascending: false }); // Default sort
-    }
-
-    const { data, error: dbError } = await query // Removed count for simplicity, handle pagination based on data length
-      .range((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage - 1);
-
-    if (dbError) {
-      console.error('Error fetching leads:', dbError);
-      setError(`Failed to load leads. ${dbError.message}`);
-      setLeads([]);
-    } else {
-      setLeads(data || []);
-    }
-    setIsLoading(false);
-  }, [searchTerm, sortConfig, currentPage, rowsPerPage, marketFilter]); // Removed supabase from deps as it's stable
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        await fetchLeads();
-      } catch (err) {
-        console.error("Failed to fetch leads in useEffect:", err);
-        // setError("Failed to load initial lead data."); // Optionally set error state
-      }
-    })();
-  }, [fetchLeads]);
-
-  const handleSort = (key: keyof CrmLead | string) => {
-    let direction: 'ascending' | 'descending' = 'ascending';
-    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
-      direction = 'descending';
-    }
-    setSortConfig({ key, direction });
-    setCurrentPage(1); // Reset to first page on sort
-  };
-
-  const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(event.target.value);
-    setCurrentPage(1); // Reset to first page on search
-  };
-
-  const handleMarketFilterChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    setMarketFilter(event.target.value);
-    setCurrentPage(1); // Reset to first page on filter change
-  };
-
-  const handlePageChange = (newPage: number) => {
-    if (newPage > 0) {
-      setCurrentPage(newPage);
-      // Potentially add logic here if total pages are known, to prevent going beyond last page
-    }
-  };
-
-  const handleRowsPerPageChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    setRowsPerPage(Number(event.target.value));
-    setCurrentPage(1); // Reset to first page on rows per page change
-  };
-
-  const handleModalInputChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = event.target;
-    let processedValue: string | number | null = value;
-  
-    if (['appraised_value', 'beds', 'baths', 'sq_ft'].includes(name)) {
-      processedValue = value === '' ? null : Number(value);
-    }
-  
-    setEditFormData(prev => ({
-      ...prev,
-      [name]: processedValue,
-    }));
-  
-    if (['property_address', 'property_city', 'property_state', 'property_postal_code'].includes(name)) {
-      // This logic might need refinement if manual address edits should also update panorama
-      // For now, it primarily updates the title based on manual input.
-      // The Autocomplete's onPlaceChangedStreetView handles panorama for selected addresses.
-      setModalTitleAddress(prev => {
-        // Create a temporary object with current form data for address parts
-        const currentAddressParts = {
-          property_address: name === 'property_address' ? value : editFormData.property_address,
-          property_city: name === 'property_city' ? value : editFormData.property_city,
-          property_state: name === 'property_state' ? value : editFormData.property_state,
-          property_postal_code: name === 'property_postal_code' ? value : editFormData.property_postal_code,
-        };
-        return `${currentAddressParts.property_address || ''}${currentAddressParts.property_city ? `, ${currentAddressParts.property_city}` : ''}${currentAddressParts.property_state ? `, ${currentAddressParts.property_state}` : ''}${currentAddressParts.property_postal_code ? ` ${currentAddressParts.property_postal_code}` : ''}`.trim().replace(/^,|,$/g, '');
-      });
-    }
-  };
-  
-  const handleOpenModal = (lead?: CrmLead) => {
+  const handleOpenModal = (lead?: CrmLead, normalizedLeadId?: number) => {
     if (lead) {
       let firstName = '';
       let lastName = '';
@@ -244,8 +119,8 @@ const CrmView: React.FC = () => {
         property_state: lead.property_state || '',
         property_postal_code: lead.property_postal_code || '',
         property_type: lead.property_type || '',
-        baths: lead.baths === null ? undefined : lead.baths, // Handle null for numeric fields
-        beds: lead.beds === null ? undefined : lead.beds,
+        beds: lead.beds === null ? undefined : lead.beds, // Handle null for numeric fields
+        baths: lead.baths === null ? undefined : lead.baths,
         year_built: lead.year_built || '',
         square_footage: lead.square_footage === null ? undefined : lead.square_footage,
         lot_size_sqft: lead.lot_size_sqft || '',
@@ -303,7 +178,9 @@ const CrmView: React.FC = () => {
         setPanoramaPosition(null);
       }
     } else {
-      setEditFormData(initialEditFormData);
+      setEditFormData({
+        ...initialEditFormData,
+      });
       setModalTitleAddress('Add New Lead');
       setPanoramaPosition(null);
     }
