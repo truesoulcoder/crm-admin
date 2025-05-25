@@ -231,6 +231,14 @@ async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  // Initialize processingErrors array to collect any processing errors
+  const processingErrors: Array<{
+    leadId?: string;
+    contact_email?: string;
+    error: string;
+    details?: string
+  }> = [];
+
   const { campaign_id, dry_run } = req.body as StartCampaignRequestBody;
   const dryRun = dry_run ?? false;
 
@@ -240,7 +248,6 @@ async function handler(
 
   let successCount = 0; // Initialize success counter
   let failureCount = 0; // Tracks number of failed email sends
-  const processingErrors: { leadId?: string; contact_email?: string; error: string; details?: string }[] = [];
   const campaignRunIdProcessed: string = req.body.campaign_run_id || `run-${Date.now()}`;
   console.log(`ELI5_CAMPAIGN_HANDLER: Received request to ${req.body.dryRun ? 'DRY RUN' : 'START'} campaign (ID: ${req.body.campaign_id}, Run ID: ${campaignRunIdProcessed}) at ${new Date().toISOString()}`);
   if (req.method !== 'POST') {
