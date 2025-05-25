@@ -225,12 +225,39 @@ const CrmView: React.FC = () => {
   
   const handleOpenModal = (lead?: CrmLead) => {
     if (lead) {
-      const nameParts = lead.contact_name?.split(' ') || ['',''];
+      let firstName = '';
+      let lastName = '';
+      if (lead.contact_name) {
+        const nameParts = lead.contact_name.trim().split(' ');
+        firstName = nameParts[0] || '';
+        lastName = nameParts.slice(1).join(' ') || '';
+      }
       const formData: CrmFormData = {
-        ...lead,
-        contact_first_name: nameParts[0] || '',
-        contact_last_name: nameParts.slice(1).join(' ') || '',
-        phone: lead.phone || '', 
+        // Spread all properties from lead first
+        id: lead.id,
+        contact_email: lead.contact_email || '',
+        phone: lead.phone || '',
+        contact_type: lead.contact_type || 'Owner', // Ensure contact_type is populated
+        market_region: lead.market_region || '',
+        property_address: lead.property_address || '',
+        property_city: lead.property_city || '',
+        property_state: lead.property_state || '',
+        property_postal_code: lead.property_postal_code || '',
+        property_type: lead.property_type || '',
+        baths: lead.baths === null ? undefined : lead.baths, // Handle null for numeric fields
+        beds: lead.beds === null ? undefined : lead.beds,
+        year_built: lead.year_built || '',
+        square_footage: lead.square_footage === null ? undefined : lead.square_footage,
+        lot_size_sqft: lead.lot_size_sqft || '',
+        assessed_total: lead.assessed_total === null ? undefined : lead.assessed_total,
+        mls_curr_status: lead.mls_curr_status || '',
+        mls_curr_days_on_market: lead.mls_curr_days_on_market || '',
+        converted: lead.converted || false,
+        status: lead.status || '',
+        notes: lead.notes || '',
+        // Then set the split names
+        contact_first_name: firstName,
+        contact_last_name: lastName,
       };
       setEditFormData(formData);
       const addressDisplayParts = [];
@@ -300,10 +327,15 @@ const CrmView: React.FC = () => {
     setIsSaving(true);
     setError(null);
 
+    // Combine first and last name into contact_name
+    const contact_name = `${editFormData.contact_first_name || ''} ${editFormData.contact_last_name || ''}`.trim();
+
+    // Prepare the object to be saved, excluding frontend-only fields
+    const { contact_first_name, contact_last_name, ...dataForBackend } = editFormData;
     const leadDataToSave = {
-      ...editFormData,
-      contact_name: `${editFormData.contact_first_name || ''} ${editFormData.contact_last_name || ''}`.trim(),
-      contact_type: editFormData.contact_type, // Ensure contact_type is included
+      ...dataForBackend,
+      contact_name: contact_name || null, // Ensure contact_name is null if empty, matching DB schema
+      contact_type: editFormData.contact_type || 'Owner', // Ensure contact_type has a default if somehow empty
     };
 
     if (!leadDataToSave.id) {
@@ -312,24 +344,27 @@ const CrmView: React.FC = () => {
 
     try {
       let successOp = false; // Use a different variable name to avoid conflict if 'success' is used elsewhere
+      // Remove frontend-only fields before sending to backend
+      const finalDataForAction = { ...leadDataToSave };
+      delete (finalDataForAction as any).contact_first_name;
+      delete (finalDataForAction as any).contact_last_name;
+
       if (editFormData.id) {
-        const result = await updateCrmLeadAction(editFormData.id, leadDataToSave);
+        const result = await updateCrmLeadAction(editFormData.id, finalDataForAction);
         if (result.error) throw new Error(result.error);
         if (result.data) {
-            // Local update is fine, fetchLeads will run after for consistency
-            // setLeads(leads.map(l => l.id === editFormData.id ? result.data! : l));
             successOp = true;
         } else {
-            // If update returns no data but no error, still might need a refresh
             await fetchLeads(); 
         }
       } else {
-        const result = await createCrmLeadAction(leadDataToSave);
+        // For new leads, ensure id is not sent
+        const { id, ...createData } = finalDataForAction;
+        const result = await createCrmLeadAction(createData as typeof createData & { id?: undefined });
         if (result.error) throw new Error(result.error);
         if (result.data) {
           successOp = true;
         } else {
-          // If create returns no data but no error, still might need a refresh
           await fetchLeads(); 
         }
       }
