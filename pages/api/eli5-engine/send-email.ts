@@ -343,7 +343,7 @@ export const sendConfiguredEmail = async (config: EmailConfig): Promise<{ succes
       
       // Use property_address from the data source used for PDF generation
       const propertyAddressForFilename = pdfDataForGeneration.property_address;
-      let sanitizedPropertyAddress = sanitizeFilename(propertyAddressForFilename);
+      let sanitizedPropertyAddress = sanitizeFilename(propertyAddressForFilename as string | undefined | null);
       
       // Fallback if property_address is missing or results in an empty/default string
       if (!sanitizedPropertyAddress || sanitizedPropertyAddress === 'unknown_address') {
