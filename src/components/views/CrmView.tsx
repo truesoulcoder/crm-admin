@@ -3,14 +3,13 @@
 import { Autocomplete, StreetViewPanorama } from '@react-google-maps/api';
 import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle, XCircle, Save, MapPin } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
-import toast from 'react-hot-toast';
+import { toast } from 'react-hot-toast';
 
 import { createCrmLeadAction, updateCrmLeadAction, deleteCrmLeadAction } from '@/app/crm/actions';
 import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader';
 import { supabase } from '@/lib/supabase/client';
 
 import type { CrmLead } from '@/types/crm';
-
 
 interface ColumnConfig {
   key: keyof CrmLead | string;
@@ -70,16 +69,16 @@ const CrmView: React.FC = () => {
   const initialEditFormData: CrmFormData = {
     contact_first_name: '',
     contact_last_name: '',
-    email: '',
+    contact_email: '',
     phone: '', // Added phone
     property_address: '',
     property_city: '',
     property_state: '',
     property_postal_code: '',
-    appraised_value: 0,
+    assessed_total: 0,
     beds: 0,
     baths: 0,
-    sq_ft: 0,
+    square_footage: 0,
     notes: '',
     market_region: '', // Added for completeness, might be set differently
   };
@@ -89,15 +88,26 @@ const CrmView: React.FC = () => {
     const fetchMarkets = async () => {
       const { data, error: dbError } = await supabase
         .from('crm_leads') // Assuming markets are derived from existing leads
-        .select('market_region');
-      
+        .select('market_region')
+        .returns<Pick<CrmLead, 'market_region'>[]>(); // Specify the return type
+
       if (dbError) {
         console.error('Error fetching markets:', dbError);
         setError('Failed to load market regions.');
         return;
       }
       if (data) {
-        const uniqueMarkets = Array.from(new Set(data.map(item => item.market_region).filter(Boolean))) as string[];
+        // data is now Pick<CrmLead, 'market_region'>[]
+        // item.market_region is (string | null | undefined) based on CrmLead interface
+        const uniqueMarkets = Array.from(
+          new Set(
+            data
+              .map(item => item.market_region)
+              // Filter out null, undefined, and empty strings, and assert to TypeScript that the remaining are strings.
+              .filter((market): market is string => typeof market === 'string' && market.trim() !== '')
+          )
+        );
+        // Now uniqueMarkets is string[], no 'as string[]' needed.
         setAvailableMarkets(uniqueMarkets.sort());
       }
     };
@@ -132,7 +142,7 @@ const CrmView: React.FC = () => {
 
     if (dbError) {
       console.error('Error fetching leads:', dbError);
-      setError('Failed to load leads. ' + dbError.message);
+      setError(`Failed to load leads. ${dbError.message}`);
       setLeads([]);
     } else {
       setLeads(data || []);
@@ -222,7 +232,28 @@ const CrmView: React.FC = () => {
         phone: lead.phone || '', 
       };
       setEditFormData(formData);
-      const titleAddr = `${lead.property_address || ''}${lead.property_city ? `, ${lead.property_city}` : ''}${lead.property_state ? `, ${lead.property_state}` : ''}${lead.property_postal_code ? ` ${lead.property_postal_code}` : ''}`.trim().replace(/^,|,$/g, '');
+      const addressDisplayParts = [];
+      if (lead.property_address && lead.property_address.trim()) {
+        addressDisplayParts.push(lead.property_address.trim());
+      }
+      if (lead.property_city && lead.property_city.trim()) {
+        addressDisplayParts.push(lead.property_city.trim());
+      }
+      if (lead.property_state && lead.property_state.trim()) {
+        addressDisplayParts.push(lead.property_state.trim());
+      }
+
+      let constructedTitleAddress = addressDisplayParts.join(', ');
+
+      if (lead.property_postal_code && lead.property_postal_code.trim()) {
+        const trimmedPostalCode = lead.property_postal_code.trim();
+        if (constructedTitleAddress) {
+          constructedTitleAddress = `${constructedTitleAddress} ${trimmedPostalCode}`;
+        } else {
+          constructedTitleAddress = trimmedPostalCode;
+        }
+      }
+      const titleAddr = constructedTitleAddress;
       setModalTitleAddress(titleAddr);
 
       if (lead.property_address && isLoaded && window.google && window.google.maps && window.google.maps.Geocoder) {
@@ -232,9 +263,12 @@ const CrmView: React.FC = () => {
           if (status === 'OK' && results && results[0] && results[0].geometry && results[0].geometry.location) {
             setPanoramaPosition({ lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng() });
           } else {
-            console.warn('Geocode was not successful for existing lead: ' + status);
+            console.warn(`Geocode was not successful for existing lead: ${status}`);
             setPanoramaPosition(null);
           }
+        }).catch(error => {
+          console.error('Error in geocode Promise:', error);
+          setPanoramaPosition(null); // Ensure panorama is cleared on such errors
         });
       } else {
         if (!isLoaded) console.warn('Google Maps API not loaded. Cannot fetch panorama.');
@@ -376,7 +410,7 @@ const CrmView: React.FC = () => {
     } else {
       console.warn('[DEBUG] onPlaceChangedStreetView: autocompleteRef.current is null.');
     }
-  }, [handleModalInputChange, setEditFormData, setModalTitleAddress, setPanoramaPosition]); // Dependencies kept as per your last successful structure
+  }, [setEditFormData, setModalTitleAddress, setPanoramaPosition]); // Dependencies kept as per your last successful structure
 
   const columns: ColumnConfig[] = [
     { key: 'contact_name', label: 'Contact Name', sortable: true },
@@ -441,8 +475,7 @@ const CrmView: React.FC = () => {
               placeholder="Search by name, email, address..."
               className="input input-bordered w-full"
               value={searchTerm}
-              onChange={handleSearchChange}
-            />
+              onChange={handleSearchChange} />
             <span className="absolute inset-y-0 right-0 flex items-center pr-3">
               <Search className="h-5 w-5 text-gray-400" />
             </span>
@@ -454,7 +487,7 @@ const CrmView: React.FC = () => {
           <label className="label"><span className="label-text">Filter by Market</span></label>
           <select
             className="select select-bordered w-full"
-            value={marketFilter} 
+            value={marketFilter}
             onChange={handleMarketFilterChange}
           >
             <option value="">All Markets</option> {/* Assuming empty string for 'All' to match marketFilter initial state '' */}
@@ -470,14 +503,13 @@ const CrmView: React.FC = () => {
         <div className="form-control">
           <button
             className="btn btn-primary w-full md:w-auto md:justify-self-end"
-            onClick={() => handleOpenModal()} 
+            onClick={() => handleOpenModal()}
           >
             <PlusCircle className="mr-2 h-5 w-5" />
             Add New Lead
           </button>
         </div>
       </div>
-
       {/* Leads Table */}
       <div className="overflow-x-auto bg-base-100 shadow-lg rounded-lg mt-6">
         <table className="table table-zebra w-full">
@@ -564,7 +596,107 @@ const CrmView: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+
+      {/* Modal for Adding/Editing Leads */}
+      {isModalOpen && (
+        <div className="modal modal-open">
+          <div className="modal-box w-11/12 max-w-4xl">
+            <button onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+            <h3 className="font-bold text-lg mb-4">{modalTitleAddress || (editFormData.id ? 'Edit Lead' : 'Add New Lead')}</h3>
+            
+            <form onSubmit={(e) => { e.preventDefault(); void handleFormSubmit(e); }} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Contact Info */}
+                <div>
+                  <label className="label"><span className="label-text">First Name</span></label>
+                  <input type="text" name="contact_first_name" placeholder="First Name" className="input input-bordered w-full" value={editFormData.contact_first_name || ''} onChange={handleModalInputChange} />
+                </div>
+                <div>
+                  <label className="label"><span className="label-text">Last Name</span></label>
+                  <input type="text" name="contact_last_name" placeholder="Last Name" className="input input-bordered w-full" value={editFormData.contact_last_name || ''} onChange={handleModalInputChange} />
+                </div>
+                <div>
+                  <label className="label"><span className="label-text">Email</span></label>
+                  <input type="email" name="contact_email" placeholder="Email" className="input input-bordered w-full" value={editFormData.contact_email || ''} onChange={handleModalInputChange} />
+                </div>
+                <div>
+                  <label className="label"><span className="label-text">Phone</span></label>
+                  <input type="tel" name="phone" placeholder="Phone" className="input input-bordered w-full" value={editFormData.phone || ''} onChange={handleModalInputChange} />
+                </div>
+              </div>
+
+              {/* Property Info */}
+              <h4 className="text-md font-semibold mt-4">Property Information</h4>
+              <div>
+                <label className="label"><span className="label-text">Property Address</span></label>
+                {isLoaded ? (
+                  <Autocomplete
+                    onLoad={(ref) => autocompleteRef.current = ref}
+                    onPlaceChanged={onPlaceChangedStreetView}
+                    options={{ fields: ['address_components', 'formatted_address', 'geometry', 'name'], types: ['address'] }}
+                  >
+                    <input type="text" name="property_address" placeholder="Enter Property Address" className="input input-bordered w-full" defaultValue={editFormData.property_address || ''} onChange={handleModalInputChange} />
+                  </Autocomplete>
+                ) : (
+                  <input type="text" name="property_address" placeholder="Enter Property Address (Maps loading...)" className="input input-bordered w-full" value={editFormData.property_address || ''} onChange={handleModalInputChange} disabled />
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="label"><span className="label-text">City</span></label>
+                  <input type="text" name="property_city" placeholder="City" className="input input-bordered w-full" value={editFormData.property_city || ''} onChange={handleModalInputChange} />
+                </div>
+                <div>
+                  <label className="label"><span className="label-text">State</span></label>
+                  <input type="text" name="property_state" placeholder="State" className="input input-bordered w-full" value={editFormData.property_state || ''} onChange={handleModalInputChange} />
+                </div>
+                <div>
+                  <label className="label"><span className="label-text">Postal Code</span></label>
+                  <input type="text" name="property_postal_code" placeholder="Postal Code" className="input input-bordered w-full" value={editFormData.property_postal_code || ''} onChange={handleModalInputChange} />
+                </div>
+              </div>
+               <div>
+                  <label className="label"><span className="label-text">Property Type</span></label>
+                  <input type="text" name="property_type" placeholder="e.g., Single Family" className="input input-bordered w-full" value={editFormData.property_type || ''} onChange={handleModalInputChange} />
+                </div>
+
+              {/* Street View Panorama - Only if position is set */}
+              {isLoaded && panoramaPosition && (
+                <div className="mt-4 h-64 w-full bg-gray-200 rounded">
+                  <StreetViewPanorama
+                    options={{ visible: true, position: panoramaPosition, controlSize: 20, enableCloseButton: false, addressControl: false, linksControl: false, panControl: true, zoomControl: true, scrollwheel: true }}
+                  />
+                </div>
+              )}
+              {!isLoaded && <p className='text-xs text-gray-500'>Google Street View loading...</p>}
+              {isLoaded && !panoramaPosition && editFormData.id && <p className='text-xs text-gray-500'>Street View not available or address not geocoded.</p>}
+
+              {/* Notes */}
+              <div>
+                <label className="label"><span className="label-text">Notes</span></label>
+                <textarea name="notes" placeholder="Notes about the lead..." className="textarea textarea-bordered w-full" value={editFormData.notes || ''} onChange={handleModalInputChange}></textarea>
+              </div>
+
+              {error && <p className="text-red-500 text-sm">{error}</p>}
+
+              <div className="modal-action mt-6">
+                {editFormData.id && (
+                  <button type="button" onClick={() => { void handleDeleteLead(); }} className="btn btn-error mr-auto" disabled={isSaving}>
+                    <Trash2 className="mr-2 h-4 w-4" /> Delete
+                  </button>
+                )}
+                <button type="button" onClick={handleCloseModal} className="btn btn-ghost" disabled={isSaving}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isSaving || !isLoaded}>
+                  {isSaving ? <span className="loading loading-spinner loading-xs"></span> : <Save className="mr-2 h-4 w-4" />} 
+                  {editFormData.id ? 'Save Changes' : 'Create Lead'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div> 
   );
 };
 

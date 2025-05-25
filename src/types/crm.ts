@@ -11,10 +11,10 @@ export interface CrmLead {
   property_state?: string | null;
   property_postal_code?: string | null;
   property_type?: string | null;
-  baths?: string | null;
-  beds?: string | null;
+  baths?: number | null;
+  beds?: number | null;
   year_built?: string | null;
-  square_footage?: string | null;
+  square_footage?: number | null;
   lot_size_sqft?: string | null;
   assessed_total?: number | null; // numeric
   mls_curr_status?: string | null;
