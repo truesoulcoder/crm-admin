@@ -1,15 +1,14 @@
-import fs from 'fs/promises';
 import path from 'path';
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { configure as nunjucksConfigure, renderString as nunjucksRenderString } from 'nunjucks';
-import type { NextApiRequest, NextApiResponse } from 'next';
-
 
 import { generateLoiPdf } from './_pdfUtils';
 import { getGmailService, getSupabaseClient, isValidEmail } from './_utils';
 import { sendConfiguredEmail, type EmailConfig } from './send-email';
+
 import type { Tables, Json } from '@/types/db_types'; 
+import type { NextApiRequest, NextApiResponse } from 'next'; 
 
 // Define a type for the log entry for cleaner code, matching eli5_email_log structure
 // Interface for individual contacts within lead.contacts JSON
@@ -211,7 +210,7 @@ async function updateEmailLogStatus(
 
 // Helper types for fetched data
 type FetchedEmailTemplate = Pick<Tables<'email_templates'>, 'subject' | 'body_html' | 'body_text' | 'placeholders'>;
-type FetchedDocumentTemplate = Pick<Tables<'document_templates'>, 'file_name_pattern' | 'content_json' | 'template_type'>;
+type FetchedDocumentTemplate = Pick<Tables<'document_templates'>, 'name' | 'content' | 'type' | 'available_placeholders'>;
 
 interface FetchedCampaignDetails extends Pick<Tables<'campaigns'>, 'name' | 'email_template_id' | 'document_template_id'> {
   email_templates: FetchedEmailTemplate[] | null;
@@ -336,9 +335,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .select(`
       name,
       email_template_id,
-      email_templates (subject, body, is_html),
+      email_templates (subject, body_html, body_text, placeholders),
       document_template_id,
-      document_templates (file_name_pattern, content_json, template_type)
+      document_templates (name, content, type, available_placeholders)
     `)
     .eq('id', campaign_id)
     .single();
@@ -353,7 +352,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const emailTemplateFromDetails: FetchedEmailTemplate | undefined = campaignDetails.email_templates?.[0];
-  if (!emailTemplateFromDetails || !emailTemplateFromDetails.subject || !emailTemplateFromDetails.body) {
+  if (!emailTemplateFromDetails || !emailTemplateFromDetails.subject || !(emailTemplateFromDetails.body_html || emailTemplateFromDetails.body_text)) {
     const errorMsg = `Essential subject or body missing in email template for campaign ${campaign_id}.`;
     console.error(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
     return res.status(404).json({ success: false, error: errorMsg });
@@ -361,28 +360,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Document template is optional
   const documentTemplateFromDetails: FetchedDocumentTemplate | undefined = campaignDetails.document_templates?.[0];
-  if (campaignDetails.document_template_id && (!documentTemplateFromDetails || !documentTemplateFromDetails.file_name_pattern || !documentTemplateFromDetails.content_json)) {
-    const errorMsg = `Document template ID ${campaignDetails.document_template_id} provided for campaign ${campaign_id}, but template data (file_name_pattern or content_json) is missing or invalid.`;
+  if (campaignDetails.document_template_id && (!documentTemplateFromDetails || !documentTemplateFromDetails.name || !documentTemplateFromDetails.content)) {
+    const errorMsg = `Document template ID ${campaignDetails.document_template_id} provided for campaign ${campaign_id}, but template data (name or content) is missing or invalid.`;
     console.error(`ELI5_CAMPAIGN_HANDLER: ${errorMsg}`);
     return res.status(404).json({ success: false, error: errorMsg });
   }
 
-  console.log(`ELI5_CAMPAIGN_HANDLER: Campaign '${campaignDetails.name}' validated. Email Template Subject: '${emailTemplateFromDetails.subject}'. Document Template: ${documentTemplateFromDetails ? `'${documentTemplateFromDetails.file_name_pattern}'` : 'None'}.`);
+  console.log(`ELI5_CAMPAIGN_HANDLER: Campaign '${campaignDetails.name}' validated. Email Template Subject: '${emailTemplateFromDetails.subject}'. Document Template: ${documentTemplateFromDetails ? `'${documentTemplateFromDetails.name}'` : 'None'}.`);
 
   const emailTemplate = {
     subject: emailTemplateFromDetails.subject as string, // Cast to string, assuming db_types might be 'any'
-    body: emailTemplateFromDetails.body as string,       // Cast to string
-    is_html: emailTemplateFromDetails.is_html as boolean // Cast to boolean
+    body_html: emailTemplateFromDetails.body_html as string | undefined,
+    body_text: emailTemplateFromDetails.body_text as string | undefined,
+    placeholders: emailTemplateFromDetails.placeholders
   };
 
   const documentTemplate = documentTemplateFromDetails ? {
-    file_name_pattern: documentTemplateFromDetails.file_name_pattern as string,
-    content_json: documentTemplateFromDetails.content_json as any, // Keep as any if structure varies
-    template_type: documentTemplateFromDetails.template_type as string
+    name: documentTemplateFromDetails.name as string,
+    content: documentTemplateFromDetails.content as any, // Keep as any if structure varies
+    type: documentTemplateFromDetails.type as string,
+    available_placeholders: documentTemplateFromDetails.available_placeholders
   } : null;
 
-  // Fetch Senders (already correctly implemented)
-  // ...
 
 // Fetch Leads (already correctly implemented)
 // ...
@@ -437,6 +436,7 @@ for (const lead of leads) {
 
   let logId: number | null = null;
   const noContactError = 'No valid primary contact email found for lead.';
+  let senderAssignedAndEmailProcessed = false;
 
   if (!contactEmail) {
     console.log(`ELI5_CAMPAIGN_HANDLER: Lead ID ${leadId}: ${noContactError}`);
@@ -505,7 +505,7 @@ for (const lead of leads) {
     let emailBody: string = '';
     try {
       emailSubject = nunjucksRenderString(emailTemplate.subject, personalizationDataForEmail);
-      emailBody = nunjucksRenderString(emailTemplate.body, personalizationDataForEmail);
+      emailBody = nunjucksRenderString(emailTemplate.body_html || emailTemplate.body_text || '', personalizationDataForEmail);
   } catch (renderError: any) {
     const renderErrorMsg = `Email template rendering failed for lead ${leadId}: ${renderError.message}`;
     console.error(`ELI5_CAMPAIGN_HANDLER: ${renderErrorMsg}`);
@@ -525,7 +525,7 @@ for (const lead of leads) {
           pdfSettings: {
             generate: !!documentTemplate,
             personalizationData: personalizationDataForEmail,
-            filenamePrefix: documentTemplate?.file_name_pattern || `LOI_${(campaignDetails.name || 'Campaign').replace(/\s+/g, '_')}`,
+            filenamePrefix: documentTemplate?.name || `LOI_${(campaignDetails.name || 'Campaign').replace(/\s+/g, '_')}`,
           },
           campaignId: campaign_id, 
           campaignRunId: campaign_run_id,
@@ -589,16 +589,19 @@ for (const lead of leads) {
             });
           }
           failureCount++;
-          const senderAssignedAndEmailProcessed = true; // Break from while loop for current lead
+          senderAssignedAndEmailProcessed = true; // Break from while loop for current lead
           // Consider if the entire campaign should stop here. For now, it fails this lead and continues to the next if any.
-        } else {
+        } else { // This 'else' pairs with 'if (availableSender)'
           // All available are on cooldown, wait for the earliest one
+          const sendersStillInRotation = allSenders.filter(s => s.in_memory_sent_today < s.daily_limit || s.can_send_after_timestamp > Date.now()); // Re-filter to be sure
           const earliestNextSendTime = Math.min(...sendersStillInRotation.map(s => s.can_send_after_timestamp));
           const waitTime = Math.max(1000, earliestNextSendTime - Date.now()); // Wait at least 1s to prevent tight loops
           console.log(`ELI5_CAMPAIGN_HANDLER: No senders immediately available for lead ${leadId}. All are on cooldown. Waiting for ${Math.ceil(waitTime / 1000)}s for sender ${allSenders.find(s=>s.can_send_after_timestamp === earliestNextSendTime)?.email}.`);
           // Check if logId is valid before attempting to update the log
           if (logId !== null) {
             await updateEmailLogStatus(supabase, logId, 'PENDING_SENDER_COOLDOWN', null, `Waiting for sender cooldown: ${Math.ceil(waitTime / 1000)}s`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+            // Loop will continue to find an available sender
           } else {
             // This case should ideally not be reached if the initial logId check and 'continue' (in the outer loop) are working.
             // If it is reached, it means we are trying to process a lead for which an initial log entry could not be created.
@@ -606,8 +609,6 @@ for (const lead of leads) {
             failureCount++; // Ensure it's marked as a failure if not already.
             senderAssignedAndEmailProcessed = true; // This will break the while loop for this lead.
           }
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          // Loop will continue to find an available sender
         }
       }
     } // End of while(!senderAssignedAndEmailProcessed)
