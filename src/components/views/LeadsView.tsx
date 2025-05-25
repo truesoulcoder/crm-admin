@@ -4,8 +4,9 @@ import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, UploadCloud,
 import { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
 import { Badge } from 'react-daisyui';
 
-import { supabase } from '@/lib/supabase/client';
-import { NormalizedLead } from '@/types/crm_types';
+import type { Database, NormalizedLead } from '@/utils/supabase/database.types';
+
+import { supabase } from '@/utils/supabase/client';
 
 // Define types (adjust based on your actual schema)
 interface ColumnConfig {
@@ -67,7 +68,7 @@ const LeadsView: React.FC = () => {
       // First, get a count of distinct market regions to decide on the best approach
       const { count, error: countError } = await supabase
         .from('normalized_leads')
-        .select('market_region', { count: 'exact', head: true })
+        .select<'*', Database['public']['Tables']['normalized_leads']['Row']>('market_region', { count: 'exact', head: true })
         .not('market_region', 'is', null);
 
       if (countError) throw countError;
@@ -78,10 +79,11 @@ const LeadsView: React.FC = () => {
       if (count && count <= 1000) {
         const { data, error } = await supabase
           .from('normalized_leads')
-          .select('market_region')
+          .select<'*', Database['public']['Tables']['normalized_leads']['Row']>('market_region')
           .not('market_region', 'is', null)
-          .order('market_region', { ascending: true });
-          
+          .order('market_region', { ascending: true })
+          .returns<Database['public']['Tables']['normalized_leads']['Row'][]>();
+
         if (error) throw error;
         
         const uniqueRegions = Array.from(
@@ -101,11 +103,12 @@ const LeadsView: React.FC = () => {
         while (hasMore) {
           const { data, error } = await supabase
             .from('normalized_leads')
-            .select('market_region')
+            .select<'*', Database['public']['Tables']['normalized_leads']['Row']>('market_region')
             .not('market_region', 'is', null)
             .order('market_region', { ascending: true })
-            .range(offset, offset + BATCH_SIZE - 1);
-            
+            .range(offset, offset + BATCH_SIZE - 1)
+            .returns<Database['public']['Tables']['normalized_leads']['Row'][]>();
+
           if (error) throw error;
           
           // Add new regions to our set (automatically handles duplicates)
@@ -131,8 +134,9 @@ const LeadsView: React.FC = () => {
         console.log(`Found ${sortedRegions.length} unique market regions`);
         setMarketRegions(sortedRegions);
       }
-    } catch (err: any) {
-      console.error('Error fetching market regions:', err);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('Error fetching market regions:', errorMessage);
       setMarketRegions([]);
     }
   }, [setMarketRegions]);
@@ -143,7 +147,10 @@ const LeadsView: React.FC = () => {
     setError(null);
 
     try {
-      let query = supabase.from('normalized_leads').select('*', { count: 'exact' });
+      let query = supabase
+        .from<NormalizedLead>('normalized_leads')
+        .select<NormalizedLead>('*', { count: 'exact' })
+        .returns<NormalizedLead[]>();
 
       if (filterMarketRegion !== 'All') {
         query = query.eq('market_region', filterMarketRegion);
@@ -175,12 +182,13 @@ const LeadsView: React.FC = () => {
       }
 
       if (data) {
-        setLeads(data as NormalizedLead[]);
+        setLeads(data);
         setTotalLeads(count || 0);
       }
-    } catch (err: any) {
-      console.error('Error fetching leads:', err);
-      setError(err.message || 'Failed to fetch leads');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('Error fetching leads:', errorMessage);
+      setError(errorMessage || 'Failed to fetch leads');
     } finally {
       setIsLoading(false);
     }
@@ -228,24 +236,27 @@ const LeadsView: React.FC = () => {
 
     try {
       const { data, error } = await supabase
-        .from('normalized_leads')
+        .from<NormalizedLead>('normalized_leads')
         .update(editFormData)
         .eq('id', selectedLead.id)
-        .select();
+        .select<NormalizedLead>('*', { count: 'exact' })
+        .returns<NormalizedLead[]>();
 
       if (error) {
         throw error;
       }
 
-      if (data) {
+      if (data && data.length > 0) {
+        const updatedLead = data[0]; // Now correctly typed as NormalizedLead
         setLeads(prevLeads =>
-          prevLeads.map(lead => (lead.id === selectedLead.id ? data[0] : lead))
+          prevLeads.map(lead => (lead.id === selectedLead.id ? updatedLead : lead))
         );
         handleCloseModal();
       }
-    } catch (err: any) {
-      console.error('Error saving lead:', err);
-      setError(err.message || 'Failed to save lead');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('Error saving lead:', errorMessage);
+      setError(errorMessage || 'Failed to save lead');
     } finally {
       setIsLoading(false);
     }
@@ -270,7 +281,7 @@ const LeadsView: React.FC = () => {
     setIsLoading(true);
     try {
       const { error } = await supabase
-        .from('normalized_leads')
+        .from<NormalizedLead>('normalized_leads')
         .delete()
         .eq('id', selectedLead.id);
 
@@ -279,10 +290,11 @@ const LeadsView: React.FC = () => {
       setLeads(prev => prev.filter(l => l.id !== selectedLead.id));
       alert('Lead deleted successfully!');
       handleCloseModal();
-    } catch (err: any) {
-      console.error('Error deleting lead:', err);
-      alert(`Failed to delete lead: ${err.message}`);
-      setError(`Failed to delete lead: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('Error deleting lead:', errorMessage);
+      alert(`Failed to delete lead: ${errorMessage}`);
+      setError(`Failed to delete lead: ${errorMessage}`);
     }
     setIsLoading(false);
   };
@@ -327,9 +339,10 @@ const LeadsView: React.FC = () => {
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
       await fetchLeads(); // Refresh leads list
-    } catch (err: any) {
-      console.error('Upload error:', err);
-      setUploadStatus(`Upload failed: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      console.error('Upload error:', errorMessage);
+      setUploadStatus(`Upload failed: ${errorMessage}`);
     }
     setIsUploading(false);
   };
@@ -409,7 +422,7 @@ const LeadsView: React.FC = () => {
       {/* CSV Upload Section */}
       <div className="mb-6 p-4 bg-base-100 rounded-lg shadow">
         <h2 className="text-xl font-semibold mb-3 text-base-content">Upload Leads CSV</h2>
-        <form onSubmit={(e) => { e.preventDefault(); void handleFileUpload(e); }} className="space-y-3">
+        <form onSubmit={(e) => { e.preventDefault(); void handleFileUpload(e).catch(console.error); }} className="space-y-3">
           <div>
             <label htmlFor="uploadMarketRegion" className="label-text block mb-1">Market Region for Uploaded Leads:</label>
             <input 
@@ -535,7 +548,7 @@ const LeadsView: React.FC = () => {
             <tr className="text-base-content">
               {columnConfigurations.map(col => (
                 <th 
-                  key={col.key} 
+                  key={col.key as string} 
                   onClick={() => col.sortable !== false && handleSort(col.key as keyof NormalizedLead)}
                   className={col.sortable !== false ? 'cursor-pointer hover:bg-base-300' : ''}
                 >
@@ -611,7 +624,10 @@ const LeadsView: React.FC = () => {
             <button onClick={handleCloseModal} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"><XCircle size={20}/></button>
             <h3 className="font-bold text-xl mb-4">Edit Lead: {editFormData.contact1_name || 'N/A'}</h3>
             
-            <form onSubmit={(e) => { e.preventDefault(); void handleSaveLead(); }} className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              handleSaveLead().catch(console.error);
+            }} className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
               <div>
                 <label htmlFor="modal-contact1_name" className="label"><span className="label-text">Contact Name</span></label>
                 <input type="text" id="modal-contact1_name" name={`contact1_name`} value={editFormData[`contact1_name`] || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
@@ -685,7 +701,20 @@ const LeadsView: React.FC = () => {
                 <input type="text" id="modal-mls_curr_days_on_market" name="mls_curr_days_on_market" value={editFormData.mls_curr_days_on_market || ''} onChange={handleModalInputChange} className="input input-bordered w-full" />
               </div>
               <div className="modal-action mt-6">
-                <button type="button" onClick={() => void handleDeleteLead()} className="btn btn-error btn-outline mr-auto" disabled={isLoading}>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    void (async () => { 
+                      try {
+                        await handleDeleteLead();
+                      } catch (error) {
+                        console.error('Error handling lead:', error);
+                      }
+                    })();
+                  }}
+                  className="btn btn-error btn-outline mr-auto" 
+                  disabled={isLoading}
+                >
                   <Trash2 size={16}/> Delete Lead
                 </button>
                 <button type="button" onClick={handleCloseModal} className="btn btn-ghost" disabled={isLoading}>Cancel</button>
