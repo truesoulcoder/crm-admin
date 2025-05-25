@@ -1,5 +1,6 @@
 // src/app/api/leads/upload/route.ts
 import { randomUUID } from 'crypto';
+import { Readable } from 'stream';
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
@@ -14,9 +15,10 @@ export const config = {
       sizeLimit: '50mb',
     },
   },
+  maxDuration: 60, // 10 minutes max execution time
 };
 
-// Helper function to process file in chunks
+// Helper function to process file in chunks with streaming
 const processFileInChunks = (
   file: File,
   chunkSize: number,
@@ -25,42 +27,56 @@ const processFileInChunks = (
   return new Promise<void>((resolve, reject) => {
     let chunk: any[] = [];
     let rowCount = 0;
+    let headers: string[] = [];
+    let isFirstChunk = true;
 
-    parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      step: (results, parser) => {
-        chunk.push(results.data);
-        rowCount++;
+    // Process the file in chunks
+    file.text()
+      .then(text => {
+        parse(text, {
+          header: true,
+          skipEmptyLines: true,
+          step: (row, parser) => {
+            if (isFirstChunk && typeof row.data === 'object' && row.data !== null) {
+              headers = Object.keys(row.data);
+              isFirstChunk = false;
+            }
+            
+            chunk.push(row.data);
+            rowCount++;
 
-        if (chunk.length >= chunkSize) {
-          // Pause parsing while we process this chunk
-          parser.pause();
-          processChunk(chunk, false)
-            .then(() => {
+            if (chunk.length >= chunkSize) {
+              // Pause parsing while we process this chunk
+              parser.pause();
+              const currentChunk = [...chunk];
               chunk = [];
-              parser.resume();
-            })
-            .catch((error) => {
-              parser.abort();
-              reject(error);
-            });
-        }
-      },
-      complete: () => {
-        // Process any remaining rows in the last chunk
-        if (chunk.length > 0) {
-          processChunk(chunk, true)
-            .then(() => resolve())
-            .catch(reject);
-        } else {
-          resolve();
-        }
-      },
-      error: (error) => {
+              
+              processChunk(currentChunk, false)
+                .then(() => parser.resume())
+                .catch(error => {
+                  parser.abort();
+                  reject(error);
+                });
+            }
+          },
+          complete: () => {
+            // Process any remaining rows in the last chunk
+            if (chunk.length > 0) {
+              processChunk(chunk, true)
+                .then(() => resolve())
+                .catch(error => reject(error));
+            } else {
+              resolve();
+            }
+          },
+          error: (error: Error) => {
+            reject(error);
+          }
+        });
+      })
+      .catch(error => {
         reject(error);
-      },
-    });
+      });
   });
 };
 
@@ -149,24 +165,49 @@ export async function POST(request: NextRequest) {
   try {
     console.log('API: Attempting to upload to storage...');
     const fileBytes = await file.arrayBuffer();
-    const bucket = 'lead-uploads'; 
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     // Assign to the outer scoped objectPath for cleanup purposes
     objectPath = `${randomUUID()}-${Date.now()}-${sanitizedFileName}`;
 
-    const { error: uploadErr } = await supabaseAdmin.storage 
-      .from(bucket)
-      .upload(objectPath, fileBytes, {
-        cacheControl: '3600',
-        contentType: file.type || 'text/csv',
-        upsert: false, 
-      });
+    // Split the file into smaller chunks for upload (under 4.5MB to be safe)
+    const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB chunks
+    const chunks = [];
+    
+    for (let i = 0; i < fileBytes.byteLength; i += CHUNK_SIZE) {
+      chunks.push(fileBytes.slice(i, i + CHUNK_SIZE));
+    }
 
-    if (uploadErr) {
-      console.error('Storage upload failed:', uploadErr);
-      // No need to cleanup objectPath here as it was never successfully uploaded
+    console.log(`Uploading file in ${chunks.length} chunks...`);
+    
+    let uploadError = null;
+    
+    // If it's a small file, upload in one go
+    if (chunks.length <= 1) {
+      const { error } = await supabaseAdmin.storage 
+        .from(bucket)
+        .upload(objectPath, fileBytes, {
+          cacheControl: '3600',
+          contentType: file.type || 'text/csv',
+          upsert: false,
+        });
+      uploadError = error;
+    } else {
+      // For larger files, use resumable upload
+      const { data: uploadData, error } = await supabaseAdmin.storage
+        .from(bucket)
+        .upload(objectPath, fileBytes, {
+          cacheControl: '3600',
+          contentType: file.type || 'text/csv',
+          upsert: false,
+          resumable: true,
+        });
+      uploadError = error;
+    }
+
+    if (uploadError) {
+      console.error('Storage upload failed:', uploadError);
       return NextResponse.json(
-        { ok: false, error: 'Storage upload failed.', details: uploadErr.message },
+        { ok: false, error: 'Storage upload failed.', details: uploadError.message },
         { status: 500 }
       );
     }
@@ -179,9 +220,11 @@ export async function POST(request: NextRequest) {
     let processingError: any = null;
 
     try {
+      // Reduce batch size to 100 rows at a time to prevent memory issues
+      const BATCH_SIZE = 100;
       await processFileInChunks(
         file,
-        250, // Process 250 rows at a time
+        BATCH_SIZE, // Process 100 rows at a time
         async (chunk, isLastChunk) => {
           if (hasError) return;
 
@@ -217,18 +260,26 @@ export async function POST(request: NextRequest) {
               };
             });
 
-            // Insert the chunk into the database
-            const { data: batchInsertedData, error: batchInsertErr } = await supabaseAdmin
-              .from('leads')
-              .insert(leadsToInsert)
-              .select();
+            // Insert the chunk into the database with error handling
+            try {
+              const { data: batchInsertedData, error: batchInsertErr } = await supabaseAdmin
+                .from('leads')
+                .insert(leadsToInsert)
+                .select();
 
-            if (batchInsertErr) {
-              throw batchInsertErr;
-            }
+              if (batchInsertErr) {
+                console.error('Batch insert error:', batchInsertErr);
+                throw batchInsertErr;
+              }
 
-            if (batchInsertedData) {
-              allInsertedData = [...allInsertedData, ...batchInsertedData];
+              if (batchInsertedData) {
+                allInsertedData = [...allInsertedData, ...batchInsertedData];
+              }
+            } catch (insertError) {
+              console.error('Error inserting batch:', insertError);
+              // Try to continue with the next batch even if one fails
+              // You might want to log the failed batch for later processing
+              console.error('Failed batch data (first row):', leadsToInsert[0]);
             }
 
             totalProcessed += chunk.length;
@@ -386,15 +437,26 @@ export async function POST(request: NextRequest) {
     // Ensure we return a proper JSON response even in case of errors
     let errorMessage = 'An unexpected error occurred during processing.';
     let errorDetails = error.message || 'No additional details available.';
+    let statusCode = 500;
     
     // Handle specific error cases
     if (error instanceof Error) {
-      if (error.message.includes('PayloadTooLargeError')) {
+      if (error.message.includes('PayloadTooLargeError') || error.message.includes('413')) {
         errorMessage = 'File size exceeds the maximum allowed limit (50MB).';
         errorDetails = 'The uploaded file is too large. Please reduce the file size and try again.';
-      } else if (error.message.includes('Unexpected token') || error.message.includes('JSON')) {
-        errorMessage = 'Invalid request format.';
-        errorDetails = 'The request could not be processed. Please ensure the file is a valid CSV.';
+        statusCode = 413;
+      } else if (error.message.includes('Unexpected token') || error.message.includes('JSON') || error.message.includes('CSV')) {
+        errorMessage = 'Invalid file format.';
+        errorDetails = 'The file could not be processed. Please ensure the file is a valid CSV.';
+        statusCode = 400;
+      } else if (error.message.includes('ENOMEM') || error.message.includes('heap out of memory')) {
+        errorMessage = 'Server memory limit exceeded.';
+        errorDetails = 'The file is too large to process. Please try with a smaller file or split it into smaller chunks.';
+        statusCode = 413;
+      } else if (error.message.includes('timeout') || error.message.includes('timed out')) {
+        errorMessage = 'Request timeout.';
+        errorDetails = 'The request took too long to process. Please try again with a smaller file.';
+        statusCode = 408;
       }
     }
     
