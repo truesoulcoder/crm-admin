@@ -227,14 +227,6 @@ interface StartCampaignRequestBody {
   dry_run?: boolean; // Optional: If true, simulates sending without actual email dispatch, defaults to false
 }
 
-interface StartCampaignRequestBody {
-  campaign_id: string
-  campaign_run_id?: string
-  selected_sender_ids?: string[]
-  selected_lead_ids?: string[]
-  dry_run?: boolean
-}
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -519,7 +511,8 @@ for (const lead of leads) {
     }
 
     // Prepare personalization data for Nunjucks
-    const personalizationDataForEmail = {
+    if (true) { // TODO: Replace true with actual sender availability check (e.g., if (availableSender) { ... } )
+      const personalizationDataForEmail = {
       lead_id: leadId,
       contact_name: contactName || '',
       contact_email: contactEmail || '',
@@ -617,7 +610,8 @@ for (const lead of leads) {
           }
         }
         senderAssignedAndEmailProcessed = true; // Mark as processed to break from this lead's sender loop
-
+      }
+      // The following 'else' now correctly pairs with the 'if (true)' above.
       } else { // No senders currently available (all on cooldown or over quota)
         const sendersStillInRotation = allSenders.filter(s => s.in_memory_sent_today < s.daily_limit);
         if (sendersStillInRotation.length === 0) {

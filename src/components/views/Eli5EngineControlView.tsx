@@ -26,6 +26,7 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
   const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDryRun, setIsDryRun] = useState<boolean>(false);
   const consoleEndRef = useRef<null | HTMLDivElement>(null);
 
   // New state variables for sender selection, timeout, and limit
@@ -189,13 +190,14 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
       addLog('Campaign processing flag successfully set to RESUMED.', 'success');
 
       // Step 2: Call start-campaign
-      addLog(`Sending request to /api/eli5-engine/start-campaign for market: ${marketRegion} with limit: ${limitPerRun}, timeout: ${timeoutIntervalSeconds}s, senders: ${selectedSenderIds.length > 0 ? selectedSenderIds.join(', ') : 'Any'}...`, 'info');
+      addLog(`Sending request to /api/eli5-engine/start-campaign for market: ${marketRegion} with limit: ${limitPerRun}, timeout: ${timeoutIntervalSeconds}s, senders: ${selectedSenderIds.length > 0 ? selectedSenderIds.join(', ') : 'Any'}, Dry Run: ${isDryRun ? 'Enabled' : 'Disabled'}...`, 'info');
       
       const requestBody: any = { 
         market_region: marketRegion,
         limit_per_run: Number(limitPerRun) || undefined, // API defaults if undefined
         selected_sender_ids: selectedSenderIds,
         timeout_interval_seconds: Number(timeoutIntervalSeconds),
+        dry_run: isDryRun,
       };
       // The API defaults limit_per_run to 10 if not provided or if value is 0.
       // If Number(limitPerRun) is 0, sending undefined will make API use its default.
@@ -386,20 +388,35 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
               />
             </div>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Button 
-              color="primary" 
-              startIcon={<Mail />} 
-              onClick={handleSendTestEmail}
-              loading={isLoading && engineStatus === 'test_sending'}
-              disabled={isLoading && engineStatus !== 'test_sending'}
-            >
-              Send Test Email
-            </Button>
-            <Button 
-              color="success" 
-              startIcon={<PlayCircle />} 
+        </div>
+        
+        {/* New UI Elements for Senders, Timeout, and Limit */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-4">
+          {/* Sender Selection */}
+          <div className="form-control">
+            <label className="label">
+              <span className="label-text">Filter Senders (Optional)</span>
+            </label>
+            {availableSenders.length > 0 ? (
+              <div className="max-h-40 overflow-y-auto border border-base-300 rounded-md p-2 bg-base-200">
+                {availableSenders.map(sender => (
+                  <label key={sender.id} className="label cursor-pointer">
+                    <span className="label-text">{sender.name} ({sender.email})</span>
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-primary"
+                      checked={selectedSenderIds.includes(sender.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedSenderIds([...selectedSenderIds, sender.id]);
+                        } else {
+                          setSelectedSenderIds(selectedSenderIds.filter(id => id !== sender.id));
+                        }
+                      }}
+                      disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running')}
+                    />
+                  </label>
+                ))}
               onClick={handleStartEngine}
               loading={isLoading && engineStatus === 'starting'}
               disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running') || !marketRegion.trim()}
