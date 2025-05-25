@@ -186,12 +186,6 @@ const CrmView: React.FC = () => {
       // Potentially add logic here if total pages are known, to prevent going beyond last page
     }
   };
-
-  const handleRowsPerPageChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    setRowsPerPage(Number(event.target.value));
-    setCurrentPage(1); // Reset to first page on rows per page change
-  };
-
   const handleModalInputChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = event.target;
     let processedValue: string | number | null = value;
