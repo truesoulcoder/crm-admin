@@ -9,8 +9,7 @@
   "functions": {
     "src/app/api/leads/upload/route.ts": {
       "maxDuration": 300,
-      "memory": 1024,
-      "maxBodyLength": 52428800 
+      "memory": 1024
     }
   },
   "build": {
