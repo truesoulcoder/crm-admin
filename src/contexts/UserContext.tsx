@@ -152,7 +152,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    initializeAuth();
+    void initializeAuth();
 
     return () => {
       isMounted = false;
