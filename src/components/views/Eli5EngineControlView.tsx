@@ -2,6 +2,7 @@
 
 import { PlayCircle, StopCircle, Mail, AlertTriangle, Info, CheckCircle, RefreshCw, MapPin } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { Button, Card, Alert, Input, Select } from 'react-daisyui';
 
 import { supabase } from '@/lib/supabase/client';
@@ -9,7 +10,14 @@ import { Database } from '@/types/db_types';
 
 import type { JSX } from 'react';
 
-type Eli5EmailLogEntry = Database['public']['Tables']['eli5_email_log']['Row'];
+interface Eli5EmailLogEntry {
+  id: string;
+  created_at: string;
+  message: string;
+  market_region: string;
+  [key: string]: any; // Allow additional properties
+}
+
 type MarketRegion = Database['public']['Tables']['market_regions']['Row'];
 
 interface LogEntry {
@@ -37,7 +45,8 @@ const Eli5EngineControlView: React.FC = () => {
   const [maxIntervalSeconds, setMaxIntervalSeconds] = useState<number>(1000);
   const [limitPerRun, setLimitPerRun] = useState<number>(10);
 
-  const addLog = useCallback((message: string, type: LogEntry['type'], data?: any) => {
+  // Define addLog first since it's used in the effects
+  const addLog = useCallback((message: string, type: LogEntry['type'] = 'info', data?: any) => {
     const newLog: LogEntry = {
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
       timestamp: new Date().toISOString(),
@@ -47,6 +56,86 @@ const Eli5EngineControlView: React.FC = () => {
     };
     setConsoleLogs(prevLogs => [newLog, ...prevLogs.slice(0, 199)]);
   }, []);
+
+  // Set up real-time subscription to eli5_email_log
+  useEffect(() => {
+    // Only subscribe if we have a selected market region
+    if (!selectedMarketRegion) return;
+
+    let channel: RealtimeChannel | null = null;
+    
+    try {
+      channel = supabase
+        .channel('realtime-email-logs')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'eli5_email_log',
+            filter: `market_region=eq.${selectedMarketRegion}`
+          },
+          (payload: { new: Eli5EmailLogEntry }) => {
+            const newLog = payload.new;
+            // Only add logs that match our current market region
+            if (newLog.market_region === selectedMarketRegion) {
+              addLog(newLog.message || 'New log entry', 'info', newLog);
+            }
+          }
+        )
+        .subscribe();
+
+      // Handle potential subscription errors
+      channel?.on('error', (err) => {
+        console.error('Error in logs channel:', err);
+        addLog(`Error in logs channel: ${err.message}`, 'error');
+      });
+    } catch (err) {
+      const error = err as Error;
+      console.error('Error setting up subscription:', error);
+      addLog(`Error setting up real-time updates: ${error.message}`, 'error');
+    }
+
+    // Cleanup subscription on unmount or when market region changes
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel).catch((error: Error) => {
+          console.error('Error removing channel:', error);
+        });
+      }
+    };
+  }, [selectedMarketRegion, addLog]);
+
+  // Load initial logs
+  useEffect(() => {
+    const fetchInitialLogs = async () => {
+      if (!selectedMarketRegion) return;
+      
+      try {
+        const { data: logs, error } = await supabase
+          .from('eli5_email_log')
+          .select('*')
+          .eq('market_region', selectedMarketRegion)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (error) throw error;
+
+        // Add logs in reverse order (oldest first)
+        logs.reverse().forEach((log: Eli5EmailLogEntry) => {
+          addLog(log.message || 'Log entry', 'info', log);
+        });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        console.error('Error fetching initial logs:', errorMessage);
+        addLog('Failed to load initial logs', 'error');
+      }
+    };
+
+    fetchInitialLogs().catch((error) => {
+      console.error('Error in fetchInitialLogs:', error);
+    });
+  }, [selectedMarketRegion, addLog]);
 
   // Fetch market regions on component mount
   useEffect(() => {
