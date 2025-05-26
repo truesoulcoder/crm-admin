@@ -21,7 +21,7 @@ configure(templateDir, { autoescape: true });
 // const TEST_SENDER_EMAIL = process.env.TEST_SENDER_EMAIL || 'chrisphillips@truesoulpartners.com'; // Ensure this is a valid sender for the Gmail service
 // const TEST_SENDER_NAME = process.env.TEST_SENDER_NAME || 'Chris Phillips';
 // Hardcoded recipient for testing (replace with dynamic or lead's email later)
-const TEST_RECIPIENT_EMAIL = process.env.TEST_RECIPIENT_EMAIL || 'test-recipient@example.com';
+const TEST_RECIPIENT_EMAIL = process.env.TEST_RECIPIENT_EMAIL || 'chrisphillips@truesoulpartners.com';
 
 
 // Simplified MIME message creation function
@@ -119,7 +119,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!market_region) {
       console.warn('TEST_EMAIL_HANDLER: Market region not provided in the request.');
       // Log before returning the response
-      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: 'Market region is required for sending a test email.', campaign_id: null });
+      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: 'Market region is required for sending a test email.'});
       return res.status(400).json({ 
         success: false, 
         error: 'Market region is required for sending a test email.' 
@@ -214,6 +214,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       'property_address',
       'property_city',
       'property_state',
+      'property_postal_code',
       'contact_name',
       'assessed_total',
     ];
@@ -241,12 +242,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     });
     
-    // Stricter validation for property_zip_code source
+    // Check for valid postal code (non-blocking, just log a warning)
     const { property_postal_code, zip_code, property_zipcode } = lead;
-    if ((!property_postal_code || String(property_postal_code).trim() === '') && 
-        (!zip_code || String(zip_code).trim() === '') && 
-        (!property_zipcode || String(property_zipcode).trim() === '')) {
-      missingFields.push('property_zip_code (source)');
+    const hasValidPostalCode = [property_postal_code, zip_code, property_zipcode].some(
+      code => code && String(code).trim() !== ''
+    );
+    
+    if (!hasValidPostalCode) {
+      console.warn('WARNING: No valid postal code found in any field. Continuing anyway for test email.');
+      // Don't add to missingFields to prevent blocking the test email
     }
 
     intendedRecipientEmail = lead.contact_email; // For personalization & logging
