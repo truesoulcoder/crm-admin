@@ -463,9 +463,62 @@ if (!createdTableName || typeof createdTableName !== 'string') {
 
 console.log(`API: Market-specific fine-cut leads table '${createdTableName}' operation successful for ${marketRegion}.`);
 
+// ---------- 5. UPSERT INTO market_regions TABLE ----------
+console.log(`API: Upserting market region data for ${marketRegion} with lead count ${totalProcessed}`);
+const { data: marketRegionData, error: marketRegionError } = await supabaseAdmin
+  .from('market_regions')
+  .upsert(
+    {
+      name: marketRegion, // User-provided market region
+      lead_count: totalProcessed,
+      created_by: userId,
+      // updated_at should be handled by the database trigger
+    },
+    {
+      onConflict: 'name', // `name` is the unique column for conflict resolution
+    }
+  )
+  .select(); // Optionally select the result
+
+if (marketRegionError) {
+  // Log the error but do not make it a critical failure for now
+  console.error(`API Error: Failed to upsert into market_regions for ${marketRegion}:`, marketRegionError);
+  // If this were a critical error, we might do:
+  // if (objectPath) {
+  //   await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+  // }
+  // return NextResponse.json({
+  //   ok: false,
+  //   error: `Failed to log to market_regions for '${marketRegion}'.`,
+  //   details: marketRegionError.message
+  // }, { status: 500 });
+} else {
+  console.log(`API: Successfully upserted market region ${marketRegion} with lead count ${totalProcessed}. Data:`, marketRegionData);
+}
+
+// ---------- 6. TRUNCATE normalized_leads TABLE ----------
+console.log('API: Attempting to truncate normalized_leads table...');
+const { error: truncateError } = await supabaseAdmin.rpc('truncate_normalized_leads');
+
+if (truncateError) {
+  console.error('API Error: Failed to truncate normalized_leads table:', truncateError);
+  // This is a critical step. If it fails, return an error.
+  if (objectPath) {
+    console.log(`Attempting to cleanup storage file ${objectPath} due to normalized_leads truncation RPC error...`);
+    await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+  }
+  return NextResponse.json({
+    ok: false,
+    error: 'Failed to clear normalized_leads table after processing.',
+    details: truncateError.message
+  }, { status: 500 });
+} else {
+  console.log('API: normalized_leads table truncated successfully.');
+}
+
 return NextResponse.json({
   ok: true,
-  message: `Successfully processed ${totalProcessed} leads from ${originalFileName}. Market-specific fine-cut leads table '${createdTableName}' created for market '${marketRegion}'.`,
+  message: `Successfully processed ${totalProcessed} leads from ${originalFileName}. Market-specific fine-cut leads table '${createdTableName}' created for market '${marketRegion}'. Market region info updated. Staging area cleared.`,
   staged_lead_count: totalProcessed, // totalProcessed is from the CSV parsing part
   created_fine_cut_table: createdTableName
 });
