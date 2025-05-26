@@ -3,13 +3,11 @@
 import { PlayCircle, StopCircle, Mail, AlertTriangle, Info, CheckCircle, RefreshCw, MapPin } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Card, Alert, Input } from 'react-daisyui';
-import Background from '@/components/ui/Background';
 
 import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/db_types';
 
 import type { JSX } from 'react';
-
 // Assuming eli5_email_log is the primary source of real-time messages for now
 type Eli5EmailLogEntry = Database['public']['Tables']['eli5_email_log']['Row'];
 
@@ -444,6 +442,37 @@ const [maxIntervalSeconds, setMaxIntervalSeconds] = useState<number>(1000);
               Stop Engine
             </Button>
             <div ref={consoleEndRef} />
+          </div>
+          
+          {/* Console Log Display */}
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold mb-2">Console Log</h3>
+            <div className="bg-base-200 rounded-md p-3 h-96 overflow-y-auto">
+              {consoleLogs.length === 0 ? (
+                <div className="text-center text-gray-500 py-4">No logs to display</div>
+              ) : (
+                <div className="space-y-1">
+                  {consoleLogs.map((log) => (
+                    <div 
+                      key={log.id} 
+                      className={`text-sm font-mono p-1 rounded ${
+                        log.type === 'error' ? 'bg-error/10 text-error' :
+                        log.type === 'success' ? 'bg-success/10 text-success' :
+                        log.type === 'warning' ? 'bg-warning/10 text-warning' :
+                        log.type === 'engine' ? 'bg-info/10 text-info' :
+                        'bg-base-300/50'
+                      }`}
+                    >
+                      <span className="text-xs opacity-70 mr-2">
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                      </span>
+                      {log.message}
+                    </div>
+                  ))}
+                  <div ref={consoleEndRef} />
+                </div>
+              )}
+            </div>
           </div>
         </Card.Body>
       </Card>
