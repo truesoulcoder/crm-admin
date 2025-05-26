@@ -8,15 +8,8 @@ import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { parse } from 'papaparse';
 
-// Configure the API route to handle larger payloads
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '50mb',
-    },
-  },
-  maxDuration: 60, // 10 minutes max execution time
-};
+// Max execution time for this API route (in seconds)
+export const maxDuration = 60; // 1 minute
 
 // Helper function to process file in chunks with streaming
 const processFileInChunks = (
@@ -198,8 +191,7 @@ export async function POST(request: NextRequest) {
         .upload(objectPath, fileBytes, {
           cacheControl: '3600',
           contentType: file.type || 'text/csv',
-          upsert: false,
-          resumable: true,
+          upsert: false
         });
       uploadError = error;
     }

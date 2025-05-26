@@ -81,15 +81,19 @@ const nextConfig = {
   },
 
   output: 'standalone',
+  // Increase the maximum allowed body size for API routes (50MB)
+  api: {
+    bodyParser: {
+      sizeLimit: '50mb',
+    },
+    responseLimit: '50mb',
+  },
+  
   async rewrites() {
     return [
       {
         source: '/api/:path*',
         destination: 'http://localhost:3001/api/:path*',
-      },
-      {
-        source: '/dashboard/:path*',
-        destination: '/api/dashboard/:path*',
       },
     ]
   },
@@ -99,10 +103,10 @@ const nextConfig = {
     // Dangerously allow production builds to successfully complete even if
     // your project has type errors.
     // !! WARN !!
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
 };
 
