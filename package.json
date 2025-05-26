@@ -84,5 +84,10 @@
     "ts-node": "^10.9.2",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
+  },
+
+  "scripts": {
+    "gen:types": "npx supabase gen types typescript --project-id oviiqouhtdajfwhpwbyq --schema public > src/types/db_types.ts",
+    "postinstall": "npm run gen:types"
   }
 }

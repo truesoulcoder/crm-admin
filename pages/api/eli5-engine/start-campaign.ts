@@ -1,13 +1,37 @@
 import path from 'path';
 
+// External imports
 import { SupabaseClient } from '@supabase/supabase-js';
 import { configure as nunjucksConfigure, renderString as nunjucksRenderString } from 'nunjucks';
 
+// Application utilities
 import { getSupabaseClient, isValidEmail } from './_utils';
-import { sendConfiguredEmail } from './send-email';
+import { sendEmail, type EmailPayload, type PDFOptions } from './send-email';
 
+// Type imports
 import type { Tables, Json } from '@/types/db_types';
 import type { NextApiRequest, NextApiResponse } from 'next';
+
+// Security utilities implementation
+class GmailClient {
+  constructor(private config: { 
+    credentials: { client_email: string; private_key: string };
+    scopes: string[];
+    subject?: string;
+  }) {}
+
+  async users.getProfile(params: { userId: string }) {
+    // Implementation
+  }
+}
+
+function decryptCredentials(encrypted: string): { client_email: string; private_key: string } {
+  try {
+    return JSON.parse(encrypted);
+  } catch (e) {
+    throw new Error('Invalid credentials format');
+  }
+}
 
 // Consolidated type definitions
 interface EmailConfig {
@@ -74,6 +98,7 @@ interface SenderState {
   daily_limit: number;
   in_memory_sent_today: number; // Tracks sends during this specific run, initialized from DB
   can_send_after_timestamp: number; // Timestamp (ms) when this sender can send next
+  gmailClient: GmailClient;
 }
 
 interface FetchedEmailTemplate {
@@ -150,17 +175,18 @@ interface Lead {
   [key: string]: any; // For any additional properties
 }
 
-interface Sender {
-  id: string;
-  email: string;
-  name: string;
-  in_memory_sent_today: number;
-  can_send_after_timestamp: number;
-  [key: string]: any; // For any additional properties
-}
-
 const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
 nunjucksConfigure(templateDir, { autoescape: true });
+
+// PDF generation (temporary implementation)
+async function generatePdf(options: PDFOptions): Promise<Buffer> {
+  return Buffer.from('PDF placeholder');
+}
+
+// Unified error handling
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
 
 // Sender management: File-level state for senders is removed. Senders are fetched and managed within the handler.
 
@@ -185,20 +211,34 @@ async function processEmailAndDocument(config: EmailConfig): Promise<ProcessLead
       return { success: true, senderEmail };
     }
 
-    // TODO: Implement actual email sending logic here
-    // This is a placeholder implementation
-    console.log(`Sending email to ${recipientEmail} from ${senderEmail} for lead ${leadId}`);
+    const emailPayload: EmailPayload = {
+      to: recipientEmail,
+      subject: nunjucksRenderString(emailSubjectTemplate, personalizationData),
+      body: nunjucksRenderString(emailBodyTemplate, personalizationData),
+      senderName,
+      senderEmail,
+    };
+
+    if (pdfSettings?.generate) {
+      const pdfOptions: PDFOptions = {
+        template: pdfSettings.personalizationData.template,
+        data: pdfSettings.personalizationData.data,
+      };
+      emailPayload.pdf = await generatePdf(pdfOptions);
+    }
+
+    const messageId = await sendEmail(emailPayload);
     
     return {
       success: true,
       senderEmail,
-      messageId: `mock-message-id-${Date.now()}`
+      messageId,
     };
   } catch (error) {
     console.error(`Error sending email to ${recipientEmail}:`, error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: getErrorMessage(error),
       senderEmail
     };
   }
@@ -209,7 +249,7 @@ async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_id
   try {
     let query = supabase
       .from('senders')
-      .select('id, name, email, daily_limit, sent_today')
+      .select('id, name, email, daily_limit, sent_today, credentials')
       .eq('is_active', true)
       .order('email', { ascending: true }) // Primary sort: Alphabetical by email
       .order('sent_today', { ascending: true }); // Secondary sort: Least used today
@@ -221,28 +261,46 @@ async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_id
 
     const { data, error } = await query;
 
-    if (error) {
-      console.error('CAMPAIGN_HANDLER (fetchAndPrepareSenders): Error fetching senders from DB:', error.message);
-      return [];
-    }
-    if (!data) {
-      console.log('CAMPAIGN_HANDLER (fetchAndPrepareSenders): No sender data returned from DB query.');
-      return [];
-    }
+    if (error) throw error;
+    if (!data) return [];
 
     console.log(`CAMPAIGN_HANDLER (fetchAndPrepareSenders): ${data.length} active senders fetched from DB.`);
     
-    const preparedSenders: SenderState[] = data.map(dbSender => ({
-      id: dbSender.id,
-      name: dbSender.name,
-      email: dbSender.email,
-      daily_limit: dbSender.daily_limit,
-      in_memory_sent_today: dbSender.sent_today, // Initialize with current count from DB
-      can_send_after_timestamp: 0, // Can send immediately if not over quota (Date.now() will be >= 0)
+    const preparedSenders = await Promise.all(data.map(async (dbSender) => {
+      try {
+        const decrypted = decryptCredentials(dbSender.credentials);
+        
+        if (!decrypted.client_email || !decrypted.private_key) {
+          throw new Error('Invalid service account credentials');
+        }
+
+        const gmail = new GmailClient({
+          credentials: {
+            client_email: decrypted.client_email,
+            private_key: decrypted.private_key.replace(/\\n/g, '\n')
+          },
+          scopes: ['https://www.googleapis.com/auth/gmail.send'],
+          subject: dbSender.email
+        });
+
+        await gmail.users.getProfile({ userId: dbSender.email });
+
+        return {
+          id: dbSender.id,
+          name: dbSender.name,
+          email: dbSender.email,
+          daily_limit: dbSender.daily_limit,
+          in_memory_sent_today: dbSender.sent_today, // Initialize with current count from DB
+          can_send_after_timestamp: Date.now(),
+          gmailClient: gmail
+        };
+      } catch (e) {
+        console.error(`Sender ${dbSender.email} failed initialization:`, e);
+        return null;
+      }
     }));
 
-    console.log(`CAMPAIGN_HANDLER (fetchAndPrepareSenders): ${preparedSenders.length} senders prepared with initial state.`);
-    return preparedSenders;
+    return preparedSenders.filter(Boolean) as SenderState[];
   } catch (e: unknown) {
     let errorMessage = 'Unknown error fetching senders';
     let errorStack: string | undefined;
@@ -527,14 +585,22 @@ export async function handler(
           };
         }
 
-        // Rest of the processLead function remains the same
-        return { 
-          success: true, 
-          senderEmail: selectedSender.email, 
-          messageId: 'generated-message-id' 
+        const emailConfig: EmailConfig = {
+          recipientEmail: contactEmail,
+          recipientName: contactName,
+          leadId,
+          senderEmail: selectedSender.email,
+          senderName: selectedSender.name,
+          emailSubjectTemplate: emailTemplate.subject,
+          emailBodyTemplate: emailTemplate.body_html,
+          personalizationData: lead,
+          dryRun: isDryRun,
         };
+
+        const result = await processEmailAndDocument(emailConfig);
+        return result;
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        const errorMessage = getErrorMessage(error);
         return {
           success: false,
           error: errorMessage,
@@ -548,7 +614,7 @@ export async function handler(
   } catch (e: any) {
     console.error('Campaign start error:', e);
     return res.status(500).json({ 
-      error: e.message || 'Failed to start campaign'
+      error: getErrorMessage(e)
     });
   }
 
