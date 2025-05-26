@@ -383,43 +383,28 @@ export async function POST(request: NextRequest) {
 
       console.log('API: All data from reassembled file inserted. Total rows:', allInsertedData.length);
 
-      // ---------- 3. CALL THE NORMALIZATION FUNCTION ----------
-      console.log('API: Calling normalize_staged_leads for market_region:', marketRegion);
-      const { error: rpcError } = await supabaseAdmin.rpc('normalize_staged_leads', { p_market_region: marketRegion });
-      if (rpcError) {
-        console.error('RPC normalize_staged_leads failed:', rpcError);
-        if (objectPath) await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-        return NextResponse.json({ ok: false, error: 'Failed to normalize staged leads.', details: rpcError.message }, { status: 500 });
-      }
-      console.log('API: Normalization successful.');
+// ---------- 3. CALL THE NORMALIZATION FUNCTION ----------
+console.log('API: Calling normalize_staged_leads for market_region:', marketRegion);
+const { error: rpcError } = await supabaseAdmin.rpc('normalize_staged_leads', { p_market_region: marketRegion });
+if (rpcError) {
+  console.error('RPC normalize_staged_leads failed:', rpcError);
+  if (objectPath) await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+  return NextResponse.json({ 
+    ok: false, 
+    error: 'Failed to normalize staged leads.', 
+    details: rpcError.message 
+  }, { status: 500 });
+}
+console.log('API: Normalization successful.');
 
-      // ---------- 4. CREATE MARKET-SPECIFIC TABLE ----------
-      const saneMarketRegionPart = convertToSnakeCase(marketRegion); // marketRegion from chunk metadata
-      if (!saneMarketRegionPart) {
-        console.error(`API Error: Market region "${marketRegion}" is invalid after sanitization.`);
-        if (objectPath) await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-        return NextResponse.json({ ok: false, error: `Market region "${marketRegion}" is invalid.`}, { status: 400 });
-      }
-      const targetTableName = `mkt_${saneMarketRegionPart}`;
-      console.log(`API: Creating market-specific table: ${targetTableName}`);
-      const { error: marketTableError } = await supabaseAdmin.rpc('create_market_specific_lead_table', {
-        p_target_table_name: targetTableName,
-        p_market_region_filter: marketRegion
-      });
-      if (marketTableError) {
-        console.error(`RPC create_market_specific_lead_table failed for ${targetTableName}:`, marketTableError);
-        if (objectPath) await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-        return NextResponse.json({ ok: false, error: `Failed to create market table '${targetTableName}'.`, details: marketTableError.message }, { status: 500 });
-      }
-      console.log(`API: Market-specific table ${targetTableName} created/populated.`);
-      
-// ---------- 5. CREATE FINE-CUT LEADS TABLE ----------
+// ---------- 4. CREATE FINE-CUT LEADS TABLE ----------
 console.log(`API: Creating fine-cut leads for market: ${marketRegion}, user: ${userId}`);
 const { error: fineCutTableError } = await supabaseAdmin.rpc('create_fine_cut_leads_for_market', {
   p_market_region_raw_name: marketRegion,
   p_user_id: userId,
-  p_file_name: originalFileName // Add this line to pass the original file name
+  p_file_name: originalFileName
 });
+
 if (fineCutTableError) {
   console.error(`RPC create_fine_cut_leads_for_market failed for ${marketRegion}:`, fineCutTableError);
   if (objectPath) await supabaseAdmin.storage.from(bucket).remove([objectPath]);
@@ -429,14 +414,15 @@ if (fineCutTableError) {
     details: fineCutTableError.message 
   }, { status: 500 });
 }
+
 console.log(`API: Fine-cut leads table created/populated for ${marketRegion}.`);
 
-      return NextResponse.json({
-        ok: true,
-        message: `Successfully processed ${allInsertedData.length} leads from ${originalFileName}. Market table '${targetTableName}' and fine-cut leads created.`,
-        lead_count: allInsertedData.length,
-        details: { count: allInsertedData.length } // Ensure details.count is sent for client
-      });
+return NextResponse.json({
+  ok: true,
+  message: `Successfully processed ${allInsertedData.length} leads from ${originalFileName}. Fine-cut leads created.`,
+  lead_count: allInsertedData.length,
+  details: { count: allInsertedData.length }
+});
       // --- END MAIN PROCESSING LOGIC ---
 
     } else {
