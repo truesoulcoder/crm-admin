@@ -37,6 +37,17 @@ const Eli5EngineControlView: React.FC = () => {
   const [maxIntervalSeconds, setMaxIntervalSeconds] = useState<number>(1000);
   const [limitPerRun, setLimitPerRun] = useState<number>(10);
 
+  const addLog = useCallback((message: string, type: LogEntry['type'], data?: any) => {
+    const newLog: LogEntry = {
+      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+      timestamp: new Date().toISOString(),
+      message,
+      type,
+      data,
+    };
+    setConsoleLogs(prevLogs => [newLog, ...prevLogs.slice(0, 199)]);
+  }, []);
+
   // Fetch market regions on component mount
   useEffect(() => {
     const fetchMarketRegions = async () => {
@@ -61,19 +72,8 @@ const Eli5EngineControlView: React.FC = () => {
       }
     };
 
-    fetchMarketRegions();
-  }, [addLog, selectedMarketRegion]); // Added addLog and selectedMarketRegion to dependency array
-
-  const addLog = useCallback((message: string, type: LogEntry['type'], data?: any) => {
-    const newLog: LogEntry = {
-      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-      timestamp: new Date().toISOString(),
-      message,
-      type,
-      data,
-    };
-    setConsoleLogs(prevLogs => [newLog, ...prevLogs.slice(0, 199)]);
-  }, []);
+    fetchMarketRegions().catch(console.error);
+  }, [selectedMarketRegion, addLog]);
 
   // Update the handleSendTestEmail function to use selectedMarketRegion
   const handleSendTestEmail = async () => {
