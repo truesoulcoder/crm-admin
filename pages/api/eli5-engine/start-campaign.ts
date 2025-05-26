@@ -22,7 +22,6 @@ interface LeadContact {
 
 interface Eli5EmailLogEntry {
   id?: number; 
-
   contact_name?: string;
   contact_email?: string;
   sender_name?: string;
@@ -233,7 +232,7 @@ export async function handler(
   try {
     let successCount = 0;
     let failureCount = 0;
-    const processingErrors: Array<{error: string; timestamp: string; leadId?: string; contact_email?: string}> = [];
+    const processingErrors: Array<{ error: string; timestamp: string; leadId?: string; contact_email?: string; details?: any }> = [];
     let leads: any[] = []; // Should be properly typed from db_types
 
     // Get campaign details from request body

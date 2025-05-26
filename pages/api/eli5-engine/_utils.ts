@@ -69,11 +69,8 @@ export const getGmailService = (userEmailToImpersonate: string): import('googlea
 export interface Eli5EmailLogEntry {
   id?: number; // Assuming BIGINT maps to number
   created_at?: string; // TIMESTAMPTZ
-
-  original_lead_id?: string | null;
   contact_name?: string | null;
   contact_email?: string | null;
-
   property_address?: string | null;
   property_city?: string | null;
   property_state?: string | null;
@@ -85,11 +82,9 @@ export interface Eli5EmailLogEntry {
   square_footage?: number | null;
   assessed_total?: number | null;
   market_region?: string | null;
-
   mls_curr_status?: string | null;
   mls_curr_days_on_market?: number | null;
   normalized_lead_converted_status?: boolean | null;
-
   sender_name?: string | null;
   sender_email_used?: string | null;
   email_subject_sent?: string | null;
@@ -97,12 +92,9 @@ export interface Eli5EmailLogEntry {
   email_status: string; // This is generally required
   email_error_message?: string | null;
   email_sent_at?: string | null; // ISO string for TIMESTAMPTZ
-
   campaign_id?: string | null;
   campaign_run_id?: string | null;
-
   converted?: boolean | null;
-
   [key: string]: any; // Retain for flexibility if extra fields are ever passed
 }
 
