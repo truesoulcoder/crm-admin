@@ -2,7 +2,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import type { Database } from '@/types/supabase';
+import type { Database } from '@/types/db_types';
 
 type DocumentTemplate = Database['public']['Tables']['document_templates']['Row'];
 type InsertDocumentTemplate = Database['public']['Tables']['document_templates']['Insert'];

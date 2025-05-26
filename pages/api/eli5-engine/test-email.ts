@@ -1,18 +1,21 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
 import fs from 'fs/promises';
 import path from 'path';
-import nunjucks from 'nunjucks';
+
+import { configure, renderString } from 'nunjucks';
+
+import { generateLoiPdf } from './_pdfUtils';
 import {
   getSupabaseClient,
   getGmailService,
   logToSupabase,
   isValidEmail,
 } from './_utils';
-import { generateLoiPdf } from './_pdfUtils';
+
+import type { NextApiRequest, NextApiResponse } from 'next';
 
 // Nunjucks environment setup (can be shared if multiple routes use Nunjucks)
 const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
-nunjucks.configure(templateDir, { autoescape: true });
+configure(templateDir, { autoescape: true });
 
 // Hardcoded sender details (replace with dynamic loading or env variables later)
 // const TEST_SENDER_EMAIL = process.env.TEST_SENDER_EMAIL || 'chrisphillips@truesoulpartners.com'; // Ensure this is a valid sender for the Gmail service
@@ -76,6 +79,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const supabase = getSupabaseClient();
+  let lead: any = null; // Declare lead here to make it accessible in the catch block
+  let intendedRecipientEmail: string | undefined = undefined; // Declare for broader scope
   // const leadId = `test-lead-${Date.now()}`; // Placeholder lead ID - will be replaced by fetched lead's ID
 
   try {
@@ -106,14 +111,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // const senderCredentials = sender.credentials_json; // Stored for future use if needed for getGmailService
 
     // 2. Fetch Sample Lead from useful_leads (adjusted numbering)
-    const { data: lead, error: leadError } = await supabase
+    const { data: fetchedLeadData, error: leadError } = await supabase
       .from('useful_leads') // Changed table name
       .select('*')
       .limit(1) // Fetch the first available lead
       .maybeSingle(); // Return single row or null, no error if table empty or multiple rows (due to limit)
 
-    if (leadError) throw new Error(`Error fetching lead from useful_leads: ${leadError.message}`);
-    if (!lead) throw new Error('No lead found in useful_leads table for testing.');
+    if (leadError) {
+      console.error('Supabase error fetching lead from useful_leads:', leadError.message, leadError);
+      throw new Error(`Error fetching lead from useful_leads: ${leadError.message}`);
+    }
+    if (!fetchedLeadData) {
+      throw new Error('No lead found in useful_leads table for testing. fetchedLeadData is null or undefined.');
+    }
+    lead = fetchedLeadData; // Assign to the higher-scoped 'lead' variable
 
     // ULTRA CRITICAL FIX: Ensure contact_name is a string immediately after fetch
     console.log('DEBUG: contact_name BEFORE mutation on lead object:', JSON.stringify(lead.contact_name), typeof lead.contact_name);
@@ -128,17 +139,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Field Compatibility:
     // 1. Essential Lead Fields & Validation
-    const essentialLeadFieldKeys: (keyof typeof lead)[] = [
+    const essentialLeadFieldKeys: Array<keyof typeof lead> = [
       'property_address',
       'property_city',
       'property_state',
       'contact_name',
       'assessed_total',
     ];
-    const missingFields: string[] = []; // Renamed for clarity as per instructions
+    const missingFields: string[] = [];
 
     essentialLeadFieldKeys.forEach(key => {
-      const value = lead[key]; // lead.contact_name is now guaranteed to be a string here by the above mutation
+      const value = lead[key];
       if (key === 'contact_name') {
         if (String(value).trim() === '') { // Ensure value is treated as string for trim
           missingFields.push(key);
@@ -149,12 +160,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         } else {
           const numValue = parseFloat(String(value));
           if (isNaN(numValue) || numValue <= 0) {
-            missingFields.push(key + ' (must be a positive number)');
+            missingFields.push(`${key} (must be a positive number)`);
           }
         }
       } else { // For property_address, property_city, property_state
         if (value === null || typeof value === 'undefined' || (typeof value === 'string' && String(value).trim() === '')) {
-          missingFields.push(key);
+          missingFields.push(String(key));
         }
       }
     });
@@ -167,7 +178,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       missingFields.push('property_zip_code (source)');
     }
 
-    const intendedRecipientEmail = lead.contact_email; // For personalization & logging
+    intendedRecipientEmail = lead.contact_email; // For personalization & logging
 
     if (missingFields.length > 0) {
       const errorMessage = `Missing/invalid essential lead data: ${missingFields.join(', ')}`;
@@ -313,28 +324,56 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 
     // 5. Personalize Templates (Subject and Body)
-    const emailSubject = nunjucks.renderString(rawSubjectTemplate, templateData);
-    const emailBodyHtml = nunjucks.renderString(rawBodyTemplate, templateData);
+    const emailSubject = renderString(rawSubjectTemplate, templateData) as string;
+    const emailBodyHtml = renderString(rawBodyTemplate, templateData) as string;
 
     // 6. Generate PDF
-    console.log('DEBUG_TESTEMAIL: About to call generateLoiPdf.');
+    console.log('DEBUG_TESTEMAIL: Preparing to call generateLoiPdf.');
     console.log('DEBUG_TESTEMAIL: pdfPersonalizationData.contact_name being passed:', JSON.stringify(pdfPersonalizationData?.contact_name), typeof pdfPersonalizationData?.contact_name);
     console.log('DEBUG_TESTEMAIL: Full pdfPersonalizationData being passed:', JSON.stringify(pdfPersonalizationData));
-    const pdfBuffer = await generateLoiPdf(pdfPersonalizationData, lead.normalized_lead_id, intendedRecipientEmail || actualTestRecipientEmail); // Using normalized_lead_id for PDF context if appropriate
-    if (!pdfBuffer) {
+    
+    let pdfBuffer: Buffer | undefined | null = null;
+    let pdfFailed = false;
+    let pdfErrorMessage = 'PDF generation failed. Ensure all required data is available.'; // Default error message
+
+    try {
+      if (typeof generateLoiPdf === 'function') {
+        console.log('DEBUG_TESTEMAIL: generateLoiPdf is a function, calling it.');
+        pdfBuffer = await generateLoiPdf(pdfPersonalizationData, lead.normalized_lead_id, intendedRecipientEmail || actualTestRecipientEmail);
+        if (!pdfBuffer) {
+            pdfFailed = true;
+            pdfErrorMessage = 'PDF generation completed but returned no buffer. Check pdfPersonalizationData.';
+            console.warn('WARN_TESTEMAIL:', pdfErrorMessage);
+        }
+      } else {
+        pdfFailed = true;
+        pdfErrorMessage = 'PDF generation service is not available (generateLoiPdf is not a function).';
+        console.error('CRITICAL_ERROR_TESTEMAIL:', pdfErrorMessage, 'Type:', typeof generateLoiPdf);
+      }
+    } catch (e: unknown) { // Catch 'unknown' for better type safety
+      pdfFailed = true;
+      if (e instanceof Error) {
+        pdfErrorMessage = `PDF generation caught error: ${e.message}`;
+        console.error('ERROR_TESTEMAIL: Error during PDF generation call:', e);
+      } else {
+        pdfErrorMessage = 'An unknown error occurred during PDF generation.';
+        console.error('ERROR_TESTEMAIL: Unknown error during PDF generation call:', e);
+      }
+    }
+
+    if (pdfFailed || !pdfBuffer) { 
       await logToSupabase({
-        original_lead_id: lead.normalized_lead_id, // Corrected original_lead_id
-        contact_name: sharedData.contact_name, // Use from sharedData for consistency
+        original_lead_id: lead.normalized_lead_id,
+        contact_name: sharedData.contact_name,
         contact_email: intendedRecipientEmail,
-        // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
         sender_name: activeSenderName,
         sender_email_used: activeSenderEmail,
         email_subject_sent: emailSubject,
         email_status: 'FAILED_TO_SEND',
-        email_error_message: 'PDF generation failed. Check pdfPersonalizationData.',
-        campaign_id: null, // Updated campaign_id
+        email_error_message: pdfErrorMessage, 
+        campaign_id: null,
       });
-      return res.status(500).json({ success: false, error: 'PDF generation failed. Ensure all required data is available.' });
+      return res.status(500).json({ success: false, error: pdfErrorMessage });
     }
 
     // 7. Sanitize Property Address and Construct Dynamic PDF Filename
@@ -409,15 +448,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.error('Error in test-email handler:', error);
     // Use lead?.normalized_lead_id or lead?.id for error logging if lead object is available
     const errorLeadIdForLogging = lead?.normalized_lead_id || lead?.id || `test-lead-fetch-failed-${Date.now()}`;
+    let errorMessage = 'An unknown error occurred.';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+      errorMessage = error.message;
+    }
+
     await logToSupabase({
       original_lead_id: errorLeadIdForLogging, // Corrected original_lead_id
       contact_email: typeof intendedRecipientEmail !== 'undefined' ? intendedRecipientEmail : 'unknown_intended', // Log intended if available
       // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed.
       email_status: 'FAILED_TO_SEND',
-      email_error_message: `Test email failed: ${error.message}`,
-      // stack_trace: error.stack, // Optional: log stack trace
+      email_error_message: `Test email failed: ${errorMessage}`,
+      // stack_trace: error instanceof Error ? error.stack : undefined, // Optional: log stack trace safely
       campaign_id: null, // Updated campaign_id
     });
-    return res.status(500).json({ success: false, error: error.message || 'An unknown error occurred.' });
+    return res.status(500).json({ success: false, error: errorMessage });
   }
 }

@@ -6,18 +6,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const nextConfig = {
-  reactStrictMode: false, // Temporarily disabled for diagnostics
-  // External packages for server components
-  // serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'], // Removed
+  reactStrictMode: false,
   experimental: {
-    // Add any experimental features here
     serverActions: {
       allowedOrigins: ['localhost:3000']
     }
   },
-  // Configure webpack to handle Node.js modules and optimize builds
   webpack: (config, { isServer, dev }) => {
-    // Only add these configurations for server-side bundles
     if (isServer) {
       const existingExternals = Array.isArray(config.externals) ? config.externals : [];
       config.externals = existingExternals.filter(
@@ -32,8 +27,6 @@ const nextConfig = {
         });
       }
 
-
-      // Add Node.js polyfills
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
@@ -47,7 +40,6 @@ const nextConfig = {
       };
     }
 
-    // Exclude .map files from production builds
     if (!dev) {
       config.module.rules.push({
         test: /\.map$/, 
@@ -55,7 +47,6 @@ const nextConfig = {
       });
     }
     
-    // Add path aliases
     config.resolve.alias = {
       ...config.resolve.alias,
       '@': path.resolve(__dirname, 'src'),
@@ -81,13 +72,6 @@ const nextConfig = {
   },
 
   output: 'standalone',
-  // Increase the maximum allowed body size for API routes (50MB)
-  api: {
-    bodyParser: {
-      sizeLimit: '50mb',
-    },
-    responseLimit: '50mb',
-  },
   
   async rewrites() {
     return [
@@ -97,12 +81,7 @@ const nextConfig = {
       },
     ]
   },
-  // For TypeScript path aliases
   typescript: {
-    // !! WARN !!
-    // Dangerously allow production builds to successfully complete even if
-    // your project has type errors.
-    // !! WARN !!
     ignoreBuildErrors: false,
   },
   eslint: {
