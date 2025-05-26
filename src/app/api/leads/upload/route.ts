@@ -106,7 +106,7 @@ const processFileInChunks = (
               const currentChunkToProcess = [...chunk];
               chunk = [];
               
-              processChunk(currentChunkToProcess, false)
+              void processChunk(currentChunkToProcess, false)
                 .then(() => parser.resume())
                 .catch(error => {
                   parser.abort();
@@ -118,7 +118,7 @@ const processFileInChunks = (
         complete: () => {
           // Process any remaining rows in the last chunk
           if (chunk.length > 0) {
-            processChunk(chunk, true)
+            void processChunk(chunk, true)
               .then(() => resolve())
               .catch(error => reject(error)); 
           } else {
