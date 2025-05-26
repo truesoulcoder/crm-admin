@@ -413,18 +413,23 @@ export async function POST(request: NextRequest) {
       }
       console.log(`API: Market-specific table ${targetTableName} created/populated.`);
       
-      // ---------- 5. CREATE FINE-CUT LEADS TABLE ----------
-      console.log(`API: Creating fine-cut leads for market: ${marketRegion}, user: ${userId}`);
-      const { error: fineCutTableError } = await supabaseAdmin.rpc('create_fine_cut_leads_for_market', {
-        p_market_region_raw_name: marketRegion,
-        p_user_id: userId
-      });
-      if (fineCutTableError) {
-        console.error(`RPC create_fine_cut_leads_for_market failed for ${marketRegion}:`, fineCutTableError);
-        if (objectPath) await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-        return NextResponse.json({ ok: false, error: `Failed to create fine-cut leads for '${marketRegion}'.`, details: fineCutTableError.message }, { status: 500 });
-      }
-      console.log(`API: Fine-cut leads table created/populated for ${marketRegion}.`);
+// ---------- 5. CREATE FINE-CUT LEADS TABLE ----------
+console.log(`API: Creating fine-cut leads for market: ${marketRegion}, user: ${userId}`);
+const { error: fineCutTableError } = await supabaseAdmin.rpc('create_fine_cut_leads_for_market', {
+  p_market_region_raw_name: marketRegion,
+  p_user_id: userId,
+  p_file_name: originalFileName // Add this line to pass the original file name
+});
+if (fineCutTableError) {
+  console.error(`RPC create_fine_cut_leads_for_market failed for ${marketRegion}:`, fineCutTableError);
+  if (objectPath) await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+  return NextResponse.json({ 
+    ok: false, 
+    error: `Failed to create fine-cut leads for '${marketRegion}'.`, 
+    details: fineCutTableError.message 
+  }, { status: 500 });
+}
+console.log(`API: Fine-cut leads table created/populated for ${marketRegion}.`);
 
       return NextResponse.json({
         ok: true,
