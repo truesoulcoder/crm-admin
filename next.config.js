@@ -12,33 +12,18 @@ const nextConfig = {
       allowedOrigins: ['localhost:3000']
     }
   },
-  webpack: (config, { isServer, dev }) => {
-    if (isServer) {
-      const existingExternals = Array.isArray(config.externals) ? config.externals : [];
-      config.externals = existingExternals.filter(
-        (ext) => typeof ext !== 'object' || (!ext.hasOwnProperty('puppeteer-core') && !ext.hasOwnProperty('@sparticuz/chromium'))
-      );
-      if (Array.isArray(config.externals)) {
-        config.externals = config.externals.filter(external => {
-          if (typeof external === 'object' && external !== null) {
-            return !('puppeteer-core' in external && '@sparticuz/chromium' in external);
-          }
-          return true;
-        });
-      }
-
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-        child_process: false,
-        dns: false,
-        http2: false,
-        module: false,
-        dgram: false,
-      };
-    }
+  webpack: (config, { dev }) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      net: false,
+      tls: false,
+      child_process: false,
+      dns: false,
+      http2: false,
+      module: false,
+      dgram: false,
+    };
 
     if (!dev) {
       config.module.rules.push({
@@ -70,16 +55,14 @@ const nextConfig = {
       },
     ],
   },
-
   output: 'standalone',
-  
   async rewrites() {
     return [
       {
         source: '/api/:path*',
         destination: 'http://localhost:3001/api/:path*',
       },
-    ]
+    ];
   },
   typescript: {
     ignoreBuildErrors: true,
