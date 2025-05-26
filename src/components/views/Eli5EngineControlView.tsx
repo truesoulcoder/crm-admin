@@ -61,7 +61,7 @@ const Eli5EngineControlView: React.FC = () => {
       }
     };
 
-    void fetchMarketRegions();
+    fetchMarketRegions();
   }, []);
 
   const addLog = useCallback((message: string, type: LogEntry['type'], data?: any) => {
@@ -130,24 +130,25 @@ const Eli5EngineControlView: React.FC = () => {
       setError(msg);
       return;
     }
-    
-    addLog(`Initiating ELI5 Engine start sequence for market region: ${selectedMarketRegion}...`, 'info');
+
+    addLog(`Initiating ELI5 Engine start sequence for market region: ${selectedMarketRegion}...`, 'engine');
     setIsLoading(true);
     setEngineStatus('starting');
     setError(null);
 
     try {
-      const response = await fetch('/api/eli5-engine/start', {
+      const response = await fetch('/api/eli5-engine/start-campaign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           market_region: selectedMarketRegion,
-          is_dry_run: isDryRun,
-          sender_ids: selectedSenderIds,
+          selected_sender_ids: selectedSenderIds,
           min_interval_seconds: minIntervalSeconds,
           max_interval_seconds: maxIntervalSeconds,
-          limit_per_run: limitPerRun
-        })
+          limit_per_run: limitPerRun,
+          dry_run: isDryRun,
+          campaign_id: "default_campaign_id", // Placeholder
+        }),
       });
 
       const result = await response.json();
@@ -157,55 +158,45 @@ const Eli5EngineControlView: React.FC = () => {
       }
 
       if (result.success) {
-        addLog(`Engine started successfully: ${result.message}`, 'success');
+        addLog(`ELI5 Engine started successfully for market region: ${selectedMarketRegion}. Campaign ID: ${result.campaignId}`, 'success');
         setEngineStatus('running');
       } else {
-        throw new Error(result.error || 'Failed to start engine');
+        throw new Error(result.error || 'Failed to start ELI5 Engine');
       }
     } catch (err: any) {
-      const errorMessage = `Error starting engine: ${err.message}`;
+      const errorMessage = `Error starting ELI5 Engine: ${err.message}`;
       addLog(errorMessage, 'error');
       setError(errorMessage);
       setEngineStatus('error');
     } finally {
       setIsLoading(false);
+      // Do not reset to 'idle' immediately if it started successfully or if there was an error.
+      // The status should remain 'running' or 'error' until explicitly stopped or resolved.
+      if (engineStatus === 'starting' && !error) {
+        // If it was 'starting' and no error occurred, it should now be 'running'
+        // (set in the try block). If an error occurred, it's 'error'.
+      } else if (engineStatus === 'starting' && error) {
+        // If an error occurred during starting, it's already 'error'.
+      }
     }
   };
 
-  // Handle stopping the ELI5 engine
+  // Dummy handleStopEngine function to be implemented later
   const handleStopEngine = async () => {
-    addLog('Stopping ELI5 Engine...', 'info');
-    setIsLoading(true);
-    setEngineStatus('stopping');
-    setError(null);
-
-    try {
-      const response = await fetch('/api/eli5-engine/stop', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || `API request failed with status ${response.status}`);
-      }
-
-      if (result.success) {
-        addLog('Engine stopped successfully', 'success');
-        setEngineStatus('idle');
-      } else {
-        throw new Error(result.error || 'Failed to stop engine');
-      }
-    } catch (err: any) {
-      const errorMessage = `Error stopping engine: ${err.message}`;
-      addLog(errorMessage, 'error');
-      setError(errorMessage);
-      setEngineStatus('error');
-    } finally {
-      setIsLoading(false);
-    }
+    addLog('Stop engine functionality not implemented yet.', 'warning');
+    // Placeholder for future implementation
+    // setEngineStatus('stopping');
+    // setIsLoading(true);
+    // try {
+    //   // API call to stop the engine
+    //   setEngineStatus('stopped');
+    //   addLog('Engine stopped.', 'info');
+    // } catch (err) {
+    //   addLog('Error stopping engine.', 'error');
+    //   setEngineStatus('error'); // Or back to 'running' if stop failed
+    // } finally {
+    //   setIsLoading(false);
+    // }
   };
 
   return (
@@ -213,7 +204,8 @@ const Eli5EngineControlView: React.FC = () => {
       <h1 className="text-2xl font-bold mb-6">ELI5 Engine Control Panel</h1>
       
       {error && (
-        <Alert status="error" className="mb-4" icon={<AlertTriangle />}>
+        <Alert status="error" className="mb-4">
+          <Alert.Icon><AlertTriangle /></Alert.Icon>
           {error}
         </Alert>
       )}
@@ -246,7 +238,7 @@ const Eli5EngineControlView: React.FC = () => {
             color="primary" 
             startIcon={<PlayCircle />}
             loading={engineStatus === 'starting' || engineStatus === 'running'}
-            onClick={() => { void handleStartEngine(); }}
+            onClick={handleStartEngine}
             disabled={isLoading || !selectedMarketRegion}
           >
             {engineStatus === 'running' ? 'Running...' : 'Start Engine'}
@@ -256,7 +248,7 @@ const Eli5EngineControlView: React.FC = () => {
             color="error" 
             startIcon={<StopCircle />}
             loading={engineStatus === 'stopping'}
-            onClick={() => { void handleStopEngine(); }}
+            onClick={handleStopEngine}
             disabled={!['running', 'starting'].includes(engineStatus)}
           >
             Stop Engine
@@ -266,7 +258,7 @@ const Eli5EngineControlView: React.FC = () => {
             color="secondary" 
             startIcon={<Mail />}
             loading={engineStatus === 'test_sending'}
-            onClick={() => { void handleSendTestEmail(); }}
+            onClick={handleSendTestEmail}
             disabled={isLoading || !selectedMarketRegion}
           >
             Send Test Email

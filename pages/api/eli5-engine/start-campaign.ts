@@ -218,7 +218,7 @@ interface FetchedCampaignDetails extends Pick<Tables<'campaigns'>, 'name' | 'ema
 interface StartCampaignRequestBody {
   campaign_id: string;
   campaign_run_id?: string;
-  market_region?: string;
+  market_region?: string | null; // Can be null or undefined
   selected_sender_ids?: string[];
   selected_lead_ids?: string[];
   dry_run?: boolean;
@@ -299,30 +299,90 @@ export async function handler(
 
     // Fetch Leads
     let leadsQuery;
+    let dynamicLeadsTableName: string | null = null;
+
     if (market_region) {
-      leadsQuery = supabase.from('normalized_leads').select('*').eq('market_region', market_region).limit(limit_per_run);
+      console.log(`ELI5_CAMPAIGN_HANDLER: Market region provided: ${market_region}. Fetching normalized name.`);
+      const { data: regionData, error: regionError } = await supabase
+        .from('market_regions')
+        .select('normalized_name')
+        .eq('name', market_region)
+        .single();
+
+      if (regionError) {
+        console.error(`ELI5_CAMPAIGN_HANDLER: Error fetching market region details for '${market_region}':`, regionError.message);
+        processingErrors.push({ error: 'market_region_fetch_failed', timestamp: new Date().toISOString() });
+        return res.status(500).json({
+          success: false,
+          message: `Error fetching details for market region '${market_region}'.`,
+          error: regionError.message,
+          processing_errors_details: processingErrors
+        });
+      }
+
+      if (!regionData || !regionData.normalized_name) {
+        const msg = `Market region '${market_region}' not found or has no normalized name.`;
+        console.warn(`ELI5_CAMPAIGN_HANDLER: ${msg}`);
+        processingErrors.push({ error: 'market_region_invalid', timestamp: new Date().toISOString() });
+        return res.status(404).json({ // 404 as the specific market region was not found
+          success: false,
+          message: msg,
+          processing_errors_details: processingErrors
+        });
+      }
+      
+      dynamicLeadsTableName = `${regionData.normalized_name}_fine_cut_leads`;
+      console.log(`ELI5_CAMPAIGN_HANDLER: Using dynamic table name for leads: ${dynamicLeadsTableName}`);
+      leadsQuery = supabase.from(dynamicLeadsTableName).select('*').limit(limit_per_run);
+
     } else if (selected_lead_ids && selected_lead_ids.length > 0) {
+      console.log(`ELI5_CAMPAIGN_HANDLER: No market_region provided, using selected_lead_ids from normalized_leads.`);
       leadsQuery = supabase.from('normalized_leads').select('*').in('id', selected_lead_ids).limit(limit_per_run);
     } else {
-      const criticalErrorMsg = 'Critical logic error: Neither market_region nor selected_lead_ids provided for lead fetching.';
+      const criticalErrorMsg = 'Neither market_region nor selected_lead_ids provided for lead fetching. At least one is required.';
       console.error(`ELI5_CAMPAIGN_HANDLER: ${criticalErrorMsg}`);
-      processingErrors.push({ error: 'internal_logic_error', timestamp: new Date().toISOString() });
-      return res.status(500).json({
+      processingErrors.push({ error: 'missing_lead_source_criteria', timestamp: new Date().toISOString() });
+      return res.status(400).json({ // 400 for bad request as input criteria missing
         success: false,
         message: criticalErrorMsg,
         processing_errors_details: processingErrors
       });
     }
 
-    const { data: rawLeads, error: leadsError } = await leadsQuery;
+    let rawLeads, leadsError;
+    try {
+      const queryResult = await leadsQuery;
+      rawLeads = queryResult.data;
+      leadsError = queryResult.error;
+    } catch (e: any) { // Catch potential error if supabase.from(dynamic_table) itself throws (e.g. invalid table name format)
+      console.error(`ELI5_CAMPAIGN_HANDLER: Error executing leads query (potentially invalid dynamic table name ${dynamicLeadsTableName}):`, e.message);
+      processingErrors.push({ error: 'leads_query_execution_failed', details: e.message, timestamp: new Date().toISOString() });
+      return res.status(500).json({
+          success: false,
+          message: `Error fetching leads. The table '${dynamicLeadsTableName || 'normalized_leads'}' might be invalid or inaccessible.`,
+          error: e.message,
+          processing_errors_details: processingErrors
+      });
+    }
+    
     leads = rawLeads as any[]; // Temporary any type - should be properly typed
 
     if (leadsError) {
-      console.error('ELI5_CAMPAIGN_HANDLER: Error fetching leads:', leadsError.message);
-      processingErrors.push({ error: 'leads_fetch_failed', timestamp: new Date().toISOString() });
+      console.error(`ELI5_CAMPAIGN_HANDLER: Error fetching leads from '${dynamicLeadsTableName || 'normalized_leads'}':`, leadsError.message);
+      // Check for specific PostgreSQL error code for "undefined_table"
+      if (leadsError.code === '42P01') { // PostgreSQL error code for undefined_table
+         processingErrors.push({ error: 'leads_table_not_found', details: `Table '${dynamicLeadsTableName}' does not exist.`, timestamp: new Date().toISOString() });
+         return res.status(500).json({
+             success: false,
+             message: `The specific leads table '${dynamicLeadsTableName}' for the market region '${market_region}' was not found. Please ensure it exists.`,
+             error: leadsError.message,
+             processing_errors_details: processingErrors
+         });
+      }
+      processingErrors.push({ error: 'leads_fetch_failed', details: leadsError.message, timestamp: new Date().toISOString() });
       return res.status(500).json({
           success: false,
-          message: 'Error fetching leads.',
+          message: `Error fetching leads from '${dynamicLeadsTableName || 'normalized_leads'}'.`,
           error: leadsError.message,
           processing_errors_details: processingErrors
       });

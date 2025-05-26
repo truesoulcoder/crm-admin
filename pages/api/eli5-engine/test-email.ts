@@ -81,10 +81,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const supabase = getSupabaseClient();
   let lead: any = null; // Declare lead here to make it accessible in the catch block
   let intendedRecipientEmail: string | undefined = undefined; // Declare for broader scope
-  // const leadId = `test-lead-${Date.now()}`; // Placeholder lead ID - will be replaced by fetched lead's ID
+  
+  const { market_region } = req.body;
 
   try {
-    // 1. Fetch Active Sender from Supabase
+    // 1. Fetch Active Sender from Supabase (remains the same)
     const { data: sender, error: senderError } = await supabase
       .from('senders')
       .select('email, name, credentials_json')
@@ -96,37 +97,103 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (senderError) {
       console.error('Supabase error fetching sender:', senderError);
-      throw new Error(`Error fetching active sender: ${senderError.message}`);
+      // Log to Supabase before throwing, or ensure the main catch block handles it if it's a critical setup issue
+      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: `Error fetching active sender: ${senderError.message}`, campaign_id: null });
+      // For consistency, return a JSON response rather than just throwing, which might lead to an unhandled promise rejection if not caught upstream.
+      return res.status(500).json({ success: false, error: `Error fetching active sender: ${senderError.message}` });
     }
     if (!sender) {
-      throw new Error('No active sender found in Supabase.');
+      // This is a critical setup issue.
+      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: 'No active sender found in Supabase.', campaign_id: null });
+      return res.status(500).json({ success: false, error: 'No active sender found in Supabase.' });
     }
 
-    const fetchedSenderEmail = sender.email;
-    const fetchedSenderName = sender.name;
-    // const senderCredentials = sender.credentials_json; // Stored for future use
+    const activeSenderEmail = sender.email;
+    const activeSenderName = sender.name;
 
-    const activeSenderEmail = fetchedSenderEmail;
-    const activeSenderName = fetchedSenderName;
-    // const senderCredentials = sender.credentials_json; // Stored for future use if needed for getGmailService
+    // 2. Fetch Sample Lead (Dynamically)
+    let fetchedLeadData: any = null;
+    let leadFetchError: any = null; 
+    let leadSourceTable: string = '';
 
-    // 2. Fetch Sample Lead from useful_leads (adjusted numbering)
-    const { data: fetchedLeadData, error: leadError } = await supabase
-      .from('useful_leads') // Changed table name
-      .select('*')
-      .limit(1) // Fetch the first available lead
-      .maybeSingle(); // Return single row or null, no error if table empty or multiple rows (due to limit)
-
-    if (leadError) {
-      console.error('Supabase error fetching lead from useful_leads:', leadError.message, leadError);
-      throw new Error(`Error fetching lead from useful_leads: ${leadError.message}`);
+    if (!market_region) {
+      console.warn('TEST_EMAIL_HANDLER: Market region not provided in the request.');
+      // Log before returning the response
+      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: 'Market region is required for sending a test email.', campaign_id: null });
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Market region is required for sending a test email.' 
+      });
     }
+
+    console.log(`TEST_EMAIL_HANDLER: Market region provided: ${market_region}. Fetching normalized name.`);
+    const { data: regionData, error: regionFetchDbError } = await supabase
+      .from('market_regions')
+      .select('normalized_name')
+      .eq('name', market_region)
+      .single();
+
+    if (regionFetchDbError) {
+      const errorMsg = `Error fetching details for market region '${market_region}': ${regionFetchDbError.message}`;
+      console.error(`TEST_EMAIL_HANDLER: ${errorMsg}`);
+      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: errorMsg, campaign_id: null });
+      return res.status(500).json({ success: false, error: `Error fetching details for market region '${market_region}'.` });
+    }
+
+    if (!regionData || !regionData.normalized_name) {
+      const msg = `Market region '${market_region}' not found or has no normalized name. Cannot fetch test lead.`;
+      console.warn(`TEST_EMAIL_HANDLER: ${msg}`);
+      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: msg, campaign_id: null });
+      return res.status(404).json({ 
+        success: false,
+        error: msg,
+      });
+    }
+    
+    leadSourceTable = `${regionData.normalized_name}_fine_cut_leads`;
+    console.log(`TEST_EMAIL_HANDLER: Attempting to fetch lead from dynamic table: ${leadSourceTable}`);
+
+    try {
+      const { data: dynamicLeadData, error: dynamicLeadQueryError } = await supabase
+        .from(leadSourceTable)
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+      
+      fetchedLeadData = dynamicLeadData;
+      leadFetchError = dynamicLeadQueryError;
+
+    } catch (e:any) { 
+       const errorMsg = `Database query construction error for table '${leadSourceTable}': ${e.message}`;
+       console.error(`TEST_EMAIL_HANDLER: ${errorMsg}`);
+       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: errorMsg, campaign_id: null });
+       return res.status(500).json({ success: false, error: `Internal error preparing query for table '${leadSourceTable}'.` });
+    }
+
+    if (leadFetchError) {
+      let userMessage = `Error fetching lead from '${leadSourceTable}'.`;
+      console.error(`TEST_EMAIL_HANDLER: Supabase error fetching lead from '${leadSourceTable}':`, leadFetchError.message, leadFetchError);
+      if (leadFetchError.code === '42P01') { 
+         userMessage = `The specific leads table '${leadSourceTable}' for market region '${market_region}' was not found. Please ensure it exists.`;
+      }
+      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: `${userMessage} DB Code: ${leadFetchError.code}`, campaign_id: null });
+      return res.status(500).json({ success: false, error: userMessage });
+    }
+
     if (!fetchedLeadData) {
-      throw new Error('No lead found in useful_leads table for testing. fetchedLeadData is null or undefined.');
+      const noLeadMsg = `No lead found in table '${leadSourceTable}' for market region '${market_region}' for testing.`;
+      console.warn(`TEST_EMAIL_HANDLER: ${noLeadMsg}`);
+      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: noLeadMsg, campaign_id: null });
+      return res.status(404).json({ 
+        success: false, 
+        error: noLeadMsg,
+        details: `The table ${leadSourceTable} was queried, but no leads were returned.`
+      });
     }
-    lead = fetchedLeadData; // Assign to the higher-scoped 'lead' variable
+    lead = fetchedLeadData; 
+    console.log(`TEST_EMAIL_HANDLER: Successfully fetched lead from ${leadSourceTable}. Lead ID: ${lead.id}`);
 
-    // ULTRA CRITICAL FIX: Ensure contact_name is a string immediately after fetch
+    // ULTRA CRITICAL FIX: Ensure contact_name is a string immediately after fetch (remains important)
     console.log('DEBUG: contact_name BEFORE mutation on lead object:', JSON.stringify(lead.contact_name), typeof lead.contact_name);
     if (lead.contact_name === null || typeof lead.contact_name === 'undefined') {
       lead.contact_name = ""; // Directly mutate the lead object's property
