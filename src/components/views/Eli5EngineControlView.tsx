@@ -61,7 +61,7 @@ const Eli5EngineControlView: React.FC = () => {
       }
     };
 
-    fetchMarketRegions();
+    void fetchMarketRegions();
   }, []);
 
   const addLog = useCallback((message: string, type: LogEntry['type'], data?: any) => {
