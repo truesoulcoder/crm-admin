@@ -153,7 +153,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     
     // Construct the table name by combining normalized_name with _fine_cut_leads suffix
-    leadSourceTable = `${regionData.normalized_name.toLowerCase()}_fine_cut_leads`;
+    leadSourceTable = `${regionData.normalized_name}_fine_cut_leads`;
     console.log(`TEST_EMAIL_HANDLER: Constructed lead source table name: ${leadSourceTable}`);
     console.log(`TEST_EMAIL_HANDLER: Attempting to fetch lead from dynamic table: ${leadSourceTable}`);
 
