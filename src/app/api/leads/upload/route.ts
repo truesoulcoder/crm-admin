@@ -216,9 +216,20 @@ export async function POST(request: NextRequest) {
   const chunkFilePath = path.join(tempDir, `chunk_${chunkIndex}.bin`);
 
   let objectPath: string | null = null; // To store the path for potential cleanup, used after reassembly
+  // Initialize Supabase admin client with service role key and proper configuration
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false
+      },
+      db: {
+        schema: 'public'
+      }
+    }
   );
   const bucket = 'lead-uploads'; // Define bucket name
 
