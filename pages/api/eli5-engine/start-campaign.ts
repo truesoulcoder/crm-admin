@@ -22,7 +22,7 @@ interface LeadContact {
 
 interface Eli5EmailLogEntry {
   id?: number; 
-  original_lead_id?: string;
+
   contact_name?: string;
   contact_email?: string;
   sender_name?: string;
@@ -431,7 +431,6 @@ export async function handler(
         console.log(`ELI5_CAMPAIGN_HANDLER: Lead ID ${leadId}: ${noContactError}`);
         try {
           logId = await logInitialAttempt(supabase, {
-            original_lead_id: leadId as string,
             contact_email: contactEmail || 'N/A',
             campaign_id: currentCampaignId,
             campaign_run_id: currentCampaignRunId,
@@ -453,7 +452,6 @@ export async function handler(
       // If we're here, contactEmail is valid. Now, establish a logId for this lead.
       try {
         logId = await logInitialAttempt(supabase, {
-          original_lead_id: leadId as string,
           contact_name: contactName || '',
           contact_email: contactEmail,
           campaign_id: currentCampaignId,

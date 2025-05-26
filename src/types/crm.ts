@@ -115,7 +115,7 @@ export interface CrmLead {
   mls_curr_list_agent_name?: string | null;
   mls_curr_status?: string | null;
   notes?: string | null;
-  original_lead_id?: string | null;
+
   property_address?: string | null;
   property_city?: string | null;
   property_postal_code?: string | null;
