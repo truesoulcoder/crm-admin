@@ -29,6 +29,7 @@ export const metadata: Metadata = {
 export function generateViewport() {
   return {
     width: 'device-width',
+    height: 'device-height',  
     initialScale: 1.0,
   };
 }
