@@ -61,7 +61,7 @@ const Eli5EngineControlView: React.FC = () => {
       }
     };
 
-    fetchMarketRegions();
+    void fetchMarketRegions();
   }, []);
 
   const addLog = useCallback((message: string, type: LogEntry['type'], data?: any) => {
@@ -132,8 +132,80 @@ const Eli5EngineControlView: React.FC = () => {
     }
     
     addLog(`Initiating ELI5 Engine start sequence for market region: ${selectedMarketRegion}...`, 'info');
-    // ... rest of the handleStartEngine function remains the same
-    // Just make sure to use selectedMarketRegion instead of marketRegion in the API call
+    setIsLoading(true);
+    setEngineStatus('starting');
+    setError(null);
+
+    try {
+      const response = await fetch('/api/eli5-engine/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          market_region: selectedMarketRegion,
+          is_dry_run: isDryRun,
+          sender_ids: selectedSenderIds,
+          min_interval_seconds: minIntervalSeconds,
+          max_interval_seconds: maxIntervalSeconds,
+          limit_per_run: limitPerRun
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || `API request failed with status ${response.status}`);
+      }
+
+      if (result.success) {
+        addLog(`Engine started successfully: ${result.message}`, 'success');
+        setEngineStatus('running');
+      } else {
+        throw new Error(result.error || 'Failed to start engine');
+      }
+    } catch (err: any) {
+      const errorMessage = `Error starting engine: ${err.message}`;
+      addLog(errorMessage, 'error');
+      setError(errorMessage);
+      setEngineStatus('error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle stopping the ELI5 engine
+  const handleStopEngine = async () => {
+    addLog('Stopping ELI5 Engine...', 'info');
+    setIsLoading(true);
+    setEngineStatus('stopping');
+    setError(null);
+
+    try {
+      const response = await fetch('/api/eli5-engine/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || `API request failed with status ${response.status}`);
+      }
+
+      if (result.success) {
+        addLog('Engine stopped successfully', 'success');
+        setEngineStatus('idle');
+      } else {
+        throw new Error(result.error || 'Failed to stop engine');
+      }
+    } catch (err: any) {
+      const errorMessage = `Error stopping engine: ${err.message}`;
+      addLog(errorMessage, 'error');
+      setError(errorMessage);
+      setEngineStatus('error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -141,8 +213,7 @@ const Eli5EngineControlView: React.FC = () => {
       <h1 className="text-2xl font-bold mb-6">ELI5 Engine Control Panel</h1>
       
       {error && (
-        <Alert status="error" className="mb-4">
-          <Alert.Icon><AlertTriangle /></Alert.Icon>
+        <Alert status="error" className="mb-4" icon={<AlertTriangle />}>
           {error}
         </Alert>
       )}
@@ -175,7 +246,7 @@ const Eli5EngineControlView: React.FC = () => {
             color="primary" 
             startIcon={<PlayCircle />}
             loading={engineStatus === 'starting' || engineStatus === 'running'}
-            onClick={handleStartEngine}
+            onClick={() => { void handleStartEngine(); }}
             disabled={isLoading || !selectedMarketRegion}
           >
             {engineStatus === 'running' ? 'Running...' : 'Start Engine'}
@@ -185,7 +256,7 @@ const Eli5EngineControlView: React.FC = () => {
             color="error" 
             startIcon={<StopCircle />}
             loading={engineStatus === 'stopping'}
-            onClick={handleStopEngine}
+            onClick={() => { void handleStopEngine(); }}
             disabled={!['running', 'starting'].includes(engineStatus)}
           >
             Stop Engine
@@ -195,7 +266,7 @@ const Eli5EngineControlView: React.FC = () => {
             color="secondary" 
             startIcon={<Mail />}
             loading={engineStatus === 'test_sending'}
-            onClick={handleSendTestEmail}
+            onClick={() => { void handleSendTestEmail(); }}
             disabled={isLoading || !selectedMarketRegion}
           >
             Send Test Email
