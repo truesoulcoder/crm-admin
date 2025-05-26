@@ -37,7 +37,7 @@ interface BackgroundProps {
 }
 
 export function Background({
-  fill = false,
+  fill = true,
   height = 100,
   gradient,
   children,
