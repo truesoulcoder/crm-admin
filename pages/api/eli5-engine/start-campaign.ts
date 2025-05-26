@@ -216,13 +216,13 @@ interface FetchedCampaignDetails extends Pick<Tables<'campaigns'>, 'name' | 'ema
 }
 
 interface StartCampaignRequestBody {
-  campaign_id: string;
+  campaign_id?: string; // Made optional
   campaign_run_id?: string;
-  market_region?: string | null; // Can be null or undefined
-  selected_sender_ids?: string[]; // Already present, will be used by fetchAndPrepareSenders
+  market_region?: string | null;
+  selected_sender_ids?: string[];
   selected_lead_ids?: string[];
   dry_run?: boolean;
-  dryRun?: boolean; // Alias for dry_run
+  dryRun?: boolean;
   limit_per_run?: number;
   min_interval_seconds?: number;
   max_interval_seconds?: number;
@@ -267,13 +267,9 @@ export async function handler(
     console.log(`ELI5_CAMPAIGN_HANDLER: Campaign settings: dryRun=${isDryRun}, limitPerRun=${limit_per_run}, minInterval=${minIntervalSeconds}s, maxInterval=${maxIntervalSeconds}s, selectedSenders=${selected_sender_ids?.join(',') || 'ALL'}`);
 
 
-    if (!campaign_id) {
-      return res.status(400).json({ success: false, message: 'Campaign ID is required.' });
-    }
-
-    // Ensure campaign_id and campaign_run_id are treated as strings
-    const currentCampaignId = campaign_id as string;
-    const currentCampaignRunId = campaign_run_id as string;
+    // Generate a run ID if not provided
+    const currentCampaignId = campaign_id || 'adhoc-campaign';
+    const currentCampaignRunId = campaign_run_id || `run-${Date.now()}`;
 
     console.log(`ELI5_CAMPAIGN_HANDLER: Received request to ${isDryRun ? 'DRY RUN' : 'START'} campaign (ID: ${currentCampaignId}, Run ID: ${currentCampaignRunId}) at ${new Date().toISOString()}`);
     if (req.method !== 'POST') {
@@ -420,13 +416,11 @@ export async function handler(
       return res.status(200).json({
         success: true,
         message: noLeadsMsg,
-        campaign_id: currentCampaignId,
-        campaign_run_id: currentCampaignRunId,
-        summary: {
-          total_leads_processed_in_batch: 0,
-          emails_sent_successfully: 0,
-          emails_failed_to_send: 0,
-          processing_errors_details: []
+        stats: {
+          totalProcessed: 0,
+          successCount: 0,
+          failureCount: 0,
+          errors: processingErrors
         }
       });
     }

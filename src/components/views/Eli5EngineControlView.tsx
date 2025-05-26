@@ -1,8 +1,8 @@
 'use client';
 
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { PlayCircle, StopCircle, Mail, AlertTriangle, Info, CheckCircle, RefreshCw, MapPin } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { RealtimeChannel } from '@supabase/supabase-js';
 import { Button, Card, Alert, Input, Select } from 'react-daisyui';
 
 import { supabase } from '@/lib/supabase/client';
@@ -25,36 +25,43 @@ interface LogEntry {
   timestamp: string;
   message: string;
   type: 'info' | 'error' | 'success' | 'warning' | 'engine';
-  data?: any;
+  data?: unknown;
 }
 
 type EngineStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error' | 'test_sending';
 
 const Eli5EngineControlView: React.FC = () => {
-  const [engineStatus, setEngineStatus] = useState<EngineStatus>('idle');
-  const [marketRegions, setMarketRegions] = useState<MarketRegion[]>([]);
   const [selectedMarketRegion, setSelectedMarketRegion] = useState<string>('');
+  const [marketRegions, setMarketRegions] = useState<MarketRegion[]>([]);
   const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>([]);
+  const [engineStatus, setEngineStatus] = useState<EngineStatus>('idle');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isDryRun, setIsDryRun] = useState<boolean>(false);
-  const consoleEndRef = useRef<null | HTMLDivElement>(null);
+  const [error, setError] = useState<string>('');
+  const [limitPerRun, setLimitPerRun] = useState<number>(10);
+  const [minIntervalSeconds, setMinIntervalSeconds] = useState<number>(60);
   const [availableSenders, setAvailableSenders] = useState<Array<{id: string, name: string, email: string}>>([]);
   const [selectedSenderIds, setSelectedSenderIds] = useState<string[]>([]);
-  const [minIntervalSeconds, setMinIntervalSeconds] = useState<number>(100);
   const [maxIntervalSeconds, setMaxIntervalSeconds] = useState<number>(1000);
-  const [limitPerRun, setLimitPerRun] = useState<number>(10);
+  const consoleEndRef = useRef<null | HTMLDivElement>(null);
 
   // Define addLog first since it's used in the effects
-  const addLog = useCallback((message: string, type: LogEntry['type'] = 'info', data?: any) => {
-    const newLog: LogEntry = {
-      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+  const addLog = useCallback((message: string, type: LogEntry['type'] = 'info', data?: unknown): void => {
+    const logEntry: LogEntry = {
+      id: Date.now().toString(),
       timestamp: new Date().toISOString(),
       message,
       type,
-      data,
+      data
     };
-    setConsoleLogs(prevLogs => [newLog, ...prevLogs.slice(0, 199)]);
+    
+    setConsoleLogs(prevLogs => [...prevLogs, logEntry]);
+    
+    // Auto-scroll to bottom
+    setTimeout(() => {
+      if (consoleEndRef.current) {
+        consoleEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 100);
   }, []);
 
   // Set up real-time subscription to eli5_email_log
@@ -86,9 +93,10 @@ const Eli5EngineControlView: React.FC = () => {
         .subscribe();
 
       // Handle potential subscription errors
-      channel?.on('error', (err) => {
-        console.error('Error in logs channel:', err);
-        addLog(`Error in logs channel: ${err.message}`, 'error');
+      channel?.on('error', (event: Event) => {
+        const error = event instanceof Error ? event : new Error('Unknown error in logs channel');
+        console.error('Error in logs channel:', error);
+        addLog(`Error in logs channel: ${error.message}`, 'error');
       });
     } catch (err) {
       const error = err as Error;
@@ -165,125 +173,139 @@ const Eli5EngineControlView: React.FC = () => {
   }, [selectedMarketRegion, addLog]);
 
   // Update the handleSendTestEmail function to use selectedMarketRegion
-  const handleSendTestEmail = async () => {
-    if (!selectedMarketRegion) {
-      const msg = 'Please select a market region first.';
-      addLog(msg, 'warning');
-      setError(msg);
-      return;
-    }
-
-    addLog('Sending test email...', 'info');
-    setIsLoading(true);
-    setEngineStatus('test_sending');
-    setError(null);
-
-    try {
-      const response = await fetch('/api/eli5-engine/test-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          market_region: selectedMarketRegion
-        })
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || `API request failed with status ${response.status}`);
+  const handleSendTestEmail = () => {
+    // Wrap the async function to avoid returning a promise to the onClick handler
+    void (async () => {
+      if (!selectedMarketRegion) {
+        setError('Please select a market region first');
+        return;
       }
 
-      if (result.success) {
-        addLog(`Test email sent successfully: ${result.message}`, 'success');
-      } else {
-        throw new Error(result.error || 'Test email failed');
-      }
-    } catch (err: any) {
-      const errorMessage = `Error sending test email: ${err.message}`;
-      addLog(errorMessage, 'error');
-      setError(errorMessage);
-      setEngineStatus('error');
-    } finally {
-      setIsLoading(false);
-      if (engineStatus !== 'error') {
+      setEngineStatus('test_sending');
+      setError('');
+      addLog(`Sending test email for market region: ${selectedMarketRegion}...`, 'info');
+
+      try {
+        const response = await fetch('/api/eli5-engine/test-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            marketRegion: selectedMarketRegion,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || `API request failed with status ${response.status}`);
+        }
+
+        if (result.success) {
+          addLog(`Test email sent successfully for market region: ${selectedMarketRegion}`, 'success');
+        } else {
+          throw new Error(result.error || 'Failed to send test email');
+        }
+      } catch (err: unknown) {
+        const errorMessage = `Error sending test email: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        addLog(errorMessage, 'error');
+        setError(errorMessage);
+      } finally {
         setEngineStatus('idle');
       }
-    }
+    })();
   };
 
   // Update the handleStartEngine function to use selectedMarketRegion
-  const handleStartEngine = async () => {
-    if (!selectedMarketRegion) {
-      const msg = 'Please select a market region.';
-      addLog(msg, 'warning');
-      setError(msg);
-      return;
-    }
-
-    addLog(`Initiating ELI5 Engine start sequence for market region: ${selectedMarketRegion}...`, 'engine');
-    setIsLoading(true);
-    setEngineStatus('starting');
-    setError(null);
-
-    try {
-      const response = await fetch('/api/eli5-engine/start-campaign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          market_region: selectedMarketRegion,
-          selected_sender_ids: selectedSenderIds,
-          min_interval_seconds: minIntervalSeconds,
-          max_interval_seconds: maxIntervalSeconds,
-          limit_per_run: limitPerRun,
-          dry_run: isDryRun,
-          campaign_id: "default_campaign_id", // Placeholder
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || `API request failed with status ${response.status}`);
+  const handleStartEngine = (): void => {
+    const startEngine = async (): Promise<void> => {
+      if (!selectedMarketRegion) {
+        setError('Please select a market region first');
+        return;
       }
 
-      if (result.success) {
-        addLog(`ELI5 Engine started successfully for market region: ${selectedMarketRegion}. Campaign ID: ${result.campaignId}`, 'success');
-        setEngineStatus('running');
-      } else {
-        throw new Error(result.error || 'Failed to start ELI5 Engine');
+      setEngineStatus('starting');
+      setError('');
+      addLog(`Starting ELI5 Engine for market region: ${selectedMarketRegion}...`, 'engine');
+      setIsLoading(true);
+
+      try {
+        const response = await fetch('/api/eli5-engine/start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            marketRegion: selectedMarketRegion,
+            limitPerRun,
+            minIntervalSeconds,
+            maxIntervalSeconds,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || `API request failed with status ${response.status}`);
+        }
+
+        if (result.success) {
+          addLog(`ELI5 Engine started successfully for market region: ${selectedMarketRegion}`, 'success');
+          setEngineStatus('running');
+        } else {
+          throw new Error(result.error || 'Failed to start ELI5 Engine');
+        }
+      } catch (err: unknown) {
+        const errorMessage = `Error starting ELI5 Engine: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        addLog(errorMessage, 'error');
+        setError(errorMessage);
+        setEngineStatus('error');
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err: any) {
-      const errorMessage = `Error starting ELI5 Engine: ${err.message}`;
-      addLog(errorMessage, 'error');
-      setError(errorMessage);
-      setEngineStatus('error');
-    } finally {
-      setIsLoading(false);
-      // Do not reset to 'idle' immediately if it started successfully or if there was an error.
-      // The status should remain 'running' or 'error' until explicitly stopped or resolved.
-      if (engineStatus === 'starting' && !error) {
-        // If it was 'starting' and no error occurred, it should now be 'running'
-        // (set in the try block). If an error occurred, it's 'error'.
-      } else if (engineStatus === 'starting' && error) {
-        // If an error occurred during starting, it's already 'error'.
-      }
-    }
+    };
+    
+    void startEngine();
   };
 
-  // Dummy handleStopEngine function to be implemented later
-  const handleStopEngine = async () => {
-    addLog('Stop engine functionality not implemented yet.', 'warning');
-    // Placeholder for future implementation
-    // setEngineStatus('stopping');
-    // setIsLoading(true);
-    // try {
-    //   // API call to stop the engine
-    //   setEngineStatus('stopped');
-    //   addLog('Engine stopped.', 'info');
-    // } catch (err) {
-    //   addLog('Error stopping engine.', 'error');
-    //   setEngineStatus('error'); // Or back to 'running' if stop failed
-    // } finally {
+  const handleStopEngine = () => {
+    const stopEngine = async () => {
+      setEngineStatus('stopping');
+      setError('');
+      addLog('Stopping ELI5 Engine...', 'engine');
+      setIsLoading(true);
+
+      try {
+        const response = await fetch('/api/eli5-engine/stop', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || `API request failed with status ${response.status}`);
+        }
+
+        if (result.success) {
+          addLog('ELI5 Engine stopped successfully', 'success');
+          setEngineStatus('stopped');
+        } else {
+          throw new Error(result.error || 'Failed to stop ELI5 Engine');
+        }
+      } catch (err: unknown) {
+        const errorMessage = `Error stopping ELI5 Engine: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        addLog(errorMessage, 'error');
+        setError(errorMessage);
+        setEngineStatus('error');
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  };
     //   setIsLoading(false);
     // }
   };
@@ -388,10 +410,12 @@ const Eli5EngineControlView: React.FC = () => {
       <h1 className="text-2xl font-bold mb-6">ELI5 Engine Control Panel</h1>
       
       {error && (
-        <Alert status="error" className="mb-4">
-          <Alert.Icon><AlertTriangle /></Alert.Icon>
-          {error}
-        </Alert>
+        <div className="alert alert-error mb-4">
+          <div className="flex items-center">
+            {renderAlertIcon('error')}
+            <span>{error}</span>
+          </div>
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -471,20 +495,34 @@ const Eli5EngineControlView: React.FC = () => {
     </div>
   );
 };
-
 // Helper function to get log color based on type
 const getLogColor = (type: LogEntry['type']) => {
   switch (type) {
     case 'error':
-      return 'text-error';
+      return 'text-red-500';
     case 'success':
-      return 'text-success';
+      return 'text-green-500';
     case 'warning':
-      return 'text-warning';
+      return 'text-yellow-500';
     case 'engine':
-      return 'text-primary';
+      return 'text-blue-500';
     default:
       return 'text-base-content';
+  }
+};
+
+// Helper function to render alert icon
+const renderAlertIcon = (status: 'info' | 'error' | 'success' | 'warning' | undefined) => {
+  switch (status) {
+    case 'error':
+      return <AlertTriangle className="h-5 w-5" />;
+    case 'success':
+      return <CheckCircle className="h-5 w-5" />;
+    case 'warning':
+      return <AlertTriangle className="h-5 w-5" />;
+    case 'info':
+    default:
+      return <Info className="h-5 w-5" />;
   }
 };
 
