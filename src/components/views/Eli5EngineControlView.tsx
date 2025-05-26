@@ -181,29 +181,38 @@ const Eli5EngineControlView: React.FC = () => {
     }
   };
 
-  // Dummy handleStopEngine function to be implemented later
+  // Make stop engine operable
   const handleStopEngine = async () => {
-    addLog('Stop engine functionality not implemented yet.', 'warning');
-    // Placeholder for future implementation
-    // setEngineStatus('stopping');
-    // setIsLoading(true);
-    // try {
-    //   // API call to stop the engine
-    //   setEngineStatus('stopped');
-    //   addLog('Engine stopped.', 'info');
-    // } catch (err) {
-    //   addLog('Error stopping engine.', 'error');
-    //   setEngineStatus('error'); // Or back to 'running' if stop failed
-    // } finally {
-    //   setIsLoading(false);
-    // }
+    setIsLoading(true);
+    setEngineStatus('stopping');
+    setError(null);
+    try {
+      const response = await fetch('/api/eli5-engine/stop-campaign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || `API request failed with status ${response.status}`);
+      }
+      if (result.success) {
+        addLog('Campaign stop signal sent. Engine will halt new campaign batches.', 'success');
+        setEngineStatus('stopped');
+      } else {
+        throw new Error(result.error || 'Failed to stop campaign');
+      }
+    } catch (err: any) {
+      const errorMessage = `Error stopping campaign: ${err.message}`;
+      addLog(errorMessage, 'error');
+      setError(errorMessage);
+      setEngineStatus('error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <>
-      <div style={{ background: 'yellow', color: 'black', zIndex: 9999, position: 'fixed', top: 0, left: 0 }}>
-        TEST: If you see this, React is rendering!
-      </div>
       <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-6">ELI5 Engine Control Panel</h1>
       
@@ -234,6 +243,120 @@ const Eli5EngineControlView: React.FC = () => {
               </option>
             ))}
           </Select>
+        </div>
+
+        {/* Senders Table */}
+        <div className="form-control w-full">
+          <label className="label">
+            <span className="label-text flex items-center">
+              <Mail size={16} className="mr-1" /> Select Email Senders
+            </span>
+          </label>
+          <div className="overflow-x-auto rounded-lg border border-base-300 bg-base-100">
+            <table className="table table-zebra table-sm w-full">
+              <thead>
+                <tr>
+                  <th className="w-10">Select</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                </tr>
+              </thead>
+              <tbody>
+                {availableSenders.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="text-center text-base-content/50 italic">No senders available.</td>
+                  </tr>
+                ) : (
+                  availableSenders.map(sender => (
+                    <tr key={sender.id} className={selectedSenderIds.includes(sender.id) ? 'bg-primary/10' : ''}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          className="checkbox checkbox-primary"
+                          checked={selectedSenderIds.includes(sender.id)}
+                          onChange={e => {
+                            setSelectedSenderIds(prev =>
+                              e.target.checked
+                                ? [...prev, sender.id]
+                                : prev.filter(id => id !== sender.id)
+                            );
+                          }}
+                          disabled={isLoading || engineStatus === 'running'}
+                        />
+                      </td>
+                      <td>{sender.name}</td>
+                      <td>{sender.email}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex gap-2 mt-2">
+            <button
+              type="button"
+              className="btn btn-xs btn-outline"
+              onClick={() => setSelectedSenderIds(availableSenders.map(s => s.id))}
+              disabled={availableSenders.length === 0}
+            >
+              Select All
+            </button>
+            <button
+              type="button"
+              className="btn btn-xs btn-outline"
+              onClick={() => setSelectedSenderIds([])}
+              disabled={availableSenders.length === 0}
+            >
+              Deselect All
+            </button>
+          </div>
+        </div>
+
+        {/* Interval Sliders */}
+        <div className="flex flex-col md:flex-row gap-6 mb-6">
+          <div className="form-control w-full">
+            <label className="label">
+              <span className="label-text">Min Interval (seconds): <span className="font-mono">{minIntervalSeconds}</span></span>
+            </label>
+            <input
+              type="range"
+              min={10}
+              max={maxIntervalSeconds}
+              step={1}
+              value={minIntervalSeconds}
+              onChange={e => setMinIntervalSeconds(Number(e.target.value))}
+              className="range range-primary"
+            />
+          </div>
+          <div className="form-control w-full">
+            <label className="label">
+              <span className="label-text">Max Interval (seconds): <span className="font-mono">{maxIntervalSeconds}</span></span>
+            </label>
+            <input
+              type="range"
+              min={minIntervalSeconds}
+              max={3600}
+              step={1}
+              value={maxIntervalSeconds}
+              onChange={e => setMaxIntervalSeconds(Number(e.target.value))}
+              className="range range-secondary"
+            />
+          </div>
+        </div>
+        {/* Limit Per Run Slider */}
+        <div className="form-control w-full mb-6">
+          <label className="label">
+            <span className="label-text">Leads Per Run: <span className="font-mono">{limitPerRun}</span></span>
+          </label>
+          <input
+            type="range"
+            min={0}
+            max={150}
+            step={1}
+            value={limitPerRun}
+            onChange={e => setLimitPerRun(Number(e.target.value))}
+            className="range range-accent"
+          />
         </div>
 
         <div className="flex items-end gap-2">
