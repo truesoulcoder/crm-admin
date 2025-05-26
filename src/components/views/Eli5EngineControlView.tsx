@@ -122,30 +122,6 @@ const Eli5EngineControlView: React.FC = () => {
     }
   };
 
-  // Update the JSX to use Select component for market regions
-  // Replace the existing market region input with this:
-  <div className="form-control w-full sm:w-auto mt-3 sm:mt-0">
-    <label className="label" htmlFor="marketRegionSelect">
-      <span className="label-text flex items-center">
-        <MapPin size={16} className="mr-1" /> Market Region
-      </span>
-    </label>
-    <Select
-      id="marketRegionSelect"
-      value={selectedMarketRegion}
-      onChange={(e) => setSelectedMarketRegion(e.target.value)}
-      className="select select-bordered w-full"
-      disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running')}
-    >
-      <option value="">Select a market region</option>
-      {marketRegions.map((region) => (
-        <option key={region.id} value={region.name}>
-          {region.name} {region.lead_count ? `(${region.lead_count})` : ''}
-        </option>
-      ))}
-    </Select>
-  </div>
-
   // Update the handleStartEngine function to use selectedMarketRegion
   const handleStartEngine = async () => {
     if (!selectedMarketRegion) {
@@ -159,6 +135,110 @@ const Eli5EngineControlView: React.FC = () => {
     // ... rest of the handleStartEngine function remains the same
     // Just make sure to use selectedMarketRegion instead of marketRegion in the API call
   };
+
+  return (
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-6">ELI5 Engine Control Panel</h1>
+      
+      {error && (
+        <Alert status="error" className="mb-4">
+          <Alert.Icon><AlertTriangle /></Alert.Icon>
+          {error}
+        </Alert>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="form-control w-full">
+          <label className="label" htmlFor="marketRegionSelect">
+            <span className="label-text flex items-center">
+              <MapPin size={16} className="mr-1" /> Market Region
+            </span>
+          </label>
+          <Select
+            id="marketRegionSelect"
+            value={selectedMarketRegion}
+            onChange={(e) => setSelectedMarketRegion(e.target.value)}
+            className="select select-bordered w-full"
+            disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running')}
+          >
+            <option value="">Select a market region</option>
+            {marketRegions.map((region) => (
+              <option key={region.id} value={region.name}>
+                {region.name} {region.lead_count ? `(${region.lead_count})` : ''}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="flex items-end gap-2">
+          <Button 
+            color="primary" 
+            startIcon={<PlayCircle />}
+            loading={engineStatus === 'starting' || engineStatus === 'running'}
+            onClick={handleStartEngine}
+            disabled={isLoading || !selectedMarketRegion}
+          >
+            {engineStatus === 'running' ? 'Running...' : 'Start Engine'}
+          </Button>
+          
+          <Button 
+            color="error" 
+            startIcon={<StopCircle />}
+            loading={engineStatus === 'stopping'}
+            onClick={handleStopEngine}
+            disabled={!['running', 'starting'].includes(engineStatus)}
+          >
+            Stop Engine
+          </Button>
+          
+          <Button 
+            color="secondary" 
+            startIcon={<Mail />}
+            loading={engineStatus === 'test_sending'}
+            onClick={handleSendTestEmail}
+            disabled={isLoading || !selectedMarketRegion}
+          >
+            Send Test Email
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <h2 className="text-xl font-semibold mb-2">Console Logs</h2>
+        <div className="bg-base-200 p-4 rounded-lg h-96 overflow-y-auto">
+          {consoleLogs.length === 0 ? (
+            <div className="text-base-content/50 italic">No logs yet. Start the engine to see activity.</div>
+          ) : (
+            <div className="space-y-2">
+              {consoleLogs.map((log) => (
+                <div key={log.id} className={`text-sm font-mono ${getLogColor(log.type)}`}>
+                  <span className="opacity-70">[{new Date(log.timestamp).toLocaleTimeString()}] </span>
+                  {log.message}
+                </div>
+              ))}
+              <div ref={consoleEndRef} />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Helper function to get log color based on type
+const getLogColor = (type: LogEntry['type']) => {
+  switch (type) {
+    case 'error':
+      return 'text-error';
+    case 'success':
+      return 'text-success';
+    case 'warning':
+      return 'text-warning';
+    case 'engine':
+      return 'text-primary';
+    default:
+      return 'text-base-content';
+  }
 };
 
 export default Eli5EngineControlView;
