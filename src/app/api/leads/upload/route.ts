@@ -398,30 +398,70 @@ if (rpcError) {
 console.log('API: Normalization successful.');
 
 // ---------- 4. CREATE FINE-CUT LEADS TABLE ----------
-console.log(`API: Creating fine-cut leads for market: ${marketRegion}, user: ${userId}`);
-const { error: fineCutTableError } = await supabaseAdmin.rpc('create_fine_cut_leads_for_market', {
+console.log(`API: Creating fine-cut leads for market: ${marketRegion}, user: ${userId}, file: ${originalFileName}`);
+console.log('About to call create_fine_cut_leads_for_market with:', {
   p_market_region_raw_name: marketRegion,
   p_user_id: userId,
   p_file_name: originalFileName
 });
 
+const { data: fineCutData, error: fineCutTableError } = await supabaseAdmin.rpc('create_fine_cut_leads_for_market', {
+  p_market_region_raw_name: marketRegion,
+  p_user_id: userId,
+  p_file_name: originalFileName
+});
+
+console.log('RPC create_fine_cut_leads_for_market response:', { data: fineCutData, error: fineCutTableError });
+
 if (fineCutTableError) {
-  console.error(`RPC create_fine_cut_leads_for_market failed for ${marketRegion}:`, fineCutTableError);
-  if (objectPath) await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+  console.error(`RPC call to create_fine_cut_leads_for_market failed for ${marketRegion}:`, fineCutTableError);
+  if (objectPath) {
+    console.log(`Attempting to cleanup storage file ${objectPath} due to fine-cut leads RPC error...`);
+    await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+  }
   return NextResponse.json({ 
     ok: false, 
-    error: `Failed to create fine-cut leads for '${marketRegion}'.`, 
+    error: `RPC error when creating fine-cut leads for '${marketRegion}'.`, 
     details: fineCutTableError.message 
   }, { status: 500 });
 }
 
-console.log(`API: Fine-cut leads table created/populated for ${marketRegion}.`);
+if (fineCutData && fineCutData.success === false) {
+  console.error(`Fine-cut leads creation function reported failure for ${marketRegion}:`, fineCutData.error);
+  if (objectPath) {
+    console.log(`Attempting to cleanup storage file ${objectPath} due to fine-cut leads function failure...`);
+    await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+  }
+  return NextResponse.json({
+    ok: false,
+    error: `Fine-cut leads creation failed for '${marketRegion}': ${fineCutData.error || 'Unknown error from function.'}`,
+    details: fineCutData
+  }, { status: 500 });
+}
+
+if (!fineCutData || typeof fineCutData.success !== 'boolean') {
+    console.error(`API: Fine-cut leads table operation for ${marketRegion} returned unexpected data or no data. Response:`, fineCutData);
+    if (objectPath) {
+        console.log(`Attempting to cleanup storage file ${objectPath} due to unexpected fine-cut leads response...`);
+        await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+    }
+    return NextResponse.json({
+        ok: false,
+        error: `Unexpected response from fine-cut leads creation for '${marketRegion}'.`,
+        details: fineCutData
+    }, { status: 500 });
+}
+
+console.log(`API: Fine-cut leads operation successful for ${marketRegion}. Function response:`, fineCutData);
+
+const fineCutLeadCount = (fineCutData && fineCutData.record_count !== undefined) ? fineCutData.record_count : 0;
 
 return NextResponse.json({
   ok: true,
-  message: `Successfully processed ${allInsertedData.length} leads from ${originalFileName}. Fine-cut leads created.`,
-  lead_count: allInsertedData.length,
-  details: { count: allInsertedData.length }
+  message: `Successfully processed ${allInsertedData.length} leads from ${originalFileName}. Fine-cut leads operation completed. Processed ${fineCutLeadCount} fine-cut leads for market '${marketRegion}'.`,
+  staged_lead_count: allInsertedData.length,
+  fine_cut_lead_count: fineCutLeadCount,
+  fine_cut_details: fineCutData 
 });
       // --- END MAIN PROCESSING LOGIC ---
 
