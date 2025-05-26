@@ -114,7 +114,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 2. Fetch Sample Lead (Dynamically)
     let fetchedLeadData: any = null;
     let leadFetchError: any = null; 
-    let leadSourceTable: string = 'senders';
+    let leadSourceTable: string = '';
 
     if (!market_region) {
       console.warn('TEST_EMAIL_HANDLER: Market region not provided in the request.');
@@ -127,6 +127,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     console.log(`TEST_EMAIL_HANDLER: Market region provided: ${market_region}. Fetching normalized name.`);
+    
+    // First, get the normalized name for the market region
     const { data: regionData, error: regionFetchDbError } = await supabase
       .from('market_regions')
       .select('normalized_name')
@@ -150,7 +152,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     
-    leadSourceTable = `${regionData.normalized_name}_fine_cut_leads`;
+    // Construct the table name by combining normalized_name with _fine_cut_leads suffix
+    leadSourceTable = `${regionData.normalized_name.toLowerCase()}_fine_cut_leads`;
+    console.log(`TEST_EMAIL_HANDLER: Constructed lead source table name: ${leadSourceTable}`);
     console.log(`TEST_EMAIL_HANDLER: Attempting to fetch lead from dynamic table: ${leadSourceTable}`);
 
     try {
