@@ -114,7 +114,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 2. Fetch Sample Lead (Dynamically)
     let fetchedLeadData: any = null;
     let leadFetchError: any = null; 
-    let leadSourceTable: string = '';
+    let leadSourceTable: string = 'senders';
 
     if (!market_region) {
       console.warn('TEST_EMAIL_HANDLER: Market region not provided in the request.');

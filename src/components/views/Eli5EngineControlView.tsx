@@ -32,11 +32,62 @@ const Eli5EngineControlView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isDryRun, setIsDryRun] = useState<boolean>(false);
   const consoleEndRef = useRef<null | HTMLDivElement>(null);
-  const [availableSenders] = useState<Array<{id: string, name: string, email: string}>>([]);
+  const [availableSenders, setAvailableSenders] = useState<EmailSender[]>([]);
   const [selectedSenderIds, setSelectedSenderIds] = useState<string[]>([]);
   const [minIntervalSeconds, setMinIntervalSeconds] = useState<number>(100);
   const [maxIntervalSeconds, setMaxIntervalSeconds] = useState<number>(1000);
   const [limitPerRun, setLimitPerRun] = useState<number>(10);
+
+  // Add log entry helper function
+  const addLog = useCallback((message: string, type: LogEntry['type'], data?: unknown) => {
+    const newLog: LogEntry = {
+      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+      timestamp: new Date().toISOString(),
+      message,
+      type,
+      data,
+    };
+    setConsoleLogs(prevLogs => [newLog, ...prevLogs.slice(0, 199)]);
+  }, []);
+
+  // Fetch senders from Supabase
+  const fetchSenders = useCallback(async (): Promise<EmailSender[]> => {
+    try {
+      const { data, error } = await supabase
+        .from('senders')
+        .select('*')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      
+      const senders = data || [];
+      setAvailableSenders(senders);
+      
+      // If we have senders, select all by default
+      if (senders.length > 0) {
+        setSelectedSenderIds(senders.map(sender => sender.id));
+      }
+      
+      return senders;
+    } catch (err) {
+      console.error('Error fetching senders:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      addLog(`Failed to fetch senders: ${errorMessage}`, 'error');
+      return [];
+    }
+  }, [addLog]);
+
+  // Fetch senders on component mount
+  useEffect(() => {
+    void (async () => {
+      try {
+        await fetchSenders();
+      } catch (error) {
+        console.error('Error in fetchSenders effect:', error);
+        addLog('Failed to load senders', 'error');
+      }
+    })();
+  }, [fetchSenders]);
 
   // Fetch market regions on component mount
   useEffect(() => {
@@ -65,16 +116,7 @@ const Eli5EngineControlView: React.FC = () => {
     void fetchMarketRegions();
   }, []);
 
-  const addLog = useCallback((message: string, type: LogEntry['type'], data?: any) => {
-    const newLog: LogEntry = {
-      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-      timestamp: new Date().toISOString(),
-      message,
-      type,
-      data,
-    };
-    setConsoleLogs(prevLogs => [newLog, ...prevLogs.slice(0, 199)]);
-  }, []);
+
 
   // Update the handleSendTestEmail function to use selectedMarketRegion
   const handleSendTestEmail = async () => {
