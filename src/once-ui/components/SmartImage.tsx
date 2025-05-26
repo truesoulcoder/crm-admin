@@ -149,7 +149,7 @@ const SmartImage: React.FC<SmartImageProps> = ({
             style={{
               width: "100%",
               height: "100%",
-              objectFit: objectFit,
+              objectFit,
             }}
           />
         )}
@@ -162,7 +162,7 @@ const SmartImage: React.FC<SmartImageProps> = ({
             allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
             style={{
-              objectFit: objectFit,
+              objectFit,
             }}
           />
         )}
@@ -175,7 +175,7 @@ const SmartImage: React.FC<SmartImageProps> = ({
             unoptimized={unoptimized}
             fill={fill}
             style={{
-              objectFit: objectFit,
+              objectFit,
             }}
           />
         )}

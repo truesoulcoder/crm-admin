@@ -1,6 +1,7 @@
 "use client";
 import classNames from 'classnames';
 import React, { forwardRef, ComponentProps } from 'react';
+
 import { Flex } from "./Flex";
 import styles from "./Skeleton.module.scss";
 
@@ -25,9 +26,9 @@ const Skeleton: React.FC<SkeletonProps> = forwardRef<HTMLDivElement, SkeletonPro
         className={classNames(
           styles.skeleton,
           styles[shape],
-          width && styles["w-" + width],
-          height && styles["h-" + height],
-          delay && styles["delay-" + delay],
+          width && styles[`w-${  width}`],
+          height && styles[`h-${  height}`],
+          delay && styles[`delay-${  delay}`],
           className,
         )}
       />

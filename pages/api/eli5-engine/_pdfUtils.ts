@@ -1,7 +1,8 @@
 import fs from 'fs/promises'; // For reading template files and font
 import path from 'path';
-import { PDFDocument, StandardFonts, rgb, PageSizes } from 'pdf-lib'; // Ensure imports at top
+
 import fontkit from '@pdf-lib/fontkit'; // Added fontkit import
+import { PDFDocument, StandardFonts, rgb, PageSizes } from 'pdf-lib'; // Ensure imports at top
 
 // Define paths (ensure these are correct for your serverless environment)
 const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
@@ -28,7 +29,7 @@ function drawWrappedText(
     let currentY = y;
 
     for (const word of words) {
-        let testLine = currentLine === '' ? word : currentLine + ' ' + word;
+        const testLine = currentLine === '' ? word : `${currentLine  } ${  word}`;
         const testLineWidth = font.widthOfTextAtSize(testLine, fontSize);
 
         if (testLineWidth <= maxWidth) {
@@ -38,11 +39,11 @@ function drawWrappedText(
             if (currentLine !== '') { // Avoid drawing empty lines if a single word is too long initially
                 console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line: "${currentLine}"`);
                 page.drawText(currentLine, {
-                    x: x,
+                    x,
                     y: currentY,
-                    font: font,
+                    font,
                     size: fontSize,
-                    color: color,
+                    color,
                 });
                 currentY -= lineHeight; // Move Y for the next line
             }
@@ -56,11 +57,11 @@ function drawWrappedText(
             if (currentWordWidth > maxWidth) {
                 console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line (single word > maxWidth): "${currentLine}"`);
                 page.drawText(currentLine, { // Draw the long word on its own line
-                    x: x,
+                    x,
                     y: currentY,
-                    font: font,
+                    font,
                     size: fontSize,
-                    color: color,
+                    color,
                 });
                 currentY -= lineHeight;
                 currentLine = ''; // Reset currentLine as the long word has been drawn
@@ -72,11 +73,11 @@ function drawWrappedText(
     if (currentLine !== '') {
         console.log(`DEBUG_WRAP: Drawing line at Y: ${currentY}, Line (final): "${currentLine}"`);
         page.drawText(currentLine, {
-            x: x,
+            x,
             y: currentY,
-            font: font,
+            font,
             size: fontSize,
-            color: color,
+            color,
         });
         currentY -= lineHeight; // Decrement Y for consistency, returning position for *next* element.
     }

@@ -5,8 +5,9 @@ import React, { forwardRef, ComponentProps } from 'react';
 
 import './Card.module.scss';
 
-import { Flex } from ".";
 import { ElementType } from "./ElementType";
+
+import { Flex } from ".";
 
 interface CardProps extends ComponentProps<typeof Flex> {
   children?: React.ReactNode;

@@ -334,7 +334,7 @@ export async function POST(request: NextRequest) {
                     // To fully align with the "NO LONGER NEEDED here" instruction,
                     // we will remove them. If these are truly needed,
                     // they should be part of a more robust header mapping strategy.
-                    let finalKey = key;
+                    const finalKey = key;
                     // Example of how specific post-processing could be applied IF NECESSARY,
                     // but the goal is that `finalHeaders` from `processFileInChunks` is definitive.
                     // According to instructions, specific remapping is no longer needed here.
@@ -561,8 +561,8 @@ return NextResponse.json({
       }
     }
 
-    let errorMessage = 'An unexpected error occurred during chunk processing.';
-    let errorDetails = error.message || 'No additional details available.';
+    const errorMessage = 'An unexpected error occurred during chunk processing.';
+    const errorDetails = error.message || 'No additional details available.';
     // Error specific messages can be added here if needed
     
     return NextResponse.json(

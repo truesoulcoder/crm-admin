@@ -1,12 +1,14 @@
 // External dependencies
-import { Lead, prepareAndSendOfferEmail, SenderInfo } from '@/actions/emailSending.action';
 // Internal dependencies
 import { getAdminSupabaseClient } from '@/services/supabaseAdminService';
-import { Tables, TablesInsert, Database } from '@/types/supabase';
+
 
 // Local services
 import { logSystemEvent } from './logService';
 import { generatePdfFromHtml } from './pdfService';
+
+import { Lead, prepareAndSendOfferEmail, SenderInfo } from '@/actions/emailSending.action';
+import { Tables, TablesInsert, Database } from '@/types/supabase';
 
 // Simple template rendering function with proper type safety
 const renderTemplate = (template: string, data: Record<string, unknown>): string => {
