@@ -220,7 +220,7 @@ const Eli5EngineControlView: React.FC = () => {
           <Select
             id="marketRegionSelect"
             value={selectedMarketRegion}
-            onChange={(e) => setSelectedMarketRegion(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMarketRegion(e.target.value)}
             className="select select-bordered w-full"
             disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running')}
           >
