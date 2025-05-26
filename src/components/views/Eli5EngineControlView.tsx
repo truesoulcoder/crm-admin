@@ -200,12 +200,15 @@ const Eli5EngineControlView: React.FC = () => {
   };
 
   return (
-    <div className="container mx-auto p-4">
+    <>
+      <div style={{ background: 'yellow', color: 'black', zIndex: 9999, position: 'fixed', top: 0, left: 0 }}>
+        TEST: If you see this, React is rendering!
+      </div>
+      <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-6">ELI5 Engine Control Panel</h1>
       
       {error && (
-        <Alert status="error" className="mb-4">
-          <Alert.Icon><AlertTriangle /></Alert.Icon>
+        <Alert status="error" className="mb-4" icon={<AlertTriangle />}>
           {error}
         </Alert>
       )}
@@ -238,7 +241,7 @@ const Eli5EngineControlView: React.FC = () => {
             color="primary" 
             startIcon={<PlayCircle />}
             loading={engineStatus === 'starting' || engineStatus === 'running'}
-            onClick={handleStartEngine}
+            onClick={() => { handleStartEngine().catch(console.error); }}
             disabled={isLoading || !selectedMarketRegion}
           >
             {engineStatus === 'running' ? 'Running...' : 'Start Engine'}
@@ -248,7 +251,7 @@ const Eli5EngineControlView: React.FC = () => {
             color="error" 
             startIcon={<StopCircle />}
             loading={engineStatus === 'stopping'}
-            onClick={handleStopEngine}
+            onClick={() => { handleStopEngine().catch(console.error); }}
             disabled={!['running', 'starting'].includes(engineStatus)}
           >
             Stop Engine
@@ -258,7 +261,7 @@ const Eli5EngineControlView: React.FC = () => {
             color="secondary" 
             startIcon={<Mail />}
             loading={engineStatus === 'test_sending'}
-            onClick={handleSendTestEmail}
+            onClick={() => { handleSendTestEmail().catch(console.error); }}
             disabled={isLoading || !selectedMarketRegion}
           >
             Send Test Email
@@ -285,6 +288,7 @@ const Eli5EngineControlView: React.FC = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 
