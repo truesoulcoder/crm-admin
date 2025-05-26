@@ -149,17 +149,19 @@ export function Background({
   };
 
   return (
-    <div ref={containerRef} className={className} style={containerStyle}>
-      <canvas
-        ref={canvasRef}
-        style={{
-          display: 'block',
-          width: '100%',
-          height: '100%',
-        }}
-      />
+    <>
+      <div ref={containerRef} className={className} style={containerStyle}>
+        <canvas
+          ref={canvasRef}
+          style={{
+            display: 'block',
+            width: '100%',
+            height: '100%',
+          }}
+        />
+      </div>
       {children}
-    </div>
+    </>
   );
 }
 
