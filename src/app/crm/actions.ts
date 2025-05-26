@@ -26,7 +26,7 @@ export async function createCrmLeadAction(newLeadData: Partial<Omit<CrmLead, 'id
   try {
     const { data, error } = await supabase
       .from('crm_leads')
-      .insert([newLeadData]) // Supabase expects an array for insert
+      .insert([newLeadData as Omit<CrmLead, 'id' | 'created_at' | 'updated_at'>]) // Supabase expects an array for insert
       .select()
       .single(); // Expecting a single record back
 
