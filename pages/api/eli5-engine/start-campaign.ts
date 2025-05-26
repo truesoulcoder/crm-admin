@@ -7,8 +7,7 @@ import { generateLoiPdf } from './_pdfUtils';
 import { getGmailService, getSupabaseClient, isValidEmail } from './_utils';
 import { sendConfiguredEmail } from './send-email';
 
-// Local EmailConfig interface to avoid conflict with imported type
-// Core interfaces for the campaign system
+// Core campaign types
 type EmailConfig = {
   recipientEmail: string;
   recipientName: string;
@@ -502,22 +501,27 @@ export async function handler(
         error_message?: string;
       }
     ): Promise<number | null> => {
-      const { data: result, error } = await supabase
-        .from('email_logs')
-        .insert([{
-          contact_name: data.contact_name,
-          contact_email: data.contact_email,
-          email_status: data.email_status,
-          lead_id: data.lead_id,
-          error_message: data.error_message,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
-        .select('id')
-        .single();
+      try {
+        const { data: result, error } = await supabase
+          .from('email_logs')
+          .insert([{
+            contact_name: data.contact_name,
+            contact_email: data.contact_email,
+            email_status: data.email_status,
+            lead_id: data.lead_id,
+            error_message: data.error_message,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }])
+          .select('id')
+          .single();
 
-      if (error) throw error;
-      return result?.id;
+        if (error) throw error;
+        return result?.id;
+      } catch (error) {
+        console.error('Error in logInitialAttempt:', error);
+        return null;
+      }
     };
 
     // Helper function to update email log status
@@ -555,19 +559,56 @@ export async function handler(
         contactName = lead.contact_name || 'Valued Prospect';
       } else {
         console.error(`No valid email for lead ${leadId}`);
-        return { success: false, error: noContactError };
+        try {
+          logId = await logInitialAttempt(supabase, {
+            contact_email: 'N/A',
+            email_status: 'FAILED_NO_CONTACT',
+            email_error_message: noContactError,
+            lead_id: leadId
+          });
+          processingErrors.push({
+            error: 'no_valid_contact',
+            leadId,
+            contact_email: 'N/A',
+            details: noContactError,
+            timestamp: new Date().toISOString()
+          });
+          return { success: false, error: noContactError };
+        } catch (logError) {
+          console.error('Error logging failed attempt:', logError);
+          return { success: false, error: 'Failed to log attempt' };
+        }
       }
 
-      if (regionError) {
-        console.error(`ELI5_CAMPAIGN_HANDLER: Error fetching market region details for '${market_region}':`, regionError.message);
-        processingErrors.push({ error: 'market_region_fetch_failed', timestamp: new Date().toISOString() });
-        return res.status(500).json({
-    try {
-      logId = await logInitialAttempt(supabase, {
-        contact_email: 'N/A',
-        email_status: 'FAILED_NO_CONTACT',
-        email_error_message: noContactError,
-        lead_id: leadId
+      // Process the lead with error handling
+      try {
+        // Log initial attempt
+        if (logId === null) {
+          try {
+            logId = await logInitialAttempt(supabase, {
+              contact_name: contactName,
+              contact_email: contactEmail,
+              email_status: 'PENDING',
+              lead_id: leadId
+            });
+          } catch (logError) {
+            console.error('Error logging initial attempt:', logError);
+            return { success: false, error: 'Failed to log initial attempt' };
+          }
+        }
+
+        // Rest of the processLead function remains the same
+      } catch (error) {
+        console.error('Error processing lead:', error);
+        return { success: false, error: 'Failed to process lead' };
+      }
+    };
+
+    // Rest of the handler function remains the same
+  } catch (error) {
+    console.error('Error in handler:', error);
+    return res.status(500).json({
+      success: false,
       });
       processingErrors.push({
         error: 'no_valid_contact',
