@@ -160,6 +160,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [pathname, router]);
 
+  console.log('[UserProvider] isLoading:', isLoading, 'session:', session, 'user:', user, 'error:', error);
   if (isLoading && !session) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-base-100">
@@ -169,6 +170,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
+  console.log('[UserProvider] Rendering children:', { user, session, role, isLoading, error });
   return (
     <UserContext.Provider value={{ user, session, role, isLoading, error }}>
       {children}
