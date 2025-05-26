@@ -43,16 +43,18 @@ export default function RequireAuth({ children }: { children: ReactNode }) {
     // Handle redirection based on authentication status and role
     if (!user) {
       // If not logged in and not on a public path, redirect to login
-      if (!publicPaths.includes(pathname)) {
+      if (pathname && !publicPaths.includes(pathname)) {
         redirectHandledRef.current = true;
         window.location.href = '/';
       }
     } else {
       // If logged in, check role-based redirection
-      const redirectPath = getRedirectPath(role, pathname);
-      if (redirectPath) {
-        redirectHandledRef.current = true;
-        window.location.href = redirectPath;
+      if (pathname) {
+        const redirectPath = getRedirectPath(role, pathname);
+        if (redirectPath) {
+          redirectHandledRef.current = true;
+          window.location.href = redirectPath;
+        }
       }
     }
     
