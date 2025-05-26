@@ -402,13 +402,13 @@ console.log(`API: Creating fine-cut leads for market: ${marketRegion}, user: ${u
 console.log('About to call create_fine_cut_leads_for_market with:', {
   p_market_region_raw_name: marketRegion,
   p_user_id: userId,
-  p_file_name: originalFileName
+  p_original_filename: originalFileName
 });
 
 const { data: fineCutData, error: fineCutTableError } = await supabaseAdmin.rpc('create_fine_cut_leads_for_market', {
   p_market_region_raw_name: marketRegion,
   p_user_id: userId,
-  p_file_name: originalFileName
+  p_original_filename: originalFileName
 });
 
 console.log('RPC create_fine_cut_leads_for_market response:', { data: fineCutData, error: fineCutTableError });
