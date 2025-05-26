@@ -11,7 +11,6 @@ import type { JSX } from 'react';
 
 type Eli5EmailLogEntry = Database['public']['Tables']['eli5_email_log']['Row'];
 type MarketRegion = Database['public']['Tables']['market_regions']['Row'];
-type EmailSender = Database['public']['Tables']['senders']['Row'];
 
 interface LogEntry {
   id: string;
@@ -32,62 +31,11 @@ const Eli5EngineControlView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isDryRun, setIsDryRun] = useState<boolean>(false);
   const consoleEndRef = useRef<null | HTMLDivElement>(null);
-  const [availableSenders, setAvailableSenders] = useState<EmailSender[]>([]);
+  const [availableSenders, setAvailableSenders] = useState<Array<{id: string, name: string, email: string}>>([]);
   const [selectedSenderIds, setSelectedSenderIds] = useState<string[]>([]);
   const [minIntervalSeconds, setMinIntervalSeconds] = useState<number>(100);
   const [maxIntervalSeconds, setMaxIntervalSeconds] = useState<number>(1000);
   const [limitPerRun, setLimitPerRun] = useState<number>(10);
-
-  // Add log entry helper function
-  const addLog = useCallback((message: string, type: LogEntry['type'], data?: unknown) => {
-    const newLog: LogEntry = {
-      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-      timestamp: new Date().toISOString(),
-      message,
-      type,
-      data,
-    };
-    setConsoleLogs(prevLogs => [newLog, ...prevLogs.slice(0, 199)]);
-  }, []);
-
-  // Fetch senders from Supabase
-  const fetchSenders = useCallback(async (): Promise<EmailSender[]> => {
-    try {
-      const { data, error } = await supabase
-        .from('senders')
-        .select('*')
-        .order('name', { ascending: true });
-
-      if (error) throw error;
-      
-      const senders = data || [];
-      setAvailableSenders(senders);
-      
-      // If we have senders, select all by default
-      if (senders.length > 0) {
-        setSelectedSenderIds(senders.map(sender => sender.id));
-      }
-      
-      return senders;
-    } catch (err) {
-      console.error('Error fetching senders:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      addLog(`Failed to fetch senders: ${errorMessage}`, 'error');
-      return [];
-    }
-  }, [addLog]);
-
-  // Fetch senders on component mount
-  useEffect(() => {
-    void (async () => {
-      try {
-        await fetchSenders();
-      } catch (error) {
-        console.error('Error in fetchSenders effect:', error);
-        addLog('Failed to load senders', 'error');
-      }
-    })();
-  }, [fetchSenders]);
 
   // Fetch market regions on component mount
   useEffect(() => {
@@ -113,10 +61,19 @@ const Eli5EngineControlView: React.FC = () => {
       }
     };
 
-    void fetchMarketRegions();
+    fetchMarketRegions();
+  }, [addLog, selectedMarketRegion]); // Added addLog and selectedMarketRegion to dependency array
+
+  const addLog = useCallback((message: string, type: LogEntry['type'], data?: any) => {
+    const newLog: LogEntry = {
+      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+      timestamp: new Date().toISOString(),
+      message,
+      type,
+      data,
+    };
+    setConsoleLogs(prevLogs => [newLog, ...prevLogs.slice(0, 199)]);
   }, []);
-
-
 
   // Update the handleSendTestEmail function to use selectedMarketRegion
   const handleSendTestEmail = async () => {
@@ -224,43 +181,126 @@ const Eli5EngineControlView: React.FC = () => {
     }
   };
 
-  // Make stop engine operable
+  // Dummy handleStopEngine function to be implemented later
   const handleStopEngine = async () => {
-    setIsLoading(true);
-    setEngineStatus('stopping');
-    setError(null);
-    try {
-      const response = await fetch('/api/eli5-engine/stop-campaign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || `API request failed with status ${response.status}`);
-      }
-      if (result.success) {
-        addLog('Campaign stop signal sent. Engine will halt new campaign batches.', 'success');
-        setEngineStatus('stopped');
-      } else {
-        throw new Error(result.error || 'Failed to stop campaign');
-      }
-    } catch (err: any) {
-      const errorMessage = `Error stopping campaign: ${err.message}`;
-      addLog(errorMessage, 'error');
-      setError(errorMessage);
-      setEngineStatus('error');
-    } finally {
-      setIsLoading(false);
-    }
+    addLog('Stop engine functionality not implemented yet.', 'warning');
+    // Placeholder for future implementation
+    // setEngineStatus('stopping');
+    // setIsLoading(true);
+    // try {
+    //   // API call to stop the engine
+    //   setEngineStatus('stopped');
+    //   addLog('Engine stopped.', 'info');
+    // } catch (err) {
+    //   addLog('Error stopping engine.', 'error');
+    //   setEngineStatus('error'); // Or back to 'running' if stop failed
+    // } finally {
+    //   setIsLoading(false);
+    // }
   };
 
+  // return (
+  //   <div className="container mx-auto p-4">
+  //     <h1 className="text-2xl font-bold mb-6">ELI5 Engine Control Panel</h1>
+      
+  //     {error && (
+  //       <Alert status="error" className="mb-4">
+  //         <Alert.Icon><AlertTriangle /></Alert.Icon>
+  //         {error}
+  //       </Alert>
+  //     )}
+
+  //     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+  //       <div className="form-control w-full">
+  //         <label className="label" htmlFor="marketRegionSelect">
+  //           <span className="label-text flex items-center">
+  //             <MapPin size={16} className="mr-1" /> Market Region
+  //           </span>
+  //         </label>
+  //         <Select
+  //           id="marketRegionSelect"
+  //           value={selectedMarketRegion}
+  //           onChange={(e) => setSelectedMarketRegion(e.target.value)}
+  //           className="select select-bordered w-full"
+  //           disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running')}
+  //         >
+  //           <option value="">Select a market region</option>
+  //           {marketRegions.map((region) => (
+  //             <option key={region.id} value={region.name}>
+  //               {region.name} {region.lead_count ? `(${region.lead_count})` : ''}
+  //             </option>
+  //           ))}
+  //         </Select>
+  //       </div>
+
+  //       <div className="flex items-end gap-2">
+  //         <Button 
+  //           color="primary" 
+  //           startIcon={<PlayCircle />}
+  //           loading={engineStatus === 'starting' || engineStatus === 'running'}
+  //           onClick={handleStartEngine}
+  //           disabled={isLoading || !selectedMarketRegion}
+  //         >
+  //           {engineStatus === 'running' ? 'Running...' : 'Start Engine'}
+  //         </Button>
+          
+  //         <Button 
+  //           color="error" 
+  //           startIcon={<StopCircle />}
+  //           loading={engineStatus === 'stopping'}
+  //           onClick={handleStopEngine}
+  //           disabled={!['running', 'starting'].includes(engineStatus)}
+  //         >
+  //           Stop Engine
+  //         </Button>
+          
+  //         <Button 
+  //           color="secondary" 
+  //           startIcon={<Mail />}
+  //           loading={engineStatus === 'test_sending'}
+  //           onClick={handleSendTestEmail}
+  //           disabled={isLoading || !selectedMarketRegion}
+  //         >
+  //           Send Test Email
+  //         </Button>
+  //       </div>
+  //     </div>
+
+  //     <div className="mt-6">
+  //       <h2 className="text-xl font-semibold mb-2">Console Logs</h2>
+  //       <div className="bg-base-200 p-4 rounded-lg h-96 overflow-y-auto">
+  //         {consoleLogs.length === 0 ? (
+  //           <div className="text-base-content/50 italic">No logs yet. Start the engine to see activity.</div>
+  //         ) : (
+  //           <div className="space-y-2">
+  //             {consoleLogs.map((log) => (
+  //               <div key={log.id} className={`text-sm font-mono ${getLogColor(log.type)}`}>
+  //                 <span className="opacity-70">[{new Date(log.timestamp).toLocaleTimeString()}] </span>
+  //                 {log.message}
+  //               </div>
+  //             ))}
+  //             <div ref={consoleEndRef} />
+  //           </div>
+  //         )}
+  //       </div>
+  //     </div>
+  //   </div>
+  // );
+
+  // return (
+  //   <div style={{ padding: '20px', backgroundColor: 'lightyellow', border: '1px solid orange' }}>
+  //     <h1>ELI5 Engine Control View - Simplified for Debugging</h1>
+  //     <p>If you see this, the basic component is rendering.</p>
+  //   </div>
+  // );
+
   return (
-    <>
-      <div className="container mx-auto p-4">
+    <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-6">ELI5 Engine Control Panel</h1>
       
       {error && (
-        <Alert status="error" className="mb-4" icon={<AlertTriangle />}>
+        <Alert status="error" className="mb-4">
+          <Alert.Icon><AlertTriangle /></Alert.Icon>
           {error}
         </Alert>
       )}
@@ -275,7 +315,7 @@ const Eli5EngineControlView: React.FC = () => {
           <Select
             id="marketRegionSelect"
             value={selectedMarketRegion}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMarketRegion(e.target.value)}
+            onChange={(e) => setSelectedMarketRegion(e.target.value)}
             className="select select-bordered w-full"
             disabled={isLoading && (engineStatus === 'starting' || engineStatus === 'running')}
           >
@@ -288,139 +328,12 @@ const Eli5EngineControlView: React.FC = () => {
           </Select>
         </div>
 
-        {/* Senders Table */}
-        <div className="form-control w-full">
-          <label className="label">
-            <span className="label-text flex items-center">
-              <Mail size={16} className="mr-1" /> Select Email Senders
-            </span>
-          </label>
-          <div className="overflow-x-auto rounded-lg border border-base-300 bg-base-100">
-            <table className="table table-zebra table-sm w-full">
-              <thead>
-                <tr>
-                  <th className="w-10">Select</th>
-                  <th>Name</th>
-                  <th>Email</th>
-                </tr>
-              </thead>
-              <tbody>
-                {availableSenders.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="text-center text-base-content/50 italic">No senders available.</td>
-                  </tr>
-                ) : (
-                  availableSenders.map(sender => (
-                    <tr key={sender.id} className={selectedSenderIds.includes(sender.id) ? 'bg-primary/10' : ''}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          className="checkbox checkbox-primary"
-                          checked={selectedSenderIds.includes(sender.id)}
-                          onChange={e => {
-                            setSelectedSenderIds(prev =>
-                              e.target.checked
-                                ? [...prev, sender.id]
-                                : prev.filter(id => id !== sender.id)
-                            );
-                          }}
-                          disabled={isLoading || engineStatus === 'running'}
-                        />
-                      </td>
-                      <td>{sender.name}</td>
-                      <td>{sender.email}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className="flex gap-2 mt-2">
-            <button
-              type="button"
-              className="btn btn-xs btn-outline"
-              onClick={() => setSelectedSenderIds(availableSenders.map(s => s.id))}
-              disabled={availableSenders.length === 0}
-            >
-              Select All
-            </button>
-            <button
-              type="button"
-              className="btn btn-xs btn-outline"
-              onClick={() => setSelectedSenderIds([])}
-              disabled={availableSenders.length === 0}
-            >
-              Deselect All
-            </button>
-          </div>
-        </div>
-
-        {/* Interval Sliders */}
-        <div className="flex flex-col md:flex-row gap-6 mb-6">
-          <div className="form-control w-full">
-            <label className="label">
-              <span className="label-text">Min Interval (seconds): <span className="font-mono">{minIntervalSeconds}</span></span>
-            </label>
-            <input
-              type="range"
-              min={330}
-              max={maxIntervalSeconds}
-              step={1}
-              value={minIntervalSeconds}
-              onChange={e => setMinIntervalSeconds(Number(e.target.value))}
-              className="range range-primary"
-            />
-          </div>
-          <div className="form-control w-full">
-            <label className="label">
-              <span className="label-text">Max Interval (seconds): <span className="font-mono">{maxIntervalSeconds}</span></span>
-            </label>
-            <input
-              type="range"
-              min={minIntervalSeconds}
-              max={550}
-              step={1}
-              value={maxIntervalSeconds}
-              onChange={e => setMaxIntervalSeconds(Number(e.target.value))}
-              className="range range-secondary"
-            />
-          </div>
-        </div>
-        {/* Limit Per Run Slider */}
-        <div className="form-control w-full mb-6">
-          <label className="label">
-            <span className="label-text">Leads Per Run: <span className="font-mono">{limitPerRun}</span></span>
-          </label>
-          <input
-            type="range"
-            min={0}
-            max={150}
-            step={1}
-            value={limitPerRun}
-            onChange={e => setLimitPerRun(Number(e.target.value))}
-            className="range range-accent"
-          />
-        </div>
-
-        {/* Dry Run Checkbox */}
-        <div className="form-control mb-6">
-          <label className="cursor-pointer label">
-            <input
-              type="checkbox"
-              className="checkbox checkbox-info mr-3"
-              checked={isDryRun}
-              onChange={e => setIsDryRun(e.target.checked)}
-            />
-            <span className="label-text">Dry Run (simulate campaign, do not send real emails)</span>
-          </label>
-        </div>
-
         <div className="flex items-end gap-2">
           <Button 
             color="primary" 
             startIcon={<PlayCircle />}
             loading={engineStatus === 'starting' || engineStatus === 'running'}
-            onClick={() => { handleStartEngine().catch(console.error); }}
+            onClick={handleStartEngine}
             disabled={isLoading || !selectedMarketRegion}
           >
             {engineStatus === 'running' ? 'Running...' : 'Start Engine'}
@@ -430,7 +343,7 @@ const Eli5EngineControlView: React.FC = () => {
             color="error" 
             startIcon={<StopCircle />}
             loading={engineStatus === 'stopping'}
-            onClick={() => { handleStopEngine().catch(console.error); }}
+            onClick={handleStopEngine}
             disabled={!['running', 'starting'].includes(engineStatus)}
           >
             Stop Engine
@@ -440,7 +353,7 @@ const Eli5EngineControlView: React.FC = () => {
             color="secondary" 
             startIcon={<Mail />}
             loading={engineStatus === 'test_sending'}
-            onClick={() => { handleSendTestEmail().catch(console.error); }}
+            onClick={handleSendTestEmail}
             disabled={isLoading || !selectedMarketRegion}
           >
             Send Test Email
@@ -467,7 +380,6 @@ const Eli5EngineControlView: React.FC = () => {
         </div>
       </div>
     </div>
-    </>
   );
 };
 
