@@ -38,16 +38,17 @@ export async function createCrmLeadAction(newLeadData: Partial<Omit<CrmLead, 'id
   
   try {
     // First, get the next available ID
-    // Get the next available ID
+        // Get the next available ID
     let nextId = 1;
-    // Use a type assertion to handle dynamic table name
+    // Use type assertion to handle dynamic table name
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     const { data: maxIdData, error: maxIdError } = await (supabase as any)
       .from(tableName)
       .select('id')
       .order('id', { ascending: false })
       .limit(1);
     
-    if (!maxIdError && maxIdData && maxIdData.length > 0 && maxIdData[0]?.id) {
+    if (!maxIdError && maxIdData?.[0]?.id) {
       nextId = Number(maxIdData[0].id) + 1;
     }
     
@@ -60,7 +61,8 @@ export async function createCrmLeadAction(newLeadData: Partial<Omit<CrmLead, 'id
     };
     
     // Use type assertion to handle dynamic table name
-    const { data, error } = await (supabase as any)  // eslint-disable-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    const { data, error } = await (supabase as any)
       .from(tableName)
       .insert([insertData])
       .select()
