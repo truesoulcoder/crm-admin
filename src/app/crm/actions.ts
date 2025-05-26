@@ -3,14 +3,22 @@
 import { revalidatePath } from 'next/cache';
 
 import { createClient } from '@/lib/supabase/server';
+import { Database } from '@/types/db_types';
 
-import type { CrmLead } from '@/types/crm'; // Import CrmLead from the centralized types file
+import type { CrmLead } from '@/types/crm';
 
-interface ServerActionResponse<T = CrmLead | CrmLead[]> {
+interface ServerActionResponse<T = CrmLead | CrmLead[] | null> {
   success: boolean;
   data?: T;
   error?: string;
   message?: string;
+}
+
+// Helper function to get the correct table name from market region
+function getLeadsTableName(marketRegion: string): keyof Database['public']['Tables'] {
+  // Convert to lowercase and replace spaces with underscores
+  const tableName = `${marketRegion.toLowerCase().replace(/\s+/g, '_')}_fine_cut_leads` as const;
+  return tableName as keyof Database['public']['Tables'];
 }
 
 // Action to CREATE a new CRM lead
@@ -22,33 +30,71 @@ export async function createCrmLeadAction(newLeadData: Partial<Omit<CrmLead, 'id
     return { success: false, error: 'Contact type is required.' };
   }
 
+  if (!newLeadData.market_region) {
+    return { success: false, error: 'Market region is required.' };
+  }
 
+  const tableName = getLeadsTableName(newLeadData.market_region);
+  
   try {
-    const { data, error } = await supabase
-      .from('crm_leads')
-      .insert([newLeadData as Omit<CrmLead, 'id' | 'created_at' | 'updated_at'>]) // Supabase expects an array for insert
+    // First, get the next available ID
+    // Get the next available ID
+    let nextId = 1;
+    // Use a type assertion to handle dynamic table name
+    const { data: maxIdData, error: maxIdError } = await (supabase as any)
+      .from(tableName)
+      .select('id')
+      .order('id', { ascending: false })
+      .limit(1);
+    
+    if (!maxIdError && maxIdData && maxIdData.length > 0 && maxIdData[0]?.id) {
+      nextId = Number(maxIdData[0].id) + 1;
+    }
+    
+    // Insert with the next ID
+    const insertData = {
+      ...newLeadData,
+      id: nextId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    // Use type assertion to handle dynamic table name
+    const { data, error } = await (supabase as any)  // eslint-disable-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      .from(tableName)
+      .insert([insertData])
       .select()
-      .single(); // Expecting a single record back
+      .single();
 
     if (error) {
-      console.error('Error creating CRM lead:', error);
+      console.error(`Error creating lead in ${tableName}:`, error);
       return { success: false, error: error.message };
     }
 
     if (data) {
-      revalidatePath('/crm'); // Revalidate the CRM page to show the new lead
-      return { success: true, data: data as CrmLead, message: 'Lead created successfully.' };
+      revalidatePath('/crm');
+      return { 
+        success: true, 
+        data: { ...data, id: nextId } as CrmLead, 
+        message: 'Lead created successfully.' 
+      };
     }
+    
     return { success: false, error: 'Failed to create lead or retrieve created data.' };
 
   } catch (e: any) {
-    console.error('Exception in createCrmLeadAction:', e);
+    console.error(`Exception in createCrmLeadAction for table ${tableName}:`, e);
     return { success: false, error: e.message || 'An unexpected error occurred.' };
   }
 }
 
 // Action to UPDATE an existing CRM lead
 export async function updateCrmLeadAction(leadId: number, updatedLeadData: Partial<Omit<CrmLead, 'id' | 'created_at'>>): Promise<ServerActionResponse<CrmLead>> {
+  if (!updatedLeadData.market_region) {
+    return { success: false, error: 'Market region is required for updating a lead.' };
+  }
+  
+  const tableName = getLeadsTableName(updatedLeadData.market_region);
   const supabase = await createClient();
   console.log(`Server Action updateCrmLeadAction called for ID ${leadId} with:`, updatedLeadData);
 
@@ -56,20 +102,19 @@ export async function updateCrmLeadAction(leadId: number, updatedLeadData: Parti
     return { success: false, error: 'Lead ID is required for an update.' };
   }
 
-  // Remove id, created_at from updatedLeadData if they exist, as they shouldn't be updated directly
-  const { id, created_at, ...updateData } = updatedLeadData as any;
-  updateData.updated_at = new Date().toISOString(); // Explicitly set updated_at
-
   try {
     const { data, error } = await supabase
-      .from('crm_leads')
-      .update(updateData)
-      .eq('id', leadId)
-      .select()
-      .single();
+    .from(tableName as keyof Database['public']['Tables']) // Type assertion to handle dynamic table name
+    .update({
+      ...updatedLeadData,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', leadId)
+    .select()
+    .single();
 
     if (error) {
-      console.error('Error updating CRM lead:', error);
+      console.error(`Error updating lead in ${tableName}:`, error);
       return { success: false, error: error.message };
     }
     

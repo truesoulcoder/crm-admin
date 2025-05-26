@@ -11,6 +11,7 @@ import type { JSX } from 'react';
 
 type Eli5EmailLogEntry = Database['public']['Tables']['eli5_email_log']['Row'];
 type MarketRegion = Database['public']['Tables']['market_regions']['Row'];
+type EmailSender = Database['public']['Tables']['senders']['Row'];
 
 interface LogEntry {
   id: string;
@@ -31,7 +32,7 @@ const Eli5EngineControlView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isDryRun, setIsDryRun] = useState<boolean>(false);
   const consoleEndRef = useRef<null | HTMLDivElement>(null);
-  const [availableSenders, setAvailableSenders] = useState<Array<{id: string, name: string, email: string}>>([]);
+  const [availableSenders] = useState<Array<{id: string, name: string, email: string}>>([]);
   const [selectedSenderIds, setSelectedSenderIds] = useState<string[]>([]);
   const [minIntervalSeconds, setMinIntervalSeconds] = useState<number>(100);
   const [maxIntervalSeconds, setMaxIntervalSeconds] = useState<number>(1000);
@@ -320,7 +321,7 @@ const Eli5EngineControlView: React.FC = () => {
             </label>
             <input
               type="range"
-              min={10}
+              min={330}
               max={maxIntervalSeconds}
               step={1}
               value={minIntervalSeconds}
@@ -335,7 +336,7 @@ const Eli5EngineControlView: React.FC = () => {
             <input
               type="range"
               min={minIntervalSeconds}
-              max={3600}
+              max={550}
               step={1}
               value={maxIntervalSeconds}
               onChange={e => setMaxIntervalSeconds(Number(e.target.value))}
@@ -357,6 +358,19 @@ const Eli5EngineControlView: React.FC = () => {
             onChange={e => setLimitPerRun(Number(e.target.value))}
             className="range range-accent"
           />
+        </div>
+
+        {/* Dry Run Checkbox */}
+        <div className="form-control mb-6">
+          <label className="cursor-pointer label">
+            <input
+              type="checkbox"
+              className="checkbox checkbox-info mr-3"
+              checked={isDryRun}
+              onChange={e => setIsDryRun(e.target.checked)}
+            />
+            <span className="label-text">Dry Run (simulate campaign, do not send real emails)</span>
+          </label>
         </div>
 
         <div className="flex items-end gap-2">

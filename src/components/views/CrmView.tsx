@@ -116,6 +116,23 @@ const CrmView: React.FC = () => {
   const [marketFilter, setMarketFilter] = useState<string>('');
   const [availableMarkets, setAvailableMarkets] = useState<string[]>([]);
 
+  // Fetch market regions from Supabase on mount
+  useEffect(() => {
+    const fetchMarketRegions = async () => {
+      const { data, error } = await supabase
+        .from('market_regions')
+        .select('name')
+        .order('name', { ascending: true });
+      if (error) {
+        console.error('Failed to fetch market regions:', error);
+        setAvailableMarkets([]);
+      } else if (data) {
+        setAvailableMarkets(data.map((region: { name: string }) => region.name));
+      }
+    };
+    fetchMarketRegions();
+  }, []);
+
   const [panoramaPosition, setPanoramaPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [panoramaPov, setPanoramaPov] = useState<google.maps.StreetViewPov>({ heading: 34, pitch: 10 });
 
@@ -333,9 +350,6 @@ const CrmView: React.FC = () => {
         baths: leadDataToSave.baths || null,
         square_footage: leadDataToSave.square_footage || null,
         assessed_total: leadDataToSave.assessed_total || null,
-        avm_value: leadDataToSave.avm_value || null,
-        wholesale_value: leadDataToSave.wholesale_value || null,
-        price_per_sq_ft: leadDataToSave.price_per_sq_ft || null,
         lot_size_sqft: leadDataToSave.lot_size_sqft || null,
         year_built: leadDataToSave.year_built || null,
         mls_curr_days_on_market: leadDataToSave.mls_curr_days_on_market || null,

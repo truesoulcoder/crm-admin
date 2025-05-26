@@ -39,7 +39,6 @@ export interface Lead {
   
   // Property details
   assessed_value?: number;         // crm_leads
-  avm_value?: number;              // normalized_leads
   beds?: number | string;          // number in crm_leads, string in normalized_leads
   baths?: number | string;         // number in crm_leads, string in normalized_leads
   sq_ft?: number;                  // crm_leads
