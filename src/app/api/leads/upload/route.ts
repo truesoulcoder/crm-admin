@@ -19,59 +19,119 @@ const processFileInChunks = (
   chunkSize: number,
   processChunk: (chunk: any[], isLastChunk: boolean) => Promise<void>
 ) => {
-  return new Promise<void>((resolve, reject) => {
-    let chunk: any[] = [];
-    let rowCount = 0;
-    let headers: string[] = [];
-    let isFirstChunk = true;
+  return new Promise<void>(async (resolve, reject) => { // Added async here
+    try { // Wrap in try-catch for async operations like file.text()
+      const fileText = await file.text(); // Get the full text once
 
-    // Process the file in chunks
-    file.text()
-      .then(text => {
-        parse(text, {
-          header: true,
-          skipEmptyLines: true,
-          step: (row, parser) => {
-            if (isFirstChunk && typeof row.data === 'object' && row.data !== null) {
-              headers = Object.keys(row.data);
-              isFirstChunk = false;
+      let originalHeaders: string[] = [];
+      let headerParseError: Error | null = null;
+
+      parse(fileText, {
+        preview: 1, // Only parse the first row
+        header: false, // Treat the first row as an array of strings
+        skipEmptyLines: true,
+        complete: (results) => {
+          if (results.data.length > 0 && Array.isArray(results.data[0])) {
+            originalHeaders = results.data[0] as string[];
+          }
+        },
+        error: (error: Error) => {
+          // Capture error to reject promise outside
+          headerParseError = new Error('Failed to parse header row: ' + error.message);
+        }
+      });
+
+      if (headerParseError) {
+        reject(headerParseError);
+        return;
+      }
+
+      if (originalHeaders.length === 0 && file.size > 0) {
+        reject(new Error('No header row found in CSV file.'));
+        return;
+      }
+      
+      const finalHeaders: string[] = [];
+      const headerCounts: { [key: string]: number } = {};
+      
+      for (const h of originalHeaders) {
+        let snakeCasedHeader = convertToSnakeCase(h); // convertToSnakeCase must be defined above or passed in
+        if (headerCounts[snakeCasedHeader] === undefined) {
+          headerCounts[snakeCasedHeader] = 0;
+          finalHeaders.push(snakeCasedHeader);
+        } else {
+          headerCounts[snakeCasedHeader]++;
+          finalHeaders.push(`${snakeCasedHeader}_${headerCounts[snakeCasedHeader]}`);
+        }
+      }
+
+      // Now, the main parsing, using the `fileText` obtained earlier
+      let isHeaderRowSkipped = false; // To skip the first row in the main parse
+      let chunk: any[] = [];
+      let rowCount = 0;
+
+      parse(fileText, { // Use the full fileText here
+        header: false, // IMPORTANT: Headers are now manually handled
+        skipEmptyLines: true,
+        step: (row, parser) => {
+          const rowDataArray = row.data as any[];
+
+          if (!isHeaderRowSkipped) {
+            isHeaderRowSkipped = true;
+            // Check if the current row is indeed the header row we already processed
+            if (originalHeaders.length > 0 && 
+                rowDataArray.length === originalHeaders.length && 
+                originalHeaders.every((val, idx) => val === rowDataArray[idx])) {
+               return; // Skip this row
             }
-            
-            chunk.push(row.data);
+          }
+
+          const csvRowData: { [key: string]: any } = {};
+          finalHeaders.forEach((headerKey, index) => {
+            if (index < rowDataArray.length) {
+              csvRowData[headerKey] = rowDataArray[index];
+            } else {
+              // If rowDataArray is shorter than finalHeaders, assign null to missing fields
+              csvRowData[headerKey] = null; 
+            }
+          });
+          
+          // Ensure not an empty or all-null object before pushing
+          if (Object.keys(csvRowData).length > 0 && !Object.values(csvRowData).every(v => v === null || v === '' || (typeof v === 'string' && v.trim() === ''))) {
+            chunk.push(csvRowData);
             rowCount++;
 
             if (chunk.length >= chunkSize) {
-              // Pause parsing while we process this chunk
               parser.pause();
-              const currentChunk = [...chunk];
+              const currentChunkToProcess = [...chunk];
               chunk = [];
               
-              processChunk(currentChunk, false)
+              processChunk(currentChunkToProcess, false)
                 .then(() => parser.resume())
                 .catch(error => {
                   parser.abort();
-                  reject(error);
+                  reject(error); 
                 });
             }
-          },
-          complete: () => {
-            // Process any remaining rows in the last chunk
-            if (chunk.length > 0) {
-              processChunk(chunk, true)
-                .then(() => resolve())
-                .catch(error => reject(error));
-            } else {
-              resolve();
-            }
-          },
-          error: (error: Error) => {
-            reject(error);
           }
-        });
-      })
-      .catch(error => {
-        reject(error);
+        },
+        complete: () => {
+          // Process any remaining rows in the last chunk
+          if (chunk.length > 0) {
+            processChunk(chunk, true)
+              .then(() => resolve())
+              .catch(error => reject(error)); 
+          } else {
+            resolve(); 
+          }
+        },
+        error: (error: Error) => {
+          reject(error); 
+        }
       });
+    } catch (error) { // Catch errors from await file.text() or other synchronous parts
+      reject(error);
+    }
   });
 };
 
@@ -244,25 +304,37 @@ export async function POST(request: NextRequest) {
         await processFileInChunks(
           reassembledFile as any, // Cast to 'any' if processFileInChunks expects a strict File type
           BATCH_SIZE,
-          async (chunk, isLastChunk) => {
+          async (chunkToProcess, isLastChunk) => { // Renamed 'chunk' to 'chunkToProcess' for clarity
             if (hasError) return;
             try {
-              console.log(`Processing chunk of ${chunk.length} rows from reassembled file...`);
-              const leadsToInsert = chunk.map((csvRowData: any) => {
+              console.log(`Processing chunk of ${chunkToProcess.length} rows from reassembled file...`);
+              const leadsToInsert = chunkToProcess.map((processedCsvRowData: any) => { // Name updated to processedCsvRowData
                 const rawDataPayload: { [key: string]: any } = {};
-                for (const key in csvRowData) {
-                  if (Object.prototype.hasOwnProperty.call(csvRowData, key)) {
-                    let newKey = convertToSnakeCase(key);
-                    if (newKey === 'lot_size_sq_ft') newKey = 'lot_size_sqft';
-                    if (newKey === 'property_postal_code') newKey = 'property_zip';
-                    rawDataPayload[newKey] = csvRowData[key];
+                // Keys in processedCsvRowData are already snake_cased and de-duplicated
+                for (const key in processedCsvRowData) {
+                  if (Object.prototype.hasOwnProperty.call(processedCsvRowData, key)) {
+                    // The keys are already processed (snake_cased and de-duplicated).
+                    // Specific renaming like 'lot_size_sq_ft' to 'lot_size_sqft'
+                    // and 'property_postal_code' to 'property_zip'
+                    // should be handled by the initial header processing if they are common patterns
+                    // or as a separate step if they are complex transformations.
+                    // For now, we directly use the key as it is.
+                    // However, the existing code still has these specific remappings.
+                    // To fully align with the "NO LONGER NEEDED here" instruction,
+                    // we will remove them. If these are truly needed,
+                    // they should be part of a more robust header mapping strategy.
+                    let finalKey = key;
+                    // Example of how specific post-processing could be applied IF NECESSARY,
+                    // but the goal is that `finalHeaders` from `processFileInChunks` is definitive.
+                    // According to instructions, specific remapping is no longer needed here.
+                    rawDataPayload[key] = processedCsvRowData[key];
                   }
                 }
                 return {
-                  uploaded_by: userId, // userId is from the initial auth check
-                  original_filename: originalFileName, // Use originalFileName from chunk metadata
-                  market_region: marketRegion, // Use marketRegion from chunk metadata
-                  raw_data: rawDataPayload,
+                  uploaded_by: userId, 
+                  original_filename: originalFileName, 
+                  market_region: marketRegion, 
+                  raw_data: rawDataPayload, // rawDataPayload now uses the keys directly from processedCsvRowData
                 };
               });
 
@@ -276,7 +348,7 @@ export async function POST(request: NextRequest) {
                 throw batchInsertErr; // Propagate to trigger outer catch for this chunk processing
               }
               if (batchInsertedData) allInsertedData = [...allInsertedData, ...batchInsertedData];
-              totalProcessed += chunk.length;
+              totalProcessed += chunkToProcess.length; // Use chunkToProcess.length
               console.log(`Successfully processed ${totalProcessed} rows from reassembled file so far...`);
 
             } catch (error) {
