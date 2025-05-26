@@ -1,8 +1,8 @@
 // src/app/api/leads/upload/route.ts
 import { randomUUID } from 'crypto';
-import { Readable } from 'stream';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { Readable } from 'stream';
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
@@ -37,7 +37,7 @@ const processFileInChunks = (
         },
         error: (error: Error) => {
           // Capture error to reject promise outside
-          headerParseError = new Error('Failed to parse header row: ' + error.message);
+          headerParseError = new Error(`Failed to parse header row: ${error.message}`);
         }
       });
 
@@ -55,7 +55,7 @@ const processFileInChunks = (
       const headerCounts: { [key: string]: number } = {};
       
       for (const h of originalHeaders) {
-        let snakeCasedHeader = convertToSnakeCase(h); // convertToSnakeCase must be defined above or passed in
+        const snakeCasedHeader = convertToSnakeCase(h); // convertToSnakeCase must be defined above or passed in
         if (headerCounts[snakeCasedHeader] === undefined) {
           headerCounts[snakeCasedHeader] = 0;
           finalHeaders.push(snakeCasedHeader);
