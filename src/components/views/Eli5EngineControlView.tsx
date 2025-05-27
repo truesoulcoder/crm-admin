@@ -1,5 +1,5 @@
 'use client';
-
+//region Imports
 import { PlayCircle, StopCircle, Mail, AlertTriangle, Info, CheckCircle, RefreshCw, MapPin } from 'lucide-react';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Card, Alert, Input, Select } from 'react-daisyui';
@@ -8,6 +8,8 @@ import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/db_types';
 
 import type { JSX } from 'react';
+//endregion
+//region Types
 
 type Eli5EmailLogEntry = Database['public']['Tables']['eli5_email_log']['Row'];
 type MarketRegion = Database['public']['Tables']['market_regions']['Row'];
@@ -36,7 +38,8 @@ const Eli5EngineControlView: React.FC = () => {
   const [minIntervalSeconds, setMinIntervalSeconds] = useState<number>(100);
   const [maxIntervalSeconds, setMaxIntervalSeconds] = useState<number>(1000);
   const [limitPerRun, setLimitPerRun] = useState<number>(10);
-
+//endregion
+//region Functions
   const addLog = useCallback((message: string, type: LogEntry['type'], data?: any) => {
     const newLog: LogEntry = {
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
@@ -121,68 +124,180 @@ const Eli5EngineControlView: React.FC = () => {
       }
     }
   };
-
+// endregion
+// region Start Engine
   // Update the handleStartEngine function to use selectedMarketRegion
-  const handleStartEngine = async () => {
-    try {
-      setEngineStatus('starting');
-      await startEli5Engine();
-      setEngineStatus('running');
-    } catch (error) {
-      setEngineStatus('error');
-      console.error('Engine start failed:', error);
-    }
-  };
+// 1. Update the startEli5Engine function
+const startEli5Engine = async () => {
+  if (!selectedMarketRegion) {
+    const msg = 'Please select a market region.';
+    addLog(msg, 'warning');
+    setError(msg);
+    return;
+  }
 
-  const startEli5Engine = async () => {
-    if (!selectedMarketRegion) {
-      const msg = 'Please select a market region.';
-      addLog(msg, 'warning');
-      setError(msg);
-      return;
-    }
+  addLog(`Starting ELI5 Engine for market region: ${selectedMarketRegion}...`, 'engine');
+  setIsLoading(true);
+  setError(null);
 
-    addLog(`Initiating ELI5 Engine start sequence for market region: ${selectedMarketRegion}...`, 'engine');
-
-    try {
-      const { error } = await supabase.rpc('start_eli5_engine', {
-        market_region: selectedMarketRegion,
-        selected_sender_ids: selectedSenderIds,
-        min_interval_seconds: minIntervalSeconds,
-        max_interval_seconds: maxIntervalSeconds,
-        limit_per_run: limitPerRun,
-        dry_run: isDryRun,
-      });
-
-      if (error) throw error;
-
-      addLog(`ELI5 Engine started successfully for market region: ${selectedMarketRegion}`, 'success');
-    } catch (err: any) {
-      throw err;
-    }
-  };
-
-  // Dummy handleStopEngine function to be implemented later
-  const handleStopEngine = async () => {
-    await stopEli5Engine()
-      .catch((error) => {
-        console.error('Engine stop failed:', error);
-        setEngineStatus('error');
-      });
-  };
-
-  const stopEli5Engine = async () => {
-    addLog('Stopping ELI5 Engine...', 'engine');
-
-    const { error } = await supabase.rpc('stop_eli5_engine', {
-      market_region: selectedMarketRegion,
+  try {
+    const { data, error } = await supabase.rpc('start_eli5_engine', {
+      p_dry_run: isDryRun,
+      p_limit_per_run: limitPerRun,
+      p_market_region: selectedMarketRegion,
+      p_min_interval_seconds: minIntervalSeconds,
+      p_max_interval_seconds: maxIntervalSeconds,
+      p_selected_sender_ids: selectedSenderIds.length ? selectedSenderIds : null
     });
 
     if (error) throw error;
 
-    addLog('ELI5 Engine stopped successfully', 'success');
-  };
+    addLog('Engine started successfully', 'success');
+    setEngineStatus('running');
+    
+    // Start polling for job updates
+    startJobPolling();
+  } catch (err: any) {
+    const errorMsg = `Failed to start engine: ${err.message}`;
+    addLog(errorMsg, 'error');
+    setError(errorMsg);
+    setEngineStatus('error');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
+// 2. Add job polling
+const startJobPolling = () => {
+  const interval = setInterval(async () => {
+    if (engineStatus !== 'running') {
+      clearInterval(interval);
+      return;
+    }
+    await fetchCampaignStatus();
+  }, 5000); // Poll every 5 seconds
+
+  return () => clearInterval(interval);
+};
+
+// 3. Add campaign status fetching
+const fetchCampaignStatus = async () => {
+  if (!selectedMarketRegion) return;
+
+  try {
+    const { data: jobs } = await supabase
+      .from('campaign_jobs')
+      .select('*')
+      .eq('market_region', selectedMarketRegion)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    // Update UI with job status
+    // You can add more sophisticated state management here
+    console.log('Latest jobs:', jobs);
+  } catch (err) {
+    console.error('Error fetching job status:', err);
+  }
+};
+
+// 4. Update the stopEli5Engine function
+const stopEli5Engine = async () => {
+  addLog('Stopping ELI5 Engine...', 'engine');
+  setIsLoading(true);
+
+  try {
+    const { error } = await supabase.rpc('stop_eli5_engine');
+
+    if (error) throw error;
+
+    addLog('Engine stopped successfully', 'success');
+    setEngineStatus('idle');
+  } catch (err: any) {
+    const errorMsg = `Failed to stop engine: ${err.message}`;
+    addLog(errorMsg, 'error');
+    setError(errorMsg);
+    setEngineStatus('error');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+// 5. Add real-time subscription
+useEffect(() => {
+  if (engineStatus !== 'running') return;
+
+  const channel = supabase
+    .channel('campaign-jobs')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'campaign_jobs',
+        filter: `market_region=eq.${selectedMarketRegion}`
+      },
+      (payload) => {
+        console.log('Job update:', payload);
+        // Update UI based on job status changes
+        fetchCampaignStatus();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [engineStatus, selectedMarketRegion]);
+ 
+// #endregion
+// region Stop Engine
+const handleStopEngine = async () => {
+  try {
+    setEngineStatus('stopping');
+    await stopEli5Engine();
+    setEngineStatus('idle');
+  } catch (error) {
+    console.error('Engine stop failed:', error);
+    setEngineStatus('error');
+  }
+};
+
+const stopEli5Engine = async () => {
+  addLog('Stopping ELI5 Engine...', 'engine');
+  setIsLoading(true);
+  setError(null);
+
+  try {
+    const { data, error } = await supabase.rpc('stop_eli5_engine', {
+      p_market_region: selectedMarketRegion,
+      // Add any additional parameters that your stop_eli5_engine function expects
+      // For example:
+      // p_force_stop: true,
+      // p_cleanup: true
+    });
+
+    if (error) throw error;
+
+    // If the RPC returns data, you can handle it here
+    if (data) {
+      console.log('Stop engine response:', data);
+      addLog(data.message || 'Engine stopped successfully', 'success');
+    } else {
+      addLog('Engine stopped successfully', 'success');
+    }
+
+    return data;
+  } catch (err: any) {
+    const errorMsg = `Failed to stop engine: ${err.message}`;
+    addLog(errorMsg, 'error');
+    setError(errorMsg);
+    throw err; // Re-throw to be caught by handleStopEngine
+  } finally {
+    setIsLoading(false);
+  }
+};
+// #endregion
+// region Helpers
   // Helper function to get log color based on type
   const getLogColor = (type: LogEntry['type']) => {
     switch (type) {
@@ -198,7 +313,8 @@ const Eli5EngineControlView: React.FC = () => {
         return 'text-base-content';
     }
   };
-
+// endregion
+// region Html
   return (
     <>
       <div className="container mx-auto p-4">
@@ -356,5 +472,5 @@ const Eli5EngineControlView: React.FC = () => {
     </>
   );
 };
-
+// endregion
 export default Eli5EngineControlView;
