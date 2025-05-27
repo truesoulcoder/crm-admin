@@ -103,7 +103,13 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ApiResponse>
 ) {
+  // Initialize variables at function scope
+  let metrics: EmailMetric[] = [];
+  let timeSeries: any = null;
+  let supabaseClient;
+
   try {
+    // Validate HTTP method
     if (req.method !== 'GET') {
       res.setHeader('Allow', ['GET']);
       return res.status(405).json({ 
@@ -112,60 +118,71 @@ export default async function handler(
       });
     }
 
+    // Parse query parameters
     const { timeRange = '7d' } = req.query as { timeRange?: TimeRange };
-    const dateRange = getDateRange(timeRange === '24h' ? 1 : timeRange === '7d' ? 7 : 30);
-    const supabase = configureSupabaseClient();
-
-    const client = supabaseServerClient;
-      
-    const supabaseClient = client as unknown as {
+    const daysBack = timeRange === '24h' ? 1 : timeRange === '7d' ? 7 : 30;
+    const dateRange = getDateRange(daysBack);
+    
+    // Configure Supabase client with proper type definitions
+    type SupabaseQueryBuilder = {
       from: (table: string) => {
         select: (fields: string) => {
           gte: (field: string, value: string) => {
-            group: (fields: string) => Promise<{ data: EmailMetric[] | null; error: any; }>;
+            group: (fields: string) => Promise<{ data: EmailMetric[] | null; error: any }>;
+          };
+          eq: (field: string, value: string) => {
+            single: () => Promise<{ data: any | null; error: any }>;
           };
         };
         update: (data: any) => {
-          eq: (field: string, value: string) => Promise<{ data: any[] | null; error: any; }>;
+          eq: (field: string, value: string) => Promise<{ data: any[] | null; error: any }>;
         };
       };
-      rpc: (fn: string, params: any) => Promise<{ data: any[] | null; error: any; }>;
+      rpc: (fn: string, params: any) => Promise<{ data: any[] | null; error: any }>;
     };
-     
-    let senderError: Error | null = null;
-    let tsError: Error | null = null;
-    const [
-      { data: senderData, error: sError },
-      { data: timeSeriesData, error: tsError }
-    ] = await Promise.all([
+
+    supabaseClient = supabaseServerClient as unknown as SupabaseQueryBuilder;
+
+    // Fetch data in parallel
+    const [metricsResponse, timeSeriesResponse] = await Promise.all([
       supabaseClient
         .from('email_metrics')
         .select('sender_email_used, email_status, count(*)')
         .gte('created_at', dateRange.start.toISOString())
         .group('sender_email_used,email_status'),
-       
+        
       supabaseClient.rpc('get_email_metrics_time_series', {
         start_date: dateRange.start.toISOString(),
         end_date: dateRange.end.toISOString(),
-        interval_days: timeRange === '24h' ? 1 : timeRange === '7d' ? 1 : 7
+        interval_days: daysBack === 1 ? 1 : daysBack === 7 ? 1 : 7
       })
-    ]);
-    senderError = sError;
+      ]);
+
+      if (metricsResponse.error) {
+        throw new Error(`Error fetching metrics: ${metricsResponse.error.message}`);
+      }
+      if (timeSeriesResponse.error) {
+        throw new Error(`Error fetching time series: ${timeSeriesResponse.error.message}`);
+      }
+
+      metrics = metricsResponse.data || [];
+      timeSeries = timeSeriesResponse.data || [];
 
 //#endregion
 
 //#region Sender Metrics
-    const metrics = senderData || [];
     const senderId = req.query.senderId as string;
     if (!senderId) {
       return res.status(400).json({ success: false, error: 'Missing sender ID' });
     }
-    const bySender = processSenderMetrics(metrics as unknown as EmailMetric[]) ?? [];
-    if (!bySender.length) {
+    
+    // Process metrics and calculate totals
+    const bySender = processSenderMetrics(metrics);
+    if (!bySender || !bySender.length) {
       throw new EmailMetricsError(`Sender metrics not found for sender ID: ${senderId}`);
     }
-    const totals = calculateTotals(metrics as unknown as EmailMetric[]);
-
+    
+    const totals = calculateTotals(metrics);
     const senderMap = new Map<string, SenderMetrics>();
 
     try {
@@ -188,45 +205,50 @@ export default async function handler(
       return;
     }
 
+    // Fetch sender details and time series data
     const [senderResponse, timeSeriesResponse] = await Promise.all([
-      supabase.from('senders').select('*').eq('id', senderId).single(),
-      supabase.rpc('get_email_metrics_time_series', { 
-        sender_email: senderData.email,
-        start_date: '2024-01-01',
-        end_date: new Date().toISOString().split('T')[0],
-        interval_days: 7
+      supabaseClient
+        .from('senders')
+        .select('*')
+        .eq('id', senderId)
+        .single(),
+      
+      supabaseClient.rpc('get_email_metrics_time_series', { 
+        start_date: dateRange.start.toISOString().split('T')[0],
+        end_date: dateRange.end.toISOString().split('T')[0],
+        interval_days: daysBack === 1 ? 1 : 7
       })
     ]);
 
-    const { data: senderData, error: sError } = senderResponse;
-    const { data: timeSeriesData, error: timeSeriesError } = timeSeriesResponse;
+    // Handle sender response
+    if (senderResponse.error) {
+      throw new EmailMetricsError(`Failed to fetch sender: ${senderResponse.error.message}`);
+    }
+    const senderData = senderResponse.data;
 
-    interface EmailMetric {
-      date_range: string;
-      sender_email: string;
-      status: 'sent'|'delivered'|'bounced';
-      total: number;
+    // Handle time series response
+    let timeSeriesData = [];
+    if (timeSeriesResponse.error) {
+      console.warn('Time series data not available:', timeSeriesResponse.error.message);
+    } else {
+      timeSeriesData = timeSeriesResponse.data || [];
     }
 
-    let tsError: Error | null = timeSeriesError;
-
-    const processTimeSeriesData = (): EmailMetric[] | null => {
-      return timeSeriesData ? timeSeriesData : null;
+    // Process time series data
+    const processTimeSeriesData = (data: any[]): any[] => {
+      if (!data || !Array.isArray(data)) return [];
+      return data.map(item => ({
+        date: item.date_group,
+        sent: item.sent || 0,
+        delivered: item.delivered || 0,
+        bounced: item.bounced || 0,
+        opened: item.opened || 0,
+        clicked: item.clicked || 0,
+        replied: item.replied || 0
+      }));
     };
 
-    try {
-      // Time series processing logic
-      const result = processTimeSeriesData();
-      if (!result) {
-        tsError = new Error('Time series processing failed');
-      }
-    } catch (error) {
-      tsError = error instanceof Error ? error : new Error('Unknown time series error');
-    }
-
-    if (tsError) {
-      console.warn('Time series data not available:', tsError.message);
-    }
+    const processedTimeSeries = processTimeSeriesData(timeSeriesData);
 
     return res.status(200).json({
       success: true,
@@ -255,7 +277,7 @@ export const updateEmailLogStatus = async (
 ) => {
   const supabase = configureSupabaseClient();
 
-  const { error } = await supabase
+  const { error: updateError } = await supabase
   .from('eli5_email_log')
   .update({ 
     email_status: status, 
@@ -263,9 +285,9 @@ export const updateEmailLogStatus = async (
   })
   .eq('message_id', logId);
 
-  if (error) {
+  if (updateError) {
     throw new EmailMetricsError(
-      `Failed to update email log status: ${error.message}`,
+      `Failed to update email log status: ${updateError.message}`,
       500
     );
   }
