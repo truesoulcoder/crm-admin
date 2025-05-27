@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase/client';
 import { Campaign, CampaignJob } from '@/types/campaign';
 import { Database } from '@/types/db_types';
 
 export function useCampaigns() {
-  const supabase = createClientComponentClient<Database>();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [jobs, setJobs] = useState<CampaignJob[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -21,8 +20,9 @@ export function useCampaigns() {
       if (error) throw error;
       setCampaigns(data || []);
       return data || [];
-    } catch (err) {
-      setError(err.message || 'Failed to load campaigns');
+    } catch (err: any) {
+      const errorMessage = err?.message || 'Failed to load campaigns';
+      setError(errorMessage);
       console.error('Error fetching campaigns:', err);
       return [];
     } finally {

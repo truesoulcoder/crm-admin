@@ -5,7 +5,7 @@ import { Toggle } from 'react-daisyui';
 import { Range } from 'react-daisyui';
 import { useEngineControl } from '@/hooks/useEngineControl';
 import { useMarketRegions } from '@/hooks/useMarketRegions';
-import { createClientComponentClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/db_types';
 
 type LogEntry = {
@@ -19,7 +19,6 @@ type LogEntry = {
 type EngineStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error' | 'test_sending';
 
 const Eli5EngineControlView: React.FC = () => {
-  const supabase = createClientComponentClient<Database>();
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>([]);
   const [isDryRun, setIsDryRun] = useState<boolean>(false);

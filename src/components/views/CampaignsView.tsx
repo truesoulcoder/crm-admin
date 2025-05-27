@@ -1,4 +1,3 @@
-import { createClientComponentClient } from '@supabase/ssr';
 import { Button, Card, Table, Badge, Alert, Progress } from 'react-daisyui';
 import { useState, useEffect } from 'react';
 import { FiPlay, FiStopCircle, FiRefreshCw, FiAlertCircle, FiCheckCircle, FiLoader } from 'react-icons/fi';
@@ -35,7 +34,7 @@ interface CampaignJob {
 }
 
 export default function CampaignsView() {
-  const supabase = useSupabaseClient();
+  // Using the centralized supabase client
   const user = useUser();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);

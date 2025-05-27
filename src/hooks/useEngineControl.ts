@@ -1,10 +1,9 @@
 // src/hooks/useEngineControl.ts
 import { useState, useCallback } from 'react';
-import { createClientComponentClient } from '@supabase/ssr';
+import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/db_types';
 
 export function useEngineControl() {
-  const supabase = createClientComponentClient<Database>();
   const [engineStatus, setEngineStatus] = useState<string>('idle');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);

@@ -1,11 +1,9 @@
 // src/hooks/useMarketRegions.ts
-import { createClientComponentClient } from '@supabase/ssr';
 import { useState, useEffect, useCallback } from 'react';
-
+import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/db_types';
 
 export function useMarketRegions() {
-  const supabase = createClientComponentClient<Database>();
   const [marketRegions, setMarketRegions] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedMarketRegion, setSelectedMarketRegion] = useState<string>('');
 
