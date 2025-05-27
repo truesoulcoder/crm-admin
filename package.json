@@ -36,7 +36,6 @@
     "daisyui": "^4.12.24",
     "date-fns": "^3.6.0",
     "dotenv": "^16.5.0",
-    "flowbite-react": "^0.11.7",
     "glob": "^10.4.5",
     "google-auth-library": "^9.15.1",
     "googleapis": "^148.0.0",
@@ -66,6 +65,7 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.7",
     "@types/node": "^22.15.21",
     "@types/nunjucks": "^3.2.6",
     "@types/papaparse": "^5.3.16",
@@ -81,7 +81,7 @@
     "postcss": "^8.5.3",
     "sass": "^1.87.0",
     "supabase": "^2.22.12",
-    "tailwindcss": "^3.4.17",
+    "tailwindcss": "^4.1.7",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"

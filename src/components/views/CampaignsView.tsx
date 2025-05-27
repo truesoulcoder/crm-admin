@@ -1,8 +1,10 @@
 import { createClientComponentClient } from '@supabase/ssr';
-import { Button, Card, Table, Badge, Alert, Spinner, Progress } from 'flowbite-react';
+import { Button, Card, Table, Badge, Alert, Spinner, Progress } from 'daisyui';
 import { useState, useEffect } from 'react';
 import { FiPlay, FiStopCircle, FiRefreshCw, FiAlertCircle, FiCheckCircle } from 'react-icons/fi';
 
+import { useUser } from '@/contexts/UserContext';
+import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/db_types';
 
 interface Campaign {
