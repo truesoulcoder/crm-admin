@@ -19,5 +19,11 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     }
   }, [theme]);
 
-  return <MainAppShell>{children}</MainAppShell>;
+  return (
+    <MainAppShell>
+      <div className="p-4 md:p-6 w-full max-w-7xl mx-auto">
+        {children}
+      </div>
+    </MainAppShell>
+  );
 }
