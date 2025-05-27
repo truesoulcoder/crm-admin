@@ -56,7 +56,7 @@ const Sidebar: React.FC = () => {
     leads: '/leads',
     campaigns: '/campaigns',
     templates: '/templates',
-    senders: '/email-senders',
+    senders: '/senders',
     crm: '/crm',
     settings: '/settings'
   };

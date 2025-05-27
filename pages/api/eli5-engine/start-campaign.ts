@@ -2,7 +2,8 @@
 import crypto from 'crypto';
 
 // Supabase
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { Database } from '@/types/db_types';
 import { Database } from '@/types/db';
 
 // Next.js
@@ -95,13 +96,21 @@ interface CampaignJobJob {
   error?: string;
 }
 
-interface CampaignJob
+interface CampaignJob {
   campaign_id: string;
   sender_email?: string;
   status?: string;
   error_message?: string;
   sender_id?: string;
   contact_email?: string;
+  [key: string]: any; // Allow additional properties
+}
+
+interface EmailOptions {
+  to: string;
+  subject: string;
+  html: string;
+  senderId?: string; // Add senderId to EmailOptions
 }
 
 interface DbSender {
@@ -118,7 +127,7 @@ export async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  const campaignError: Error | null = null;
+  let campaignError: string | null = null;
   const processingErrors: Array<{error: string; timestamp: string; leadId?: string; contact_email?: string}> = [];
   const leads: Lead[] = [];
   const successCount = 0;
