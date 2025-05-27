@@ -1,16 +1,20 @@
 // External dependencies
 import crypto from 'crypto';
-import { createClient } from '@supabase/supabase-js';
 
-// Next.js and type imports
-import type { NextApiRequest, NextApiResponse } from 'next';
-import type { Tables, Json } from '@/types/db_types';
+// Supabase
+import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/types/db';
+
+// Next.js
+import type { NextApiRequest, NextApiResponse } from 'next';
 
 // Internal dependencies
 import { getGmailService, isValidEmail } from './_utils';
-import { STATUS_KEY, logCampaignjob } from './email-metrics';
+import { STATUS_KEY, logCampaignJob } from './email-metrics';
 import { sendConfiguredEmail, type EmailOptions } from './send-email';
+
+// Types
+import type { Tables, Json } from '@/types/db_types';
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -100,6 +104,14 @@ interface CampaignAttempt {
   error_message?: string;
   sender_id?: string;
   contact_email?: string;
+}
+
+interface DbSender {
+  id: string;
+  email: string;
+  name: string;
+  sender_quota: number;
+  sent_today: number;
 }
 
 // #endregion
@@ -229,7 +241,7 @@ async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_id
 
     console.log(`CAMPAIGN_HANDLER (fetchAndPrepareSenders): ${data.length} active senders fetched from DB.`);
     
-    const preparedSenders: SenderState[] = data.map(dbSender => ({
+    const preparedSenders: SenderState[] = data.map((dbSender: DbSender) => ({
       id: dbSender.id,
       name: dbSender.name,
       email: dbSender.email,
