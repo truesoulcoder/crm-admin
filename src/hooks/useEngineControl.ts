@@ -1,104 +1,54 @@
 // src/hooks/useEngineControl.ts
 import { useState, useCallback } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
-
-export type EngineStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error' | 'test_sending';
-
-interface StartEngineParams {
-  marketRegion: string;
-  isDryRun: boolean;
-  limitPerRun: number;
-  minIntervalSeconds: number;
-  maxIntervalSeconds: number;
-  selectedSenderIds?: string[];
-}
+import { createClientComponentClient } from '@supabase/ssr';
+import { Database } from '@/types/db_types';
 
 export function useEngineControl() {
-  const supabase = useSupabaseClient();
-  const [engineStatus, setEngineStatus] = useState<EngineStatus>('idle');
-  const [isLoading, setIsLoading] = useState(false);
+  const supabase = createClientComponentClient<Database>();
+  const [engineStatus, setEngineStatus] = useState<string>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const startEngine = useCallback(async (params: StartEngineParams) => {
-    const {
-      marketRegion,
-      isDryRun,
-      limitPerRun,
-      minIntervalSeconds,
-      maxIntervalSeconds,
-      selectedSenderIds = []
-    } = params;
-
+  const startEngine = useCallback(async (params: any) => {
     setIsLoading(true);
     setError(null);
-    setEngineStatus('starting');
-
     try {
-      const { error: rpcError } = await supabase.rpc('start_eli5_engine', {
-        p_dry_run: isDryRun,
-        p_limit_per_run: limitPerRun,
-        p_market_region: marketRegion,
-        p_min_interval_seconds: minIntervalSeconds,
-        p_max_interval_seconds: maxIntervalSeconds,
-        p_selected_sender_ids: selectedSenderIds.length ? selectedSenderIds : null,
-      });
-
-      if (rpcError) throw rpcError;
-
+      setEngineStatus('starting');
+      const { data, error: startError } = await supabase.rpc('start_engine', params);
+      if (startError) throw startError;
       setEngineStatus('running');
-      return true;
+      return data;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to start engine';
-      setError(errorMessage);
+      setError(err instanceof Error ? err.message : 'Failed to start engine');
       setEngineStatus('error');
-      console.error('Engine start error:', err);
-      return false;
+      throw err;
     } finally {
       setIsLoading(false);
     }
   }, [supabase]);
 
-  const stopEngine = useCallback(async (marketRegion: string) => {
-    if (!marketRegion) {
-      setError('Market region is required');
-      return false;
-    }
-
+  const stopEngine = useCallback(async () => {
     setIsLoading(true);
     setError(null);
-    setEngineStatus('stopping');
-
     try {
-      const { error: rpcError } = await supabase.rpc('stop_eli5_engine', {
-        p_market_region: marketRegion,
-      });
-
-      if (rpcError) throw rpcError;
-
-      setEngineStatus('stopped');
-      return true;
+      setEngineStatus('stopping');
+      const { error: stopError } = await supabase.rpc('stop_engine');
+      if (stopError) throw stopError;
+      setEngineStatus('idle');
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to stop engine';
-      setError(errorMessage);
+      setError(err instanceof Error ? err.message : 'Failed to stop engine');
       setEngineStatus('error');
-      console.error('Engine stop error:', err);
-      return false;
+      throw err;
     } finally {
       setIsLoading(false);
     }
   }, [supabase]);
-
-  const resetEngine = useCallback(() => {
-    setEngineStatus('idle');
-    setError(null);
-  }, []);
 
   return {
     engineStatus,
-    isLoading,
     error,
+    isLoading,
     startEngine,
     stopEngine,
-    resetEngine,
   };
 }
