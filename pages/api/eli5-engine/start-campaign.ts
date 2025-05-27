@@ -6,11 +6,11 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Database } from '@/types/db_types';
 
 // Next.js
-import type { NextApiRequest, NextApiResponse } from 'next';
 
 // Internal dependencies
 import { STATUS_KEY } from './email-metrics';
 import { sendConfiguredEmail } from './send-email';
+import type { NextApiRequest, NextApiResponse } from 'next';
 
 // Types
 
@@ -126,7 +126,7 @@ export async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  let campaignError: string | null = null;
+  let campaignError: any = null;
   const processingErrors: Array<{error: string; timestamp: string; leadId?: string; contact_email?: string}> = [];
   const leads: Lead[] = [];
   const successCount = 0;
@@ -219,7 +219,14 @@ export async function handler(
 // endregion
 
 
-// #region Fetch Senders
+// #region Sender Management
+
+/**
+ * Fetches and prepares sender information from the database
+ * @param supabase Supabase client instance
+ * @param filter_sender_ids Optional array of sender IDs to filter by
+ * @returns Array of prepared sender states
+ */
 async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_ids?: string[]): Promise<SenderState[]> {
   try {
     let query = supabase
@@ -272,6 +279,10 @@ async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_id
   }
 }
 
+// #endregion
+
+// #region Sender State Management
+
 async function incrementSenderSentCount(supabase: SupabaseClient, senderId: string) {
   try {
     const { error } = await supabase.rpc('increment_sender_sent_count', {
@@ -298,13 +309,13 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
     // ================================
     // STEP 5: FETCH LEADS
     // ================================
-    const { data: campaignData, error: campaignError } = await supabase
+    const { data: campaignData, error: campaignFetchError } = await supabase
       .from('campaigns')
       .select('market_region')
       .eq('campaign_id', currentCampaignId)
       .single();
 
-    if (campaignError || !campaignData?.market_region) {
+    if (campaignFetchError || !campaignData?.market_region) {
       throw new Error('Invalid campaign or missing market region');
     }
 
@@ -393,20 +404,21 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
     }));
 
     let hasMoreLeads = true;
+    let currentOffset = offset; // Track offset for pagination
 
-    async function fetchNextLead() {
+    const fetchNextLead = async () => {
       const { data } = await supabase
         .from(leadsTable)
         .select('*')
         .order('id', { ascending: true })
-        .range(offset, offset + limit - 1);
-      offset += limit;
+        .range(currentOffset, currentOffset + limit - 1);
+      currentOffset += limit;
       return data?.[0];
-    }
+    };
 
-    function getRandomInterval(min: number, max: number): number {
+    const getRandomInterval = (min: number, max: number): number => {
       return Math.floor(Math.random() * (max - min + 1)) + min;
-    }
+    };
 
     while (hasMoreLeads) {
       const availableSender = activeSenders.find(s => 

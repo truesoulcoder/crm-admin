@@ -1,14 +1,38 @@
 // src/components/views/Eli5EngineControlView.tsx
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { Card, Button, Select, Alert, Badge, Table } from 'react-daisyui';
-import { Toggle } from 'react-daisyui';
-import { Range } from 'react-daisyui';
+import { createClient, RealtimeChannel } from '@supabase/supabase-js';
+import { useState, useEffect, useRef, FC, useCallback } from 'react';
+import { Badge, Card, Button, Select, Table, Toggle, Range, Alert } from 'react-daisyui';
+
 import { useEngineControl } from '@/hooks/useEngineControl';
 import { useMarketRegions } from '@/hooks/useMarketRegions';
-import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/db_types';
 
-type LogEntry = {
+// Initialize Supabase client
+const supabase = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
+
+// Define types for our data
+interface EmailSender {
+  id: string;
+  email: string;
+  status: string;
+  quota: number;
+}
+
+interface MarketRegion {
+  id: string;
+  market_region: string;
+}
+
+interface EngineControlProps {
+  // Add any props here if needed
+  className?: string;
+  children?: React.ReactNode;
+}
+
+interface LogEntry {
   id: string;
   timestamp: string;
   message: string;
@@ -37,17 +61,19 @@ type EmailMetrics = {
 
 const Eli5EngineControlView: React.FC = () => {
   const consoleEndRef = useRef<HTMLDivElement>(null);
-  const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>([]);
+  const [consoleLogs] = useState<LogEntry[]>([]);
   const [isDryRun, setIsDryRun] = useState<boolean>(false);
-  const [limitPerRun, setLimitPerRun] = useState<number>(10);
+  const [senderQuota, setSenderQuota] = useState<number>(10);
   const [minIntervalSeconds, setMinIntervalSeconds] = useState<number>(100);
   const [maxIntervalSeconds, setMaxIntervalSeconds] = useState<number>(1000);
   const [selectedSenderIds, setSelectedSenderIds] = useState<string[]>([]);
   const [availableSenders, setAvailableSenders] = useState<Array<{id: string, name: string, email: string}>>([]);
+  const [availableMarketRegions, setAvailableMarketRegions] = useState<string[]>([]);
+  const [selectedMarketRegion, setSelectedMarketRegion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
 
   // Use the custom hooks
-  const { marketRegions, selectedMarketRegion, setSelectedMarketRegion } = useMarketRegions();
   const { engineStatus, error: engineError, isLoading, startEngine, stopEngine } = useEngineControl();
   
   // State for email metrics
@@ -59,7 +85,7 @@ const Eli5EngineControlView: React.FC = () => {
   const fetchSenders = useCallback(async () => {
     try {
       const { data, error } = await supabase
-        .from('email_senders')
+        .from('senders')
         .select('id, name, email')
         .order('name');
 
@@ -69,7 +95,37 @@ const Eli5EngineControlView: React.FC = () => {
       console.error('Error fetching senders:', err);
       setError('Failed to load email senders');
     }
-  }, [supabase]);
+  }, []);
+
+  // Fetch available market regions
+  useEffect(() => {
+    const fetchMarketRegions = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('normalized_leads')
+          .select('market_region')
+          .not('market_region', 'is', null)
+          .order('market_region', { ascending: true });
+
+        if (error) throw error;
+        
+        const uniqueRegions = Array.from(
+          new Set(data.map((r: MarketRegion) => r.market_region))
+        ) as string[];
+        
+        setAvailableMarketRegions(uniqueRegions);
+        // Select the first region by default if none selected
+        if (uniqueRegions.length > 0 && !selectedMarketRegion) {
+          setSelectedMarketRegion(uniqueRegions[0]);
+        }
+      } catch (err) {
+        console.error('Market regions fetch error:', err);
+        setError('Failed to load market regions');
+      }
+    };
+
+    fetchMarketRegions();
+  }, [selectedMarketRegion]);
 
   // Handle start engine
   const handleStartEngine = useCallback(async () => {
@@ -79,10 +135,11 @@ const Eli5EngineControlView: React.FC = () => {
     }
 
     try {
+      setIsStarting(true);
       await startEngine({
         marketRegion: selectedMarketRegion,
         isDryRun,
-        limitPerRun,
+        limitPerRun: senderQuota, // Using senderQuota as limitPerRun for backward compatibility
         minIntervalSeconds,
         maxIntervalSeconds,
         selectedSenderIds: selectedSenderIds.length ? selectedSenderIds : undefined
@@ -91,8 +148,10 @@ const Eli5EngineControlView: React.FC = () => {
     } catch (err) {
       console.error('Failed to start engine:', err);
       setError('Failed to start engine. Please check the console for details.');
+    } finally {
+      setIsStarting(false);
     }
-  }, [selectedMarketRegion, isDryRun, limitPerRun, minIntervalSeconds, maxIntervalSeconds, selectedSenderIds, startEngine]);
+  }, [selectedMarketRegion, isDryRun, senderQuota, minIntervalSeconds, maxIntervalSeconds, selectedSenderIds, startEngine]);
 
   // Handle stop engine
   const handleStopEngine = useCallback(async () => {
@@ -112,17 +171,15 @@ const Eli5EngineControlView: React.FC = () => {
 
   // Toggle sender selection
   const toggleSenderSelection = useCallback((senderId: string) => {
-    setSelectedSenderIds(prev => 
+    setSelectedSenderIds((prev: string[]) => 
       prev.includes(senderId)
-        ? prev.filter(id => id !== senderId)
+        ? prev.filter((id: string) => id !== senderId)
         : [...prev, senderId]
     );
   }, []);
 
   // Fetch email metrics
   const fetchEmailMetrics = useCallback(async () => {
-    setMetricsLoading(true);
-    setMetricsError(null);
     try {
       const { data, error } = await supabase
         .from('email_metrics_by_sender')
@@ -133,11 +190,11 @@ const Eli5EngineControlView: React.FC = () => {
       setEmailMetrics(data || []);
     } catch (err) {
       console.error('Error fetching email metrics:', err);
-      setMetricsError('Failed to load email metrics');
+      setMetricsError(err instanceof Error ? err.message : 'Failed to load email metrics');
     } finally {
       setMetricsLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
   // Set up real-time subscription to email metrics
   useEffect(() => {
@@ -145,7 +202,7 @@ const Eli5EngineControlView: React.FC = () => {
     fetchEmailMetrics();
 
     // Set up subscription
-    const subscription = supabase
+    const subscription: RealtimeChannel = supabase
       .channel('email_metrics_changes')
       .on(
         'postgres_changes',
@@ -184,26 +241,41 @@ const Eli5EngineControlView: React.FC = () => {
     consoleEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [consoleLogs]);
 
-  // Get status color based on engine status
-  const getStatusColor = (status: string): 'success' | 'warning' | 'error' | 'info' => {
+  // Get status badge based on engine status
+  const getStatusBadge = (status: string) => {
+    const statusText = status.charAt(0).toUpperCase() + status.slice(1);
+    let color: 'success' | 'warning' | 'error' | 'info' | 'neutral' = 'neutral';
+    
     switch (status) {
       case 'running':
-        return 'success';
+        color = 'success';
+        break;
       case 'starting':
       case 'stopping':
-        return 'warning';
+        color = 'warning';
+        break;
       case 'error':
-        return 'error';
+        color = 'error';
+        break;
       case 'idle':
       case 'stopped':
       default:
-        return 'info';
+        color = 'info';
     }
-  };
-
-  // Get status text based on engine status
-  const getStatusText = (status: string) => {
-    return status.charAt(0).toUpperCase() + status.slice(1);
+    
+    return (
+      <Badge color={color} className="font-mono">
+        {statusText}
+        {status === 'running' && (
+          <span className="ml-1.5">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+            </span>
+          </span>
+        )}
+      </Badge>
+    );
   };
 
   return (
@@ -212,17 +284,7 @@ const Eli5EngineControlView: React.FC = () => {
         <h1 className="text-2xl font-bold">ELI5 Engine Control</h1>
         <div className="flex items-center space-x-2">
           <span className="text-sm text-gray-500">Status:</span>
-          <Badge color={getStatusColor(engineStatus)}>
-            {getStatusText(engineStatus)}
-            {engineStatus === 'running' && (
-              <span className="ml-1">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                </span>
-              </span>
-            )}
-          </Badge>
+          {getStatusBadge(engineStatus)}
         </div>
       </div>
       
@@ -254,25 +316,25 @@ const Eli5EngineControlView: React.FC = () => {
               <Select
                 id="marketRegion"
                 value={selectedMarketRegion}
-                onChange={(e) => setSelectedMarketRegion(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMarketRegion(e.target.value)}
                 disabled={isLoading}
               >
-                {marketRegions.map(region => (
-                  <option key={region.id} value={region.name}>
-                    {region.name}
+                {availableMarketRegions.map(region => (
+                  <option key={region} value={region}>
+                    {region}
                   </option>
                 ))}
               </Select>
             </div>
 
             <div className="mb-4">
-              <label htmlFor="limitPerRun" className="block mb-2">{`Limit per run: ${limitPerRun}`}</label>
+              <label htmlFor="senderQuota" className="block mb-2">{`Sender Quota: ${senderQuota}`}</label>
               <Range
-                id="limitPerRun"
+                id="senderQuota"
                 min={1}
                 max={100}
-                value={limitPerRun}
-                onChange={(e) => setLimitPerRun(Number(e.target.value))}
+                value={senderQuota}
+                onChange={(e) => setSenderQuota(Number(e.target.value))}
                 disabled={isLoading}
               />
             </div>
@@ -344,9 +406,14 @@ const Eli5EngineControlView: React.FC = () => {
           <Button
             color="primary"
             onClick={handleStartEngine}
-            disabled={isLoading || engineStatus === 'running' || engineStatus === 'starting'}
+            disabled={isLoading || engineStatus === 'running' || engineStatus === 'starting' || isStarting}
           >
             {isLoading && engineStatus === 'starting' ? (
+              <div className="flex items-center">
+                <div className="loading loading-spinner loading-sm mr-2"></div>
+                Starting...
+              </div>
+            ) : isStarting ? (
               <div className="flex items-center">
                 <div className="loading loading-spinner loading-sm mr-2"></div>
                 Starting...

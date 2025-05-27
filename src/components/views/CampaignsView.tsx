@@ -174,6 +174,8 @@ export default function CampaignsView() {
       supabase.removeChannel(channel);
     };
   }, [selectedCampaign]);
+  
+  // Add a closing div for the parent element
 
   // Calculate campaign stats
   const campaignStats = {
@@ -188,21 +190,24 @@ export default function CampaignsView() {
     ? Math.round((campaignStats.completed / campaignStats.total) * 100) 
     : 0;
 
-
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-6">Campaigns</h1>
       
       {error && (
-        <Alert color="failure" className="mb-4" onDismiss={() => setError(null)}>
-          <span className="font-medium">Error:</span> {error}
-        </Alert>
+        <div className="alert alert-error mb-4">
+          <div>
+            <span className="font-medium">Error:</span> {error}
+          </div>
+          <button className="btn btn-sm btn-ghost" onClick={() => setError(null)}>×</button>
+        </div>
       )}
       
       {success && (
-        <Alert color="success" className="mb-4" onDismiss={() => setSuccess(null)}>
-          {success}
-        </Alert>
+        <div className="alert alert-success mb-4">
+          <div>{success}</div>
+          <button className="btn btn-sm btn-ghost" onClick={() => setSuccess(null)}>×</button>
+        </div>
       )}
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
@@ -216,39 +221,45 @@ export default function CampaignsView() {
                 <span className="ml-1">Refresh</span>
               </button>
             </div>
-            
+            {/* Campaign list */}
             <div className="space-y-2">
               {campaigns.map((campaign) => (
-              <div
-                key={campaign.id}
-                className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                  selectedCampaign?.id === campaign.id
-                    ? 'bg-blue-50 border border-blue-200'
-                    : 'hover:bg-gray-50'
-                }`}
-                onClick={() => setSelectedCampaign(campaign)}
-              >
-                <div className="font-medium">{campaign.name}</div>
-                <div className="flex items-center justify-between text-sm text-gray-600">
-                  <span>
-                    {new Date(campaign.created_at).toLocaleDateString()}
-                  </span>
-                  <Badge
-                    color={
-                      campaign.status === 'running'
-                        ? 'success'
-                        : campaign.status === 'paused'
-                        ? 'warning'
-                        : campaign.status === 'completed'
-                        ? 'indigo'
-                        : 'gray'
-                    }
-                  >
-                    {campaign.status}
-                  </Badge>
+                <div 
+                  key={campaign.id}
+                  className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                    selectedCampaign?.id === campaign.id 
+                      ? 'bg-blue-50 border border-blue-200' 
+                      : 'hover:bg-gray-50'
+                  }`}
+                  onClick={() => setSelectedCampaign(campaign)}
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">{campaign.name}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge color={campaign.is_active ? 'success' : 'neutral'}>
+                        {campaign.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                      <span 
+                        className={`badge ${
+                          campaign.status === 'running' 
+                            ? 'badge-success' 
+                            : campaign.status === 'paused' 
+                              ? 'badge-warning' 
+                              : campaign.status === 'completed' 
+                                ? 'badge-info' 
+                                : 'badge-ghost'
+                        }`}
+                      >
+                        {campaign.status}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-sm text-gray-600 mt-1">
+                    <span>{campaign.market_region}</span>
+                    <span>{new Date(campaign.created_at).toLocaleDateString()}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
             </div>
           </div>
         </div>
@@ -293,39 +304,17 @@ export default function CampaignsView() {
                       </button>
                     )}
                   </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500">Status</h3>
-                  <div className="mt-1">
-                    <Badge
-                      color={
-                        selectedCampaign.status === 'running'
-                          ? 'success'
-                          : selectedCampaign.status === 'paused'
-                          ? 'warning'
-                          : selectedCampaign.status === 'completed'
-                          ? 'indigo'
-                          : 'gray'
-                      }
-                      size="lg"
-                    >
-                      {selectedCampaign.status}
-                    </Badge>
-                  </div>
                 </div>
-
-                <div>
+                
+                <div className="mt-4">
                   <h3 className="text-sm font-medium text-gray-500">Progress</h3>
                   <div className="mt-2">
-                    <Progress
-                      progress={progress}
-                      color="blue"
-                      size="lg"
-                      labelProgress
-                      labelText
-                    />
+                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                      <div 
+                        className="bg-blue-600 h-2.5 rounded-full" 
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
                     <div className="flex justify-between text-xs text-gray-500 mt-1">
                       <span>{campaignStats.completed} of {campaignStats.total} completed</span>
                       <span>{progress}%</span>
@@ -333,7 +322,7 @@ export default function CampaignsView() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4 mt-4">
                   <div className="bg-gray-50 p-3 rounded-lg">
                     <div className="text-sm font-medium text-gray-500">Pending</div>
                     <div className="text-2xl font-bold">{campaignStats.pending}</div>
@@ -361,83 +350,79 @@ export default function CampaignsView() {
                   <h3 className="text-lg font-semibold">Email Jobs</h3>
                   <button 
                     className="btn btn-sm btn-ghost"
-                    onClick={() => selectedCampaign && fetchJobs(selectedCampaign.id)}
+                    onClick={() => {
+                      if (selectedCampaign) {
+                        fetchJobs(selectedCampaign.id).catch(console.error);
+                      }
+                    }}
                   >
                     <FiRefreshCw className="h-4 w-4" />
                     <span className="ml-1">Refresh</span>
                   </button>
                 </div>
-              
-              <div className="overflow-x-auto w-full">
-                <table className="table table-zebra w-full">
-                  <thead>
-                    <tr>
-                      <th>Contact</th>
-                      <th>Email</th>
-                      <th>Status</th>
-                      <th>Sender</th>
-                      <th>Scheduled For</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {jobs.length > 0 ? (
-                      jobs.map((job) => (
-                        <tr key={job.id}>
-                          <td className="font-medium">{job.contact_name}</td>
-                          <td>{job.email_address}</td>
-                          <td>
-                            <span 
-                              className={`badge ${
-                                job.status === 'completed'
-                                  ? 'badge-success'
-                                  : job.status === 'failed'
-                                  ? 'badge-error'
-                                  : job.status === 'processing'
-                                  ? 'badge-warning'
-                                  : 'badge-ghost'
-                              } capitalize`}
-                            >
-                              {job.status}
-                            </span>
-                          </td>
-                          <td>
-                            {job.assigned_sender_id ? (
-                              <span className="text-sm opacity-70">
-                                {job.assigned_sender_id.slice(0, 8)}...
-                              </span>
-                            ) : (
-                              <span className="text-gray-400">Not assigned</span>
-                            )}
-                          </td>
-                          <td>
-                            {job.next_processing_time
-                              ? new Date(job.next_processing_time).toLocaleString()
-                              : 'N/A'}
-                          </td>
-                          <td>
-                            {job.status === 'failed' && (
-                              <button
-                                className="btn btn-xs btn-ghost"
-                                onClick={() => {
-                                  // Add retry logic here
-                                }}
+                <div className="overflow-x-auto w-full">
+                  <table className="table table-zebra w-full">
+                    <thead>
+                      <tr>
+                        <th>Contact</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Sender</th>
+                        <th>Scheduled For</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {jobs.length > 0 ? (
+                        jobs.map((job) => (
+                          <tr key={job.id}>
+                            <td className="font-medium">{job.contact_name}</td>
+                            <td>{job.email_address}</td>
+                            <td>
+                              <span 
+                                className={`badge ${job.status === 'completed' ? 'badge-success' : job.status === 'failed' ? 'badge-error' : job.status === 'processing' ? 'badge-warning' : 'badge-ghost'} capitalize`}
                               >
-                                Retry
-                              </button>
-                            )}
+                                {job.status}
+                              </span>
+                            </td>
+                            <td>
+                              {job.assigned_sender_id ? (
+                                <span className="text-sm opacity-70">
+                                  {job.assigned_sender_id.slice(0, 8)}...
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">Not assigned</span>
+                              )}
+                            </td>
+                            <td>
+                              {job.next_processing_time
+                                ? new Date(job.next_processing_time).toLocaleString()
+                                : 'N/A'}
+                            </td>
+                            <td>
+                              {job.status === 'failed' && (
+                                <button
+                                  className="btn btn-xs btn-ghost"
+                                  onClick={() => {
+                                    // Add retry logic here
+                                  }}
+                                >
+                                  Retry
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className="text-center py-8 text-gray-500">
+                            No jobs found for this campaign.
                           </td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={6} className="text-center py-8 text-gray-500">
-                          No jobs found for this campaign.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
