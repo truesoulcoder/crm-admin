@@ -1,16 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Badge, Alert } from 'react-daisyui';
-import { FiPlay, FiStopCircle, FiRefreshCw, FiAlertCircle, FiCheckCircle, FiLoader } from 'react-icons/fi';
+import { FiPlay, FiStopCircle, FiRefreshCw } from 'react-icons/fi';
 import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/db_types';
-
-// Loading spinner component
-const LoadingSpinner = () => (
-  <button color="ghost" loading className="loading">
-    Loading...
-  </button>
-);
 
 interface Campaign {
   id: string;
@@ -109,7 +102,8 @@ export default function CampaignsView() {
         await fetchJobs(selectedCampaign.id);
       }
     } catch (err) {
-      setError(err.message || 'Failed to start campaign');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to start campaign';
+      setError(errorMessage);
       console.error('Error starting campaign:', err);
     } finally {
       setIsStarting(false);
@@ -194,13 +188,6 @@ export default function CampaignsView() {
     ? Math.round((campaignStats.completed / campaignStats.total) * 100) 
     : 0;
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <LoadingSpinner />
-      </div>
-    );
-  }
 
   return (
     <div className="p-6">
@@ -217,7 +204,7 @@ export default function CampaignsView() {
           {success}
         </Alert>
       )}
-
+      
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {/* Campaign List */}
         <div className="card lg:col-span-1 bg-base-100 shadow-sm border border-base-200">
@@ -231,7 +218,7 @@ export default function CampaignsView() {
             </div>
             
             <div className="space-y-2">
-            {campaigns.map((campaign) => (
+              {campaigns.map((campaign) => (
               <div
                 key={campaign.id}
                 className={`p-3 rounded-lg cursor-pointer transition-colors ${
@@ -304,8 +291,8 @@ export default function CampaignsView() {
                           </>
                         )}
                       </button>
-                  )}
-                </div>
+                    )}
+                  </div>
               </div>
 
               <div className="space-y-4">

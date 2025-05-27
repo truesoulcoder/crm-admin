@@ -4,7 +4,6 @@ import crypto from 'crypto';
 // Supabase
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Database } from '@/types/db_types';
-import { Database } from '@/types/db';
 
 // Next.js
 import type { NextApiRequest, NextApiResponse } from 'next';
@@ -504,7 +503,7 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
 export default handler;
 
 // region Email Log Functions
-async function createCampaignJobJob(entry: Partial<CampaignJobJob>): Promise<string | null> {
+async function createCampaignJob(entry: Partial<CampaignJob>): Promise<string | null> {
   try {
     const { data: logEntry, error: logError } = await supabase
       .from('campaign_jobs')
@@ -515,7 +514,7 @@ async function createCampaignJobJob(entry: Partial<CampaignJobJob>): Promise<str
     return logEntry[0].id;
   } catch (e: unknown) {
     if (e instanceof Error) {
-      console.error('Error in createCampaignJobJob:', e.message);
+      console.error('Error in createCampaignJob', e.message);
     } else {
       console.error('Unknown error occurred');
     }
