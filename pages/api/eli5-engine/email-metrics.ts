@@ -194,19 +194,11 @@ export default async function handler(
         .eq('id', senderId);
     } catch (updateError) {
       console.error('Sender update error:', updateError);
-    }
-
-    if (senderError) {
-      const message = senderError instanceof Error 
-        ? senderError.message 
-        : 'Unknown error fetching sender metrics';
-      console.error('Supabase error:', message);
-      res.status(500).json({ success: false, error: message });
-      return;
+      // Continue execution even if update fails
     }
 
     // Fetch sender details and time series data
-    const [senderResponse, timeSeriesResponse] = await Promise.all([
+    const [senderResponse, senderTimeSeriesResponse] = await Promise.all([
       supabaseClient
         .from('senders')
         .select('*')
@@ -228,10 +220,10 @@ export default async function handler(
 
     // Handle time series response
     let timeSeriesData = [];
-    if (timeSeriesResponse.error) {
-      console.warn('Time series data not available:', timeSeriesResponse.error.message);
+    if (senderTimeSeriesResponse.error) {
+      console.warn('Time series data not available:', senderTimeSeriesResponse.error.message);
     } else {
-      timeSeriesData = timeSeriesResponse.data || [];
+      timeSeriesData = senderTimeSeriesResponse.data || [];
     }
 
     // Process time series data
