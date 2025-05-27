@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
+import { createClientComponentClient } from '@supabase/ssr';
 import { Campaign, CampaignJob } from '@/types/campaign';
+import { Database } from '@/types/db_types';
 
 export function useCampaigns() {
-  const supabase = useSupabaseClient();
+  const supabase = createClientComponentClient<Database>();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [jobs, setJobs] = useState<CampaignJob[]>([]);
   const [isLoading, setIsLoading] = useState(false);

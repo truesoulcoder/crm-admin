@@ -22,11 +22,11 @@
 }
 
 .pig-svg.draw {
-  animation: animation-toggle 20s infinite;
+  animation: animation-toggle 5s infinite;
 }
 
 .pig-svg.erase {
-  animation: animation-toggle 20s infinite 10s;
+  animation: animation-toggle 5s infinite 5s;
 }
 
 /* Add the active class automatically based on animation state */

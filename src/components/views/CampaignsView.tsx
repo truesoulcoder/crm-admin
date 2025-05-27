@@ -1,5 +1,5 @@
 import { createClientComponentClient } from '@supabase/ssr';
-import { Button, Card, Table, Badge, Alert, Spinner, Progress } from 'daisyui';
+import { Button, Card, Table, Badge, Alert, Spinner, Progress } from 'react-daisyui';
 import { useState, useEffect } from 'react';
 import { FiPlay, FiStopCircle, FiRefreshCw, FiAlertCircle, FiCheckCircle } from 'react-icons/fi';
 

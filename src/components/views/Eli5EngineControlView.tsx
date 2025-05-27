@@ -1,6 +1,6 @@
 // src/components/views/Eli5EngineControlView.tsx
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Card, Button, Label, Select, ToggleSwitch, RangeSlider, Alert, Spinner } from 'daisyui';
+import { Card, Button, Label, Select, ToggleSwitch, RangeSlider, Alert, Spinner } from 'react-daisyui';
 import { useEngineControl } from '@/hooks/useEngineControl';
 import { useMarketRegions } from '@/hooks/useMarketRegions';
 import { createClientComponentClient } from '@supabase/ssr';
