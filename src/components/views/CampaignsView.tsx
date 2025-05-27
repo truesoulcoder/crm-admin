@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
-import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
+import { createClientComponentClient } from '@supabase/ssr';
 import { Button, Card, Table, Badge, Alert, Spinner, Progress } from 'flowbite-react';
+import { useState, useEffect } from 'react';
 import { FiPlay, FiStopCircle, FiRefreshCw, FiAlertCircle, FiCheckCircle } from 'react-icons/fi';
+
+import { Database } from '@/types/db_types';
 
 interface Campaign {
   id: string;
