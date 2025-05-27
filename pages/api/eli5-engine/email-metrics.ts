@@ -4,24 +4,24 @@ import { NextApiRequest, NextApiResponse } from 'next';
 
 import { supabaseServerClient } from '@/lib/supabase/server';
 
-import type { Database, Tables } from '@/types/db_types';
+import type { Database } from '@/types/db_types';
 
 type EmailStatus = 'sent' | 'delivered' | 'bounced';
 type TimeRange = '24h' | '7d' | '30d';
 
-interface EmailMetric {
+type EmailMetric = {
   sender_email_used: string | null;
   email_status: string | null;
   count: number;
 }
 
-interface MetricTotals {
+type MetricTotals = {
   sent: number;
   delivered: number;
   bounced: number;
 }
 
-interface SenderMetrics extends MetricTotals {
+type SenderMetrics = MetricTotals & {
   email: string;
   name: string;
   lastUsed: string;
@@ -29,23 +29,25 @@ interface SenderMetrics extends MetricTotals {
   warmupPhase: string;
 }
 
-interface ApiResponse {
+type ApiResponse = {
   success: boolean;
   data?: any;
   error?: string;
 }
 
-interface HttpError extends Error {
+type HttpError = Error & {
   status?: number;
 }
 
-export interface CampaignAttempt {
+export type Campaignjob = {
   campaign_id: string;
   sender_id: string;
   sender_email: string;
   status: 'queued' | 'sent' | 'failed';
   contact_email: string;
   error?: string;
+  email_address: string;
+  lead_id: string;
 }
 
 export const STATUS_KEY = {
@@ -54,8 +56,15 @@ export const STATUS_KEY = {
   COMPLETED: 'completed'
 } as const;
 
-export interface EmailLogEntry extends Tables['email_logs'] {}
-//#endregion
+export type EmailLogEntry = Database['public']['Tables']['eli5_email_log']['Row'];
+
+export type EmailLogStatusUpdate = Database['public']['Tables']['eli5_email_log']['Update'] & {
+  newStatus: EmailStatus;
+  failureReason?: string;
+}
+
+export type EmailSendStatus = 'SENT' | 'DELIVERED' | 'BOUNCED';
+  //#endregion
 //#region Utilities
 /**
  * Gets date range for metrics query
@@ -73,8 +82,8 @@ const getDateRange = (daysBack: number): { start: Date; end: Date } => {
  * Configures Supabase client with service role
  * @returns Authenticated Supabase client
  */
-const configureSupabaseClient = <T>(): SupabaseClient<T> => {
-  return createClient<T>(
+const configureSupabaseClient = (): SupabaseClient<Database> => {
+  return createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
@@ -105,7 +114,7 @@ export default async function handler(
 
     const { timeRange = '7d' } = req.query as { timeRange?: TimeRange };
     const dateRange = getDateRange(timeRange === '24h' ? 1 : timeRange === '7d' ? 7 : 30);
-    const supabase = configureSupabaseClient<Database>();
+    const supabase = configureSupabaseClient();
 
     const client = supabaseServerClient;
       
@@ -123,12 +132,14 @@ export default async function handler(
       rpc: (fn: string, params: any) => Promise<{ data: any[] | null; error: any; }>;
     };
      
+    let senderError: Error | null = null;
+    let tsError: Error | null = null;
     const [
-      { data: senderData, error: senderError },
-      { data: timeSeriesData, error: timeSeriesError }
+      { data: senderData, error: sError },
+      { data: timeSeriesData, error: tsError }
     ] = await Promise.all([
       supabaseClient
-        .from<Database['public']['Tables']['email_log']['Row']>('email_log')
+        .from('email_metrics')
         .select('sender_email_used, email_status, count(*)')
         .gte('created_at', dateRange.start.toISOString())
         .group('sender_email_used,email_status'),
@@ -139,22 +150,11 @@ export default async function handler(
         interval_days: timeRange === '24h' ? 1 : timeRange === '7d' ? 1 : 7
       })
     ]);
+    senderError = sError;
 
-    if (senderError) {
-      const message = senderError instanceof Error 
-        ? senderError.message 
-        : 'Unknown error fetching sender metrics';
-      console.error('Supabase error:', message);
-      return res.status(500).json({ success: false, error: message });
-    }
+//#endregion
 
-    if (timeSeriesError) {
-      const message = timeSeriesError instanceof Error 
-        ? timeSeriesError.message 
-        : 'Unknown time series error';
-      console.warn('Time series data not available:', message);
-    }
-
+//#region Sender Metrics
     const metrics = senderData || [];
     const senderId = req.query.senderId as string;
     if (!senderId) {
@@ -167,7 +167,7 @@ export default async function handler(
     const totals = calculateTotals(metrics as unknown as EmailMetric[]);
 
     const senderMap = new Map<string, SenderMetrics>();
-// region update sender metrics
+
     try {
       await supabaseClient
         .from('senders')
@@ -177,6 +177,55 @@ export default async function handler(
         .eq('id', senderId);
     } catch (updateError) {
       console.error('Sender update error:', updateError);
+    }
+
+    if (senderError) {
+      const message = senderError instanceof Error 
+        ? senderError.message 
+        : 'Unknown error fetching sender metrics';
+      console.error('Supabase error:', message);
+      res.status(500).json({ success: false, error: message });
+      return;
+    }
+
+    const [senderResponse, timeSeriesResponse] = await Promise.all([
+      supabase.from('senders').select('*').eq('id', senderId).single(),
+      supabase.rpc('get_email_metrics_time_series', { 
+        sender_email: senderData.email,
+        start_date: '2024-01-01',
+        end_date: new Date().toISOString().split('T')[0],
+        interval_days: 7
+      })
+    ]);
+
+    const { data: senderData, error: sError } = senderResponse;
+    const { data: timeSeriesData, error: timeSeriesError } = timeSeriesResponse;
+
+    interface EmailMetric {
+      date_range: string;
+      sender_email: string;
+      status: 'sent'|'delivered'|'bounced';
+      total: number;
+    }
+
+    let tsError: Error | null = timeSeriesError;
+
+    const processTimeSeriesData = (): EmailMetric[] | null => {
+      return timeSeriesData ? timeSeriesData : null;
+    };
+
+    try {
+      // Time series processing logic
+      const result = processTimeSeriesData();
+      if (!result) {
+        tsError = new Error('Time series processing failed');
+      }
+    } catch (error) {
+      tsError = error instanceof Error ? error : new Error('Unknown time series error');
+    }
+
+    if (tsError) {
+      console.warn('Time series data not available:', tsError.message);
     }
 
     return res.status(200).json({
@@ -198,21 +247,21 @@ export default async function handler(
   }
 }
 //#endregion
-//#region Email Log Updates
+//#region Email Metrics
 export const updateEmailLogStatus = async (
   logId: string,
   status: 'SENT' | 'DELIVERED' | 'BOUNCED',
   timestamp: string
 ) => {
-  const supabase = configureSupabaseClient<Database>();
+  const supabase = configureSupabaseClient();
 
   const { error } = await supabase
-    .from<Database['public']['Tables']['email_log']['Update']>('email_log')
-    .update({
-      status,
-      updated_at: timestamp
-    })
-    .eq('message_id', logId);
+  .from('eli5_email_log')
+  .update({ 
+    email_status: status, 
+    updated_at: timestamp 
+  })
+  .eq('message_id', logId);
 
   if (error) {
     throw new EmailMetricsError(
@@ -222,17 +271,17 @@ export const updateEmailLogStatus = async (
   }
 };
 //#endregion
-//#region Email Metrics Service
-const supabaseEmailMetrics = configureSupabaseClient<Database>();
+//#region Job Logging
+const supabaseEmailMetrics = configureSupabaseClient();
 
-export async function logCampaignAttempt(attempt: CampaignAttempt) {
+export async function logCampaignjob(job: Campaignjob) {
   const { data, error } = await supabaseEmailMetrics
-    .from<Database['public']['Tables']['campaign_attempt']['Row'], Database['public']['Tables']['campaign_attempt']['Insert']>('campaign_attempt')
-    .insert(attempt)
+    .from('campaign_jobs')
+    .insert(job)
     .select();
 
   if (error) {
-    console.error('Failed to log campaign attempt:', error);
+    console.error('Failed to log campaign job:', error);
     return null;
   }
 
@@ -340,3 +389,4 @@ class EmailMetricsError extends Error {
     this.status = status;
   }
 }
+//#endregion
