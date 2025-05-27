@@ -1,6 +1,7 @@
 // src/contexts/EngineContext.tsx
 import { createContext, useContext, ReactNode } from 'react';
 import { EngineStatus } from '@/types/engine';
+import { useEngineControl } from '@/hooks/useEngineControl';
 
 interface EngineContextType {
   status: EngineStatus;
