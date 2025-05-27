@@ -1,6 +1,6 @@
 // src/hooks/useMarketRegions.ts
 import { useState, useEffect, useCallback } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
+import { createClientComponentClient } from '@supabase/ssr';
 
 export function useMarketRegions() {
   const supabase = useSupabaseClient();
