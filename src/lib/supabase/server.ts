@@ -1,8 +1,25 @@
 // src/lib/supabase/server.ts
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 import { Database } from '@/types/db_types';
+
+export const supabaseServerClient = (cookieStore: {
+  get: (name: string) => { value: string } | undefined;
+  set: (name: string, value: string, options: CookieOptions) => void;
+}): SupabaseClient =>
+  createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: (name) => cookieStore.get(name)?.value,
+        set: (name, value, options) => cookieStore.set(name, value, options),
+        remove: (name, options) => cookieStore.set(name, '', options)
+      }
+    }
+  );
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -14,23 +31,7 @@ export async function createClient() {
     throw new Error('Missing Supabase environment variables');
   }
 
-  return createServerClient<Database>(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: '', ...options });
-        },
-      },
-    }
-  );
+  return supabaseServerClient(cookieStore);
 }
 
 // Function to create a Supabase client for server-side admin operations (uses service_role_key)

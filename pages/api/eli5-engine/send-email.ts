@@ -64,6 +64,17 @@ const createMimeMessage = (
   return email;
 };
 
+export type EmailOptions = {
+  to: string;
+  subject: string;
+  body: string;
+  attachments?: Array<{ filename: string; content: string }>;
+};
+
+export async function sendConfiguredEmail(options: EmailOptions) {
+  // TO DO: implement sendConfiguredEmail function
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
@@ -103,7 +114,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const activeSenderEmail = sender.email;
     const activeSenderName = sender.name;
 
-    // 2. Fetch Sample Lead (Dynamically)
+    // 2. Fetch Lead (Dynamically)
     let fetchedLeadData: any = null;
     let leadFetchError: any = null; 
     let leadSourceTable: string = '';
