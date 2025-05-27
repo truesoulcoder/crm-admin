@@ -9,12 +9,10 @@ import { Database } from '@/types/db';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 // Internal dependencies
-import { getGmailService, isValidEmail } from './_utils';
-import { STATUS_KEY, logCampaignJob } from './email-metrics';
-import { sendConfiguredEmail, type EmailOptions } from './send-email';
+import { STATUS_KEY } from './email-metrics';
+import { sendConfiguredEmail } from './send-email';
 
 // Types
-import type { Tables, Json } from '@/types/db_types';
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -88,7 +86,7 @@ interface ActiveSenderState {
   cooldownUntil: Date;
 }
 
-interface CampaignJobAttempt {
+interface CampaignJobJob {
   campaign_id: string;
   sender_id?: string;
   sender_email: string;
@@ -97,7 +95,7 @@ interface CampaignJobAttempt {
   error?: string;
 }
 
-interface CampaignAttempt {
+interface CampaignJob
   campaign_id: string;
   sender_email?: string;
   status?: string;
@@ -336,7 +334,7 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
             templateId: reqBody.template_id
           });
           await updateCampaignJobStatus(logId, 'sent');
-          await logCampaignAttempt({
+          await logCampaignJob({
             campaign_id: currentCampaignId,
             sender_email: senders[currentSenderIndex].id,
             status: 'sent',
@@ -358,7 +356,7 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
             })
             .eq('id', currentCampaignId);
           await updateCampaignJobStatus(logId, 'failed', error instanceof Error ? error.message : 'Unknown error');
-          await logCampaignAttempt({
+          await logCampaignJob({
             campaign_id: currentCampaignId,
             sender_email: senders[currentSenderIndex].id,
             status: 'failed',
@@ -420,7 +418,7 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
           leadEmail: lead.email,
           templateId: reqBody.template_id
         });
-        await logCampaignAttempt({
+        await logCampaignJob({
           campaign_id: currentCampaignId,
           sender_email: availableSender.id,
           status: 'sent',
@@ -435,7 +433,7 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
           console.error('Unknown error occurred');
         }
         await updateCampaignJobStatus(logId, 'failed', error instanceof Error ? error.message : 'Unknown error');
-        await logCampaignAttempt({
+        await logCampaignJob({
           campaign_id: currentCampaignId,
           sender_email: availableSender.id,
           status: 'failed',
@@ -458,14 +456,14 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
     // ========================
     // STEP 7: FINALIZATION
     // ========================
-    const totalAttempted = successCount + failureCount;
-    const summaryMessage = `Campaign run completed. Attempted: ${totalAttempted}, Sent: ${successCount}, Failed: ${failureCount}.`;
+    const totalJobed = successCount + failureCount;
+    const summaryMessage = `Campaign run completed. Jobed: ${totalJobed}, Sent: ${successCount}, Failed: ${failureCount}.`;
     
     console.log(`ELI5_CAMPAIGN_HANDLER: ${summaryMessage}`);
     console.log('ELI5_CAMPAIGN_HANDLER: Processing Errors:', JSON.stringify(processingErrors, null, 2));
 
     // Log overall campaign run status (optional, could be a separate table or log entry)
-    // Example: await logCampaignRunSummary(supabase, { campaign_id, campaign_run_id, successCount, failureCount, totalAttempted, processingErrors });
+    // Example: await logCampaignRunSummary(supabase, { campaign_id, campaign_run_id, successCount, failureCount, totalJobed, processingErrors });
 
     return res.status(200).json({
       success: true,
@@ -497,7 +495,7 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
 export default handler;
 
 // region Email Log Functions
-async function createCampaignJobAttempt(entry: Partial<CampaignJobAttempt>): Promise<string | null> {
+async function createCampaignJobJob(entry: Partial<CampaignJobJob>): Promise<string | null> {
   try {
     const { data: logEntry, error: logError } = await supabase
       .from('campaign_jobs')
@@ -508,7 +506,7 @@ async function createCampaignJobAttempt(entry: Partial<CampaignJobAttempt>): Pro
     return logEntry[0].id;
   } catch (e: unknown) {
     if (e instanceof Error) {
-      console.error('Error in createCampaignJobAttempt:', e.message);
+      console.error('Error in createCampaignJobJob:', e.message);
     } else {
       console.error('Unknown error occurred');
     }

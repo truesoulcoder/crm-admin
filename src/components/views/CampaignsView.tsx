@@ -1,17 +1,16 @@
-import { Button, Card, Table, Badge, Alert, Progress } from 'react-daisyui';
 import { useState, useEffect } from 'react';
+import { Badge, Alert } from 'react-daisyui';
 import { FiPlay, FiStopCircle, FiRefreshCw, FiAlertCircle, FiCheckCircle, FiLoader } from 'react-icons/fi';
-
-// Loading spinner component
-const LoadingSpinner = () => (
-  <Button color="ghost" loading className="loading">
-    Loading...
-  </Button>
-);
-
 import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/db_types';
+
+// Loading spinner component
+const LoadingSpinner = () => (
+  <button color="ghost" loading className="loading">
+    Loading...
+  </button>
+);
 
 interface Campaign {
   id: string;
@@ -221,16 +220,17 @@ export default function CampaignsView() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {/* Campaign List */}
-        <Card className="lg:col-span-1">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Your Campaigns</h2>
-            <Button size="xs" onClick={fetchCampaigns}>
-              <FiRefreshCw className="mr-2 h-4 w-4" />
-              Refresh
-            </Button>
-          </div>
-          
-          <div className="space-y-2">
+        <div className="card lg:col-span-1 bg-base-100 shadow-sm border border-base-200">
+          <div className="card-body p-4">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Your Campaigns</h2>
+              <button className="btn btn-xs btn-ghost" onClick={fetchCampaigns}>
+                <FiRefreshCw className="h-4 w-4" />
+                <span className="ml-1">Refresh</span>
+              </button>
+            </div>
+            
+            <div className="space-y-2">
             {campaigns.map((campaign) => (
               <div
                 key={campaign.id}
@@ -262,44 +262,48 @@ export default function CampaignsView() {
                 </div>
               </div>
             ))}
+            </div>
           </div>
-        </Card>
+        </div>
 
         {/* Campaign Details */}
         {selectedCampaign ? (
           <div className="lg:col-span-2 space-y-6">
-            <Card>
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">{selectedCampaign.name}</h2>
-                <div className="flex space-x-2">
-                  {selectedCampaign.status === 'running' ? (
-                    <Button
-                      color="failure"
-                      size="sm"
-                      onClick={stopCampaign}
-                      disabled={isStopping}
-                    >
-                      {isStopping ? (
-                        <LoadingSpinner />
-                      ) : (
-                        <FiStopCircle className="mr-2 h-4 w-4" />
-                      )}
-                      Stop Campaign
-                    </Button>
-                  ) : (
-                    <Button
-                      color="success"
-                      size="sm"
-                      onClick={() => startCampaign(selectedCampaign.id)}
-                      disabled={isStarting}
-                    >
-                      {isStarting ? (
-                        <LoadingSpinner />
-                      ) : (
-                        <FiPlay className="mr-2 h-4 w-4" />
-                      )}
-                      Start Campaign
-                    </Button>
+            <div className="card bg-base-100 shadow-sm border border-base-200">
+              <div className="card-body p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold">{selectedCampaign.name}</h2>
+                  <div className="flex gap-2">
+                    {selectedCampaign.status === 'running' ? (
+                      <button
+                        className="btn btn-sm btn-error"
+                        onClick={stopCampaign}
+                        disabled={isStopping}
+                      >
+                        {isStopping ? (
+                          <LoadingSpinner />
+                        ) : (
+                          <>
+                            <FiStopCircle className="h-4 w-4" />
+                            <span className="ml-1">Stop Campaign</span>
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn-sm btn-success"
+                        onClick={() => startCampaign(selectedCampaign.id)}
+                        disabled={isStarting}
+                      >
+                        {isStarting ? (
+                          <LoadingSpinner />
+                        ) : (
+                          <>
+                            <FiPlay className="h-4 w-4" />
+                            <span className="ml-1">Start Campaign</span>
+                          </>
+                        )}
+                      </button>
                   )}
                 </div>
               </div>
@@ -361,98 +365,97 @@ export default function CampaignsView() {
                   </div>
                 </div>
               </div>
-            </Card>
+            </div>
 
             {/* Jobs Table */}
-            <Card>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">Email Jobs</h3>
-                <Button size="xs" onClick={() => selectedCampaign && fetchJobs(selectedCampaign.id)}>
-                  <FiRefreshCw className="mr-2 h-4 w-4" />
-                  Refresh
-                </Button>
-              </div>
+            <div className="card bg-base-100 shadow-sm border border-base-200">
+              <div className="card-body p-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Email Jobs</h3>
+                  <button 
+                    className="btn btn-sm btn-ghost"
+                    onClick={() => selectedCampaign && fetchJobs(selectedCampaign.id)}
+                  >
+                    <FiRefreshCw className="h-4 w-4" />
+                    <span className="ml-1">Refresh</span>
+                  </button>
+                </div>
               
-              <div className="overflow-x-auto">
-                <Table hoverable>
-                  <Table.Head>
-                    <Table.HeadCell>Contact</Table.HeadCell>
-                    <Table.HeadCell>Email</Table.HeadCell>
-                    <Table.HeadCell>Status</Table.HeadCell>
-                    <Table.HeadCell>Sender</Table.HeadCell>
-                    <Table.HeadCell>Scheduled For</Table.HeadCell>
-                    <Table.HeadCell>Actions</Table.HeadCell>
-                  </Table.Head>
-                  <Table.Body className="divide-y">
+              <div className="overflow-x-auto w-full">
+                <table className="table table-zebra w-full">
+                  <thead>
+                    <tr>
+                      <th>Contact</th>
+                      <th>Email</th>
+                      <th>Status</th>
+                      <th>Sender</th>
+                      <th>Scheduled For</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {jobs.length > 0 ? (
                       jobs.map((job) => (
-                        <Table.Row
-                          key={job.id}
-                          className="bg-white dark:border-gray-700 dark:bg-gray-800"
-                        >
-                          <Table.Cell className="whitespace-nowrap font-medium text-gray-900 dark:text-white">
-                            {job.contact_name}
-                          </Table.Cell>
-                          <Table.Cell>{job.email_address}</Table.Cell>
-                          <Table.Cell>
-                            <Badge
-                              color={
+                        <tr key={job.id}>
+                          <td className="font-medium">{job.contact_name}</td>
+                          <td>{job.email_address}</td>
+                          <td>
+                            <span 
+                              className={`badge ${
                                 job.status === 'completed'
-                                  ? 'success'
+                                  ? 'badge-success'
                                   : job.status === 'failed'
-                                  ? 'failure'
+                                  ? 'badge-error'
                                   : job.status === 'processing'
-                                  ? 'warning'
-                                  : 'gray'
-                              }
-                              className="capitalize"
+                                  ? 'badge-warning'
+                                  : 'badge-ghost'
+                              } capitalize`}
                             >
                               {job.status}
-                            </Badge>
-                          </Table.Cell>
-                          <Table.Cell>
+                            </span>
+                          </td>
+                          <td>
                             {job.assigned_sender_id ? (
-                              <span className="text-sm text-gray-600">
+                              <span className="text-sm opacity-70">
                                 {job.assigned_sender_id.slice(0, 8)}...
                               </span>
                             ) : (
                               <span className="text-gray-400">Not assigned</span>
                             )}
-                          </Table.Cell>
-                          <Table.Cell>
+                          </td>
+                          <td>
                             {job.next_processing_time
                               ? new Date(job.next_processing_time).toLocaleString()
                               : 'N/A'}
-                          </Table.Cell>
-                          <Table.Cell>
+                          </td>
+                          <td>
                             {job.status === 'failed' && (
-                              <Button
-                                size="xs"
-                                color="light"
+                              <button
+                                className="btn btn-xs btn-ghost"
                                 onClick={() => {
                                   // Add retry logic here
                                 }}
                               >
                                 Retry
-                              </Button>
+                              </button>
                             )}
-                          </Table.Cell>
-                        </Table.Row>
+                          </td>
+                        </tr>
                       ))
                     ) : (
-                      <Table.Row>
-                        <Table.Cell colSpan={6} className="text-center py-8 text-gray-500">
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-gray-500">
                           No jobs found for this campaign.
-                        </Table.Cell>
-                      </Table.Row>
+                        </td>
+                      </tr>
                     )}
-                  </Table.Body>
-                </Table>
+                  </tbody>
+                </table>
               </div>
-            </Card>
+            </div>
           </div>
         ) : (
-          <div className="lg:col-span-2 flex items-center justify-center h-64 bg-gray-50 rounded-lg">
+          <div className="lg:col-span-2 flex items-center justify-center h-64 bg-base-200 rounded-lg">
             <p className="text-gray-500">Select a campaign to view details</p>
           </div>
         )}

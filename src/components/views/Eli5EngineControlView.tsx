@@ -1,6 +1,6 @@
 // src/components/views/Eli5EngineControlView.tsx
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Card, Button, Select, Alert } from 'react-daisyui';
+import { Card, Button, Select, Alert, Badge, Table } from 'react-daisyui';
 import { Toggle } from 'react-daisyui';
 import { Range } from 'react-daisyui';
 import { useEngineControl } from '@/hooks/useEngineControl';
@@ -18,6 +18,23 @@ type LogEntry = {
 
 type EngineStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error' | 'test_sending';
 
+type EmailMetrics = {
+  email: string;
+  name: string;
+  sent: number;
+  delivered: number;
+  bounced: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  total_sent: number;
+  delivery_rate: number;
+  bounce_rate: number;
+  open_rate: number;
+  click_rate: number;
+  reply_rate: number;
+};
+
 const Eli5EngineControlView: React.FC = () => {
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>([]);
@@ -32,6 +49,11 @@ const Eli5EngineControlView: React.FC = () => {
   // Use the custom hooks
   const { marketRegions, selectedMarketRegion, setSelectedMarketRegion } = useMarketRegions();
   const { engineStatus, error: engineError, isLoading, startEngine, stopEngine } = useEngineControl();
+  
+  // State for email metrics
+  const [emailMetrics, setEmailMetrics] = useState<EmailMetrics[]>([]);
+  const [metricsLoading, setMetricsLoading] = useState<boolean>(false);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
 
   // Fetch available senders
   const fetchSenders = useCallback(async () => {
@@ -97,6 +119,54 @@ const Eli5EngineControlView: React.FC = () => {
     );
   }, []);
 
+  // Fetch email metrics
+  const fetchEmailMetrics = useCallback(async () => {
+    setMetricsLoading(true);
+    setMetricsError(null);
+    try {
+      const { data, error } = await supabase
+        .from('email_metrics_by_sender')
+        .select('*')
+        .order('sent', { ascending: false });
+
+      if (error) throw error;
+      setEmailMetrics(data || []);
+    } catch (err) {
+      console.error('Error fetching email metrics:', err);
+      setMetricsError('Failed to load email metrics');
+    } finally {
+      setMetricsLoading(false);
+    }
+  }, [supabase]);
+
+  // Set up real-time subscription to email metrics
+  useEffect(() => {
+    // Initial fetch
+    fetchEmailMetrics();
+
+    // Set up subscription
+    const subscription = supabase
+      .channel('email_metrics_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'email_metrics_by_sender',
+        },
+        (payload) => {
+          console.log('Email metrics change:', payload);
+          fetchEmailMetrics(); // Refresh metrics on any change
+        }
+      )
+      .subscribe();
+
+    // Clean up subscription on unmount
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [fetchEmailMetrics]);
+
   // Effect to fetch senders on mount
   useEffect(() => {
     fetchSenders();
@@ -114,17 +184,69 @@ const Eli5EngineControlView: React.FC = () => {
     consoleEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [consoleLogs]);
 
+  // Get status color based on engine status
+  const getStatusColor = (status: string): 'success' | 'warning' | 'error' | 'info' => {
+    switch (status) {
+      case 'running':
+        return 'success';
+      case 'starting':
+      case 'stopping':
+        return 'warning';
+      case 'error':
+        return 'error';
+      case 'idle':
+      case 'stopped':
+      default:
+        return 'info';
+    }
+  };
+
+  // Get status text based on engine status
+  const getStatusText = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
   return (
     <div className="p-4 space-y-6">
-      <h1 className="text-2xl font-bold">ELI5 Engine Control</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">ELI5 Engine Control</h1>
+        <div className="flex items-center space-x-2">
+          <span className="text-sm text-gray-500">Status:</span>
+          <Badge color={getStatusColor(engineStatus)}>
+            {getStatusText(engineStatus)}
+            {engineStatus === 'running' && (
+              <span className="ml-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+              </span>
+            )}
+          </Badge>
+        </div>
+      </div>
       
       {error && (
-        <Alert color="failure" onDismiss={() => setError(null)}>
-          {error}
-        </Alert>
+        <div className="alert alert-error">
+          <div>
+            <span>{error}</span>
+          </div>
+          <button className="btn btn-sm btn-ghost" onClick={() => setError(null)}>✕</button>
+        </div>
       )}
 
-      <Card>
+      <Card className="relative">
+        {engineStatus === 'running' && (
+          <div className="absolute top-4 right-4">
+            <div className="flex items-center space-x-1 bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-600"></span>
+              </span>
+              <span>Active</span>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <div className="mb-4">
@@ -180,12 +302,16 @@ const Eli5EngineControlView: React.FC = () => {
             </div>
 
             <div className="flex items-center mb-4">
-              <Toggle
-                checked={isDryRun}
-                label="Dry Run"
-                onChange={setIsDryRun}
-                disabled={isLoading}
-              />
+              <label className="label cursor-pointer">
+                <span className="label-text mr-2">Dry Run</span>
+                <input
+                  type="checkbox"
+                  className="toggle"
+                  checked={isDryRun}
+                  onChange={(e) => setIsDryRun(e.target.checked)}
+                  disabled={isLoading}
+                />
+              </label>
             </div>
           </div>
 
@@ -216,13 +342,13 @@ const Eli5EngineControlView: React.FC = () => {
 
         <div className="flex space-x-4 mt-6">
           <Button
-            color="blue"
+            color="primary"
             onClick={handleStartEngine}
             disabled={isLoading || engineStatus === 'running' || engineStatus === 'starting'}
           >
             {isLoading && engineStatus === 'starting' ? (
               <div className="flex items-center">
-                <Spinner size="sm" className="mr-2" />
+                <div className="loading loading-spinner loading-sm mr-2"></div>
                 Starting...
               </div>
             ) : (
@@ -231,13 +357,13 @@ const Eli5EngineControlView: React.FC = () => {
           </Button>
           
           <Button
-            color="red"
+            color="error"
             onClick={handleStopEngine}
             disabled={isLoading || engineStatus === 'idle' || engineStatus === 'stopping'}
           >
             {isLoading && engineStatus === 'stopping' ? (
               <div className="flex items-center">
-                <Spinner size="sm" className="mr-2" />
+                <div className="loading loading-spinner loading-sm mr-2"></div>
                 Stopping...
               </div>
             ) : (
@@ -248,7 +374,22 @@ const Eli5EngineControlView: React.FC = () => {
       </Card>
 
       <Card>
-        <h2 className="text-lg font-semibold mb-2">Console Output</h2>
+        <div className="flex justify-between items-center mb-2">
+          <h2 className="text-lg font-semibold">Console Output</h2>
+          <div className="text-sm text-gray-500">
+            {engineStatus === 'running' ? (
+              <span className="flex items-center">
+                <span className="relative flex h-2 w-2 mr-1">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+                Logging active
+              </span>
+            ) : (
+              'Logging paused'
+            )}
+          </div>
+        </div>
         <div className="bg-gray-900 text-green-400 p-4 rounded h-64 overflow-y-auto font-mono text-sm">
           {consoleLogs.length === 0 ? (
             <p className="text-gray-500">No logs yet. Start the engine to see activity.</p>
@@ -261,6 +402,83 @@ const Eli5EngineControlView: React.FC = () => {
             ))
           )}
           <div ref={consoleEndRef} />
+        </div>
+      </Card>
+
+      {/* Email Metrics Table */}
+      <Card>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">Email Metrics by Sender</h2>
+          <Button 
+            size="sm" 
+            onClick={fetchEmailMetrics}
+            disabled={metricsLoading}
+          >
+            {metricsLoading ? 'Refreshing...' : 'Refresh'}
+          </Button>
+        </div>
+        
+        {metricsError && (
+          <Alert status="error" className="mb-4">
+            {metricsError}
+          </Alert>
+        )}
+
+        <div className="overflow-x-auto">
+          <Table zebra className="w-full">
+            <Table.Head>
+              <span>Sender</span>
+              <span>Sent</span>
+              <span>Delivered</span>
+              <span>Bounced</span>
+              <span>Opened</span>
+              <span>Clicked</span>
+              <span>Replied</span>
+              <span>Delivery Rate</span>
+              <span>Open Rate</span>
+            </Table.Head>
+            <Table.Body>
+              {metricsLoading ? (
+                <tr>
+                  <td colSpan={9} className="text-center py-4">
+                    <span className="loading loading-spinner loading-md"></span>
+                    <span className="ml-2">Loading metrics...</span>
+                  </td>
+                </tr>
+              ) : emailMetrics.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="text-center py-4 text-gray-500">
+                    No email metrics available
+                  </td>
+                </tr>
+              ) : (
+                emailMetrics.map((metric) => (
+                  <tr key={metric.email}>
+                    <td>
+                      <div className="font-medium">{metric.name}</div>
+                      <div className="text-xs text-gray-500">{metric.email}</div>
+                    </td>
+                    <td>{metric.sent.toLocaleString()}</td>
+                    <td>{metric.delivered.toLocaleString()}</td>
+                    <td>{metric.bounced.toLocaleString()}</td>
+                    <td>{metric.opened.toLocaleString()}</td>
+                    <td>{metric.clicked.toLocaleString()}</td>
+                    <td>{metric.replied.toLocaleString()}</td>
+                    <td>
+                      <span className={`font-medium ${metric.delivery_rate >= 90 ? 'text-success' : metric.delivery_rate >= 80 ? 'text-warning' : 'text-error'}`}>
+                        {metric.delivery_rate.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`font-medium ${metric.open_rate >= 30 ? 'text-success' : metric.open_rate >= 20 ? 'text-warning' : 'text-error'}`}>
+                        {metric.open_rate.toFixed(1)}%
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </Table.Body>
+          </Table>
         </div>
       </Card>
     </div>
