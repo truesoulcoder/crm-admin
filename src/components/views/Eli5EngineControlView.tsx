@@ -1,6 +1,8 @@
 // src/components/views/Eli5EngineControlView.tsx
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Card, Button, Label, Select, ToggleSwitch, RangeSlider, Alert, Spinner } from 'react-daisyui';
+import { Card, Button, Select, Alert } from 'react-daisyui';
+import { Toggle } from 'react-daisyui';
+import { Range } from 'react-daisyui';
 import { useEngineControl } from '@/hooks/useEngineControl';
 import { useMarketRegions } from '@/hooks/useMarketRegions';
 import { createClientComponentClient } from '@supabase/ssr';
@@ -127,7 +129,7 @@ const Eli5EngineControlView: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <div className="mb-4">
-              <Label htmlFor="marketRegion" value="Market Region" />
+              <label htmlFor="marketRegion" className="block mb-2">Market Region</label>
               <Select
                 id="marketRegion"
                 value={selectedMarketRegion}
@@ -143,8 +145,8 @@ const Eli5EngineControlView: React.FC = () => {
             </div>
 
             <div className="mb-4">
-              <Label htmlFor="limitPerRun" value={`Limit per run: ${limitPerRun}`} />
-              <RangeSlider
+              <label htmlFor="limitPerRun" className="block mb-2">{`Limit per run: ${limitPerRun}`}</label>
+              <Range
                 id="limitPerRun"
                 min={1}
                 max={100}
@@ -155,8 +157,8 @@ const Eli5EngineControlView: React.FC = () => {
             </div>
 
             <div className="mb-4">
-              <Label htmlFor="minInterval" value={`Min interval: ${minIntervalSeconds}s`} />
-              <RangeSlider
+              <label htmlFor="minInterval" className="block mb-2">{`Min interval: ${minIntervalSeconds}s`}</label>
+              <Range
                 id="minInterval"
                 min={10}
                 max={300}
@@ -167,8 +169,8 @@ const Eli5EngineControlView: React.FC = () => {
             </div>
 
             <div className="mb-4">
-              <Label htmlFor="maxInterval" value={`Max interval: ${maxIntervalSeconds}s`} />
-              <RangeSlider
+              <label htmlFor="maxInterval" className="block mb-2">{`Max interval: ${maxIntervalSeconds}s`}</label>
+              <Range
                 id="maxInterval"
                 min={minIntervalSeconds + 10}
                 max={600}
@@ -179,7 +181,7 @@ const Eli5EngineControlView: React.FC = () => {
             </div>
 
             <div className="flex items-center mb-4">
-              <ToggleSwitch
+              <Toggle
                 checked={isDryRun}
                 label="Dry Run"
                 onChange={setIsDryRun}
@@ -189,7 +191,7 @@ const Eli5EngineControlView: React.FC = () => {
           </div>
 
           <div>
-            <Label>Available Senders</Label>
+            <label className="block mb-2">Available Senders</label>
             <div className="max-h-48 overflow-y-auto border rounded p-2">
               {availableSenders.map(sender => (
                 <div key={sender.id} className="flex items-center mb-2">

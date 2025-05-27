@@ -1,7 +1,14 @@
 import { createClientComponentClient } from '@supabase/ssr';
-import { Button, Card, Table, Badge, Alert, Spinner, Progress } from 'react-daisyui';
+import { Button, Card, Table, Badge, Alert, Progress } from 'react-daisyui';
 import { useState, useEffect } from 'react';
-import { FiPlay, FiStopCircle, FiRefreshCw, FiAlertCircle, FiCheckCircle } from 'react-icons/fi';
+import { FiPlay, FiStopCircle, FiRefreshCw, FiAlertCircle, FiCheckCircle, FiLoader } from 'react-icons/fi';
+
+// Loading spinner component
+const LoadingSpinner = () => (
+  <Button color="ghost" loading className="loading">
+    Loading...
+  </Button>
+);
 
 import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/lib/supabase/client';
@@ -192,7 +199,7 @@ export default function CampaignsView() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Spinner size="xl" />
+        <LoadingSpinner />
       </div>
     );
   }
@@ -274,7 +281,7 @@ export default function CampaignsView() {
                       disabled={isStopping}
                     >
                       {isStopping ? (
-                        <Spinner size="sm" className="mr-2" />
+                        <LoadingSpinner />
                       ) : (
                         <FiStopCircle className="mr-2 h-4 w-4" />
                       )}
@@ -288,7 +295,7 @@ export default function CampaignsView() {
                       disabled={isStarting}
                     >
                       {isStarting ? (
-                        <Spinner size="sm" className="mr-2" />
+                        <LoadingSpinner />
                       ) : (
                         <FiPlay className="mr-2 h-4 w-4" />
                       )}
@@ -369,159 +376,88 @@ export default function CampaignsView() {
               
               <div className="overflow-x-auto">
                 <Table hoverable>
-                                    <Table.Head>
-                                      <Table.HeadCell>Contact</Table.HeadCell>
-                                      <Table.HeadCell>Email</Table.HeadCell>
-                                      <Table.HeadCell>Status</Table.HeadCell>
-                                      <Table.HeadCell>Sender</Table.HeadCell>
-                                      <Table.HeadCell>Scheduled For</Table.HeadCell>
-                                      <Table.HeadCell>Actions</Table.HeadCell>
-                                    </Table.Head>
-                                    <Table.Body className="divide-y">
-                                      {jobs.length > 0 ? (
-                                        jobs.map((job) => (
-                                          <Table.Row
-                                            key={job.id}
-                                            className="bg-white dark:border-gray-700 dark:bg-gray-800"
-                                          >
-                                            <Table.Cell className="whitespace-nowrap font-medium text-gray-900 dark:text-white">
-                                              {job.contact_name}
-                                            </Table.Cell>
-                                            <Table.Cell>{job.email_address}</Table.Cell>
-                                            <Table.Cell>
-                                              <Badge
-                                                color={
-                                                  job.status === 'completed'
-                                                    ? 'success'
-                                                    : job.status === 'failed'
-                                                    ? 'failure'
-                                                    : job.status === 'processing'
-                                                    ? 'warning'
-                                                    : 'gray'
-                                                }
-                                                className="capitalize"
-                                              >
-                                                {job.status}
-                                              </Badge>
-                                            </Table.Cell>
-                                            <Table.Cell>
-                                              {job.assigned_sender_id ? (
-                                                <span className="text-sm text-gray-600">
-                                                  {job.assigned_sender_id.slice(0, 8)}...
-                                                </span>
-                                              ) : (
-                                                <span className="text-gray-400">Not assigned</span>
-                                              )}
-                                            </Table.Cell>
-                                            <Table.Cell>
-                                              {job.next_processing_time
-                                                ? new Date(job.next_processing_time).toLocaleString()
-                                                : 'N/A'}
-                                            </Table.Cell>
-                                            <Table.Cell>
-                                              {job.status === 'failed' && (
-                                                <Button
-                                                  size="xs"
-                                                  color="light"
-                                                  onClick={() => {
-                                                    // Add retry logic here
-                                                  }}
-                                                >
-                                                  Retry
-                                                </Button>
-                                              )}
-                                            </Table.Cell>
-                                          </Table.Row>
-                                        ))
-                                      ) : (
-                                        <Table.Row>
-                                          <Table.Cell colSpan={6} className="text-center py-8 text-gray-500">
-                                            No jobs found for this campaign.
-                                          </Table.Cell>
-                                        </Table.Row>
-                                      )}
-                                    </Table.Body>
-                                  </Table>
-                                </div>
-                                
-                                {/* Job Details Modal */}
-                                {selectedJob && (
-                                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                                    <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                                      <div className="p-6">
-                                        <div className="flex justify-between items-center mb-4">
-                                          <h3 className="text-xl font-semibold">Job Details</h3>
-                                          <button
-                                            onClick={() => setSelectedJob(null)}
-                                            className="text-gray-500 hover:text-gray-700"
-                                          >
-                                            &times;
-                                          </button>
-                                        </div>
-                                        
-                                        <div className="space-y-4">
-                                          <div>
-                                            <h4 className="text-sm font-medium text-gray-500">Contact</h4>
-                                            <p className="mt-1">{selectedJob.contact_name}</p>
-                                          </div>
-                                          
-                                          <div>
-                                            <h4 className="text-sm font-medium text-gray-500">Email</h4>
-                                            <p className="mt-1">{selectedJob.email_address}</p>
-                                          </div>
-                                          
-                                          <div>
-                                            <h4 className="text-sm font-medium text-gray-500">Status</h4>
-                                            <div className="mt-1">
-                                              <Badge
-                                                color={
-                                                  selectedJob.status === 'completed'
-                                                    ? 'success'
-                                                    : selectedJob.status === 'failed'
-                                                    ? 'failure'
-                                                    : 'gray'
-                                                }
-                                                className="capitalize"
-                                              >
-                                                {selectedJob.status}
-                                              </Badge>
-                                            </div>
-                                          </div>
-                                          
-                                          {selectedJob.error_message && (
-                                            <div>
-                                              <h4 className="text-sm font-medium text-gray-500">Error</h4>
-                                              <div className="mt-1 p-3 bg-red-50 text-red-700 rounded-md">
-                                                {selectedJob.error_message}
-                                              </div>
-                                            </div>
-                                          )}
-                                          
-                                          <div className="pt-4 border-t border-gray-200">
-                                            <Button
-                                              color="blue"
-                                              onClick={() => {
-                                                // Add retry logic here
-                                                setSelectedJob(null);
-                                              }}
-                                              disabled={selectedJob.status !== 'failed'}
-                                            >
-                                              Retry Job
-                                            </Button>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </Card>
-                            </div>
-                          ) : (
-                            <div className="lg:col-span-2 flex items-center justify-center h-64 bg-gray-50 rounded-lg">
-                              <p className="text-gray-500">Select a campaign to view details</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  }
+                  <Table.Head>
+                    <Table.HeadCell>Contact</Table.HeadCell>
+                    <Table.HeadCell>Email</Table.HeadCell>
+                    <Table.HeadCell>Status</Table.HeadCell>
+                    <Table.HeadCell>Sender</Table.HeadCell>
+                    <Table.HeadCell>Scheduled For</Table.HeadCell>
+                    <Table.HeadCell>Actions</Table.HeadCell>
+                  </Table.Head>
+                  <Table.Body className="divide-y">
+                    {jobs.length > 0 ? (
+                      jobs.map((job) => (
+                        <Table.Row
+                          key={job.id}
+                          className="bg-white dark:border-gray-700 dark:bg-gray-800"
+                        >
+                          <Table.Cell className="whitespace-nowrap font-medium text-gray-900 dark:text-white">
+                            {job.contact_name}
+                          </Table.Cell>
+                          <Table.Cell>{job.email_address}</Table.Cell>
+                          <Table.Cell>
+                            <Badge
+                              color={
+                                job.status === 'completed'
+                                  ? 'success'
+                                  : job.status === 'failed'
+                                  ? 'failure'
+                                  : job.status === 'processing'
+                                  ? 'warning'
+                                  : 'gray'
+                              }
+                              className="capitalize"
+                            >
+                              {job.status}
+                            </Badge>
+                          </Table.Cell>
+                          <Table.Cell>
+                            {job.assigned_sender_id ? (
+                              <span className="text-sm text-gray-600">
+                                {job.assigned_sender_id.slice(0, 8)}...
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">Not assigned</span>
+                            )}
+                          </Table.Cell>
+                          <Table.Cell>
+                            {job.next_processing_time
+                              ? new Date(job.next_processing_time).toLocaleString()
+                              : 'N/A'}
+                          </Table.Cell>
+                          <Table.Cell>
+                            {job.status === 'failed' && (
+                              <Button
+                                size="xs"
+                                color="light"
+                                onClick={() => {
+                                  // Add retry logic here
+                                }}
+                              >
+                                Retry
+                              </Button>
+                            )}
+                          </Table.Cell>
+                        </Table.Row>
+                      ))
+                    ) : (
+                      <Table.Row>
+                        <Table.Cell colSpan={6} className="text-center py-8 text-gray-500">
+                          No jobs found for this campaign.
+                        </Table.Cell>
+                      </Table.Row>
+                    )}
+                  </Table.Body>
+                </Table>
+              </div>
+            </Card>
+          </div>
+        ) : (
+          <div className="lg:col-span-2 flex items-center justify-center h-64 bg-gray-50 rounded-lg">
+            <p className="text-gray-500">Select a campaign to view details</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
