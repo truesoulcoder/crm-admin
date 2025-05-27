@@ -1,24 +1,25 @@
 // src/app/layout.tsx
+'use client';
+
 import { Inter } from 'next/font/google';
+
+import { EngineProvider } from '@/contexts/EngineContext';
+import { UserProvider } from '@/contexts/UserContext';
+import { createClient } from '@/lib/supabase/client';
+
 import './globals.css';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { Database } from '@/lib/supabase/database.types';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = createServerComponentClient<Database>({ cookies });
-  const { data: { session } } = await supabase.auth.getSession();
-
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        <UserProvider initialSession={session}>
+    <html lang="en" data-theme="custom_crm_theme">
+      <body className={`${inter.className} bg-base-100`}>
+        <UserProvider>
           <EngineProvider>
             {children}
           </EngineProvider>

@@ -2,12 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Your existing styles */
-body {
-  @apply bg-base-200 min-h-screen font-sans antialiased;
+/* DaisyUI base styles */
+@layer base {
+  :root {
+    --rounded-box: 1rem;
+    --rounded-btn: 0.5rem;
+    --rounded-badge: 1.9rem;
+    --animation-btn: 0.25s;
+    --animation-input: 0.2s;
+    --btn-text-case: uppercase;
+    --btn-focus-scale: 0.95;
+    --border-btn: 1px;
+    --tab-border: 1px;
+    --tab-radius: 0.5rem;
+  }
 }
 
-/* General scrollbar styling for webkit browsers */
+/* Theme variables */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    /* other CSS variables */
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    /* dark mode variables */
+  }
+}
+
+/* Base styles */
+body {
+  @apply bg-base-100 text-base-content min-h-screen;
+}
+
+/* Scrollbar styling */
 ::-webkit-scrollbar {
   @apply w-2;
 }
@@ -15,3 +46,9 @@ body {
 ::-webkit-scrollbar-track {
   @apply bg-base-200;
 }
+
+::-webkit-scrollbar-thumb {
+  @apply bg-base-300 rounded-full;
+}
+
+/* Other global styles */

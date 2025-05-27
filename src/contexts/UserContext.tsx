@@ -1,8 +1,9 @@
 // src/contexts/UserContext.tsx
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
+import { createContext, useContext, useEffect, useState } from 'react';
+
 import { createClient } from '@/lib/supabase/client';
 
 type UserContextType = {
@@ -14,13 +15,15 @@ type UserContextType = {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
-export function UserProvider({ 
-  children,
-  initialSession = null 
-}: { 
+interface UserProviderProps {
   children: React.ReactNode;
-  initialSession: Session | null;
-}) {
+  initialSession?: Session | null;
+}
+
+export function UserProvider({
+  children,
+  initialSession = null,
+}: UserProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(initialSession);
   const [loading, setLoading] = useState(true);

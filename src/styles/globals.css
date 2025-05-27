@@ -2,16 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Your existing styles */
-body {
-  @apply bg-base-200 min-h-screen font-sans antialiased;
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    /* other CSS variables */
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    /* dark mode variables */
+  }
 }
 
-/* General scrollbar styling for webkit browsers */
-::-webkit-scrollbar {
-  @apply w-2;
-}
-
-::-webkit-scrollbar-track {
-  @apply bg-base-200;
-}
+/* Other global styles */
