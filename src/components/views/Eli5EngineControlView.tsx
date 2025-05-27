@@ -1,15 +1,16 @@
 'use client';
 //region Imports
-import { PlayCircle, StopCircle, Mail, AlertTriangle, Info, CheckCircle, RefreshCw, MapPin } from 'lucide-react';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Button, Card, Alert, Input, Select } from 'react-daisyui';
-
-import { supabase } from '@/lib/supabase/client';
-import { Database } from '@/types/db_types';
-
+import { PlayCircle, StopCircle, Mail, AlertTriangle, Info, RefreshCw, MapPin } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Button, Card, Alert, Select } from 'react-daisyui';
+import { useEngineControl } from '@/hooks/useEngineControl';
+import { useMarketRegions } from '@/hooks/useMarketRegions';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useSupabaseClient } from '@supabase/auth-helpers-react';
+import { Database } from '@/types/db_types'; // Make sure this type is properly defined
 import type { JSX } from 'react';
 //endregion
-//region Types
+//region Types&Hooks
 
 type Eli5EmailLogEntry = Database['public']['Tables']['eli5_email_log']['Row'];
 type MarketRegion = Database['public']['Tables']['market_regions']['Row'];
@@ -25,21 +26,28 @@ interface LogEntry {
 type EngineStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error' | 'test_sending';
 
 const Eli5EngineControlView: React.FC = () => {
-  const [engineStatus, setEngineStatus] = useState<EngineStatus>('idle');
-  const [marketRegions, setMarketRegions] = useState<MarketRegion[]>([]);
-  const [selectedMarketRegion, setSelectedMarketRegion] = useState<string>('');
-  const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isDryRun, setIsDryRun] = useState<boolean>(false);
+  // Existing refs and state
   const consoleEndRef = useRef<null | HTMLDivElement>(null);
-  const [availableSenders, setAvailableSenders] = useState<Array<{id: string, name: string, email: string}>>([]);
-  const [selectedSenderIds, setSelectedSenderIds] = useState<string[]>([]);
+  const [consoleLogs, setConsoleLogs] = useState<LogEntry[]>([]);
+  const [isDryRun, setIsDryRun] = useState<boolean>(false);
+  const [limitPerRun, setLimitPerRun] = useState<number>(10);
   const [minIntervalSeconds, setMinIntervalSeconds] = useState<number>(100);
   const [maxIntervalSeconds, setMaxIntervalSeconds] = useState<number>(1000);
-  const [limitPerRun, setLimitPerRun] = useState<number>(10);
-//endregion
-//region Functions
+  const [selectedSenderIds, setSelectedSenderIds] = useState<string[]>([]);
+  const [availableSenders, setAvailableSenders] = useState<Array<{id: string, name: string, email: string}>>([]);
+
+  // Use the new hooks
+  const { marketRegions, selectedMarketRegion, setSelectedMarketRegion } = useMarketRegions();
+  const {
+    engineStatus,
+    isLoading,
+    error,
+    startEngine,
+    stopEngine,
+    resetEngine
+  } = useEngineControl();
+
+  // Keep the log function
   const addLog = useCallback((message: string, type: LogEntry['type'], data?: any) => {
     const newLog: LogEntry = {
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
@@ -50,7 +58,8 @@ const Eli5EngineControlView: React.FC = () => {
     };
     setConsoleLogs(prevLogs => [newLog, ...prevLogs.slice(0, 199)]);
   }, []);
-
+//end region
+//region Functions
   // Fetch market regions on component mount
   useEffect(() => {
     const fetchMarketRegions = async () => {
@@ -78,35 +87,30 @@ const Eli5EngineControlView: React.FC = () => {
     void fetchMarketRegions();
   }, [addLog, selectedMarketRegion]); // Added addLog and selectedMarketRegion to dependency array
 
-  // Update the handleSendTestEmail function to use selectedMarketRegion
+  // Replace the existing handleSendTestEmail
   const handleSendTestEmail = async () => {
     if (!selectedMarketRegion) {
       const msg = 'Please select a market region first.';
       addLog(msg, 'warning');
-      setError(msg);
       return;
     }
-
+  
     addLog('Sending test email...', 'info');
-    setIsLoading(true);
     setEngineStatus('test_sending');
-    setError(null);
-
+  
     try {
       const response = await fetch('/api/eli5-engine/test-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          market_region: selectedMarketRegion
-        })
+        body: JSON.stringify({ market_region: selectedMarketRegion })
       });
-
+  
       const result = await response.json();
-
+  
       if (!response.ok) {
         throw new Error(result.error || `API request failed with status ${response.status}`);
       }
-
+  
       if (result.success) {
         addLog(`Test email sent successfully: ${result.message}`, 'success');
       } else {
@@ -115,57 +119,52 @@ const Eli5EngineControlView: React.FC = () => {
     } catch (err: any) {
       const errorMessage = `Error sending test email: ${err.message}`;
       addLog(errorMessage, 'error');
-      setError(errorMessage);
-      setEngineStatus('error');
     } finally {
-      setIsLoading(false);
-      if (engineStatus !== 'error') {
-        setEngineStatus('idle');
-      }
+      setEngineStatus('idle');
     }
   };
-// endregion
-// region Start Engine
-  // Update the handleStartEngine function to use selectedMarketRegion
-// 1. Update the startEli5Engine function
-const startEli5Engine = async () => {
-  if (!selectedMarketRegion) {
-    const msg = 'Please select a market region.';
-    addLog(msg, 'warning');
-    setError(msg);
-    return;
-  }
-
-  addLog(`Starting ELI5 Engine for market region: ${selectedMarketRegion}...`, 'engine');
-  setIsLoading(true);
-  setError(null);
-
-  try {
-    const { data, error } = await supabase.rpc('start_eli5_engine', {
-      p_dry_run: isDryRun,
-      p_limit_per_run: limitPerRun,
-      p_market_region: selectedMarketRegion,
-      p_min_interval_seconds: minIntervalSeconds,
-      p_max_interval_seconds: maxIntervalSeconds,
-      p_selected_sender_ids: selectedSenderIds.length ? selectedSenderIds : null
-    });
-
-    if (error) throw error;
-
-    addLog('Engine started successfully', 'success');
-    setEngineStatus('running');
+  
+  // New handler for starting the engine
+  const handleStartEngine = async () => {
+    if (!selectedMarketRegion) {
+      addLog('Please select a market region first.', 'warning');
+      return;
+    }
+  
+    addLog(`Starting engine for ${selectedMarketRegion}...`, 'engine');
     
-    // Start polling for job updates
-    startJobPolling();
-  } catch (err: any) {
-    const errorMsg = `Failed to start engine: ${err.message}`;
-    addLog(errorMsg, 'error');
-    setError(errorMsg);
-    setEngineStatus('error');
-  } finally {
-    setIsLoading(false);
-  }
-};
+    const success = await startEngine({
+      marketRegion: selectedMarketRegion,
+      isDryRun,
+      limitPerRun,
+      minIntervalSeconds,
+      maxIntervalSeconds,
+      selectedSenderIds,
+    });
+  
+    if (success) {
+      addLog('Engine started successfully', 'success');
+    } else {
+      addLog('Failed to start engine', 'error');
+    }
+  };
+  
+  // New handler for stopping the engine
+  const handleStopEngine = async () => {
+    if (!selectedMarketRegion) {
+      addLog('No active market region to stop', 'warning');
+      return;
+    }
+  
+    addLog('Stopping engine...', 'engine');
+    const success = await stopEngine(selectedMarketRegion);
+    
+    if (success) {
+      addLog('Engine stopped successfully', 'success');
+    } else {
+      addLog('Failed to stop engine', 'error');
+    }
+  };
 
 // 2. Add job polling
 const startJobPolling = () => {
@@ -320,15 +319,14 @@ const stopEli5Engine = async () => {
       <div className="container mx-auto p-4">
         <h1 className="text-2xl font-bold mb-6">ELI5 Engine Control Panel</h1>
         
-        {error && (
-          <Alert
-            status="error"
-            className="mb-4"
-            icon={<AlertTriangle />}
-          >
-            {error}
-          </Alert>
-        )}
+{error && (
+  <Alert status="error" className="mb-4" icon={<AlertTriangle />}>
+    {error}
+    <Button size="sm" color="ghost" onClick={() => resetEngine()}>
+      Dismiss
+    </Button>
+  </Alert>
+)}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="form-control w-full">
@@ -354,19 +352,12 @@ const stopEli5Engine = async () => {
           </div>
 
           <div className="flex items-end gap-2">
+            // In your return statement, update the buttons:
             <Button 
               color="primary" 
               startIcon={<PlayCircle />}
               loading={engineStatus === 'starting' || engineStatus === 'running'}
-              onClick={() => {
-                void (async () => {
-                  try {
-                    await handleStartEngine();
-                  } catch (error) {
-                    console.error('Engine start failed:', error);
-                  }
-                })();
-              }}
+              onClick={handleStartEngine}
               disabled={isLoading || !selectedMarketRegion}
               className="flex-1"
             >
@@ -377,7 +368,7 @@ const stopEli5Engine = async () => {
               color="error" 
               startIcon={<StopCircle />}
               loading={engineStatus === 'stopping'}
-              onClick={() => { handleStopEngine().catch(console.error) }}
+              onClick={handleStopEngine}
               disabled={!['running', 'starting'].includes(engineStatus)}
               className="flex-1"
             >
@@ -399,49 +390,46 @@ const stopEli5Engine = async () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="bg-base-100 shadow-xl">
-          <Card.Body>
-            <Card.Title className="flex items-center">
-              <Info className="text-info mr-2" />
-              Engine Status
-            </Card.Title>
-            <div className="space-y-4">
-              <div className="flex justify-between">
-                <span>Current Status:</span>
-                <span className="font-semibold capitalize">{engineStatus}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Selected Market:</span>
-                <span className="font-semibold">
-                  {selectedMarketRegion || 'None selected'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Log Entries:</span>
-                <span className="font-semibold">{consoleLogs.length}</span>
-              </div>
-            </div>
-            <Card.Actions className="mt-4">
-              <Button
-                color="secondary"
-                size="sm"
-                startIcon={<RefreshCw size={14} />}
-                onClick={() => setConsoleLogs([])}
-                disabled={consoleLogs.length === 0}
-              >
-                Clear Logs
-              </Button>
-              <Button
-                color="accent"
-                size="sm"
-                startIcon={<Mail size={14} />}
-                onClick={handleSendTestEmail}
-                disabled={isLoading || !selectedMarketRegion}
-              >
-                Send Test Email
-              </Button>
-            </Card.Actions>
-          </Card.Body>
+<Card.Body>
+  <Card.Title className="flex items-center">
+    <Info className="text-info mr-2" />
+    Engine Status
+  </Card.Title>
+  <div className="space-y-4">
+    <div className="flex justify-between">
+      <span>Current Status:</span>
+      <span className={`font-semibold capitalize ${
+        engineStatus === 'error' ? 'text-error' : 
+        engineStatus === 'running' ? 'text-success' :
+        engineStatus === 'starting' || engineStatus === 'stopping' ? 'text-warning' :
+        'text-base-content'
+      }`}>
+        {engineStatus}
+      </span>
+    </div>
+    <div className="flex justify-between">
+      <span>Selected Market:</span>
+      <span className="font-semibold">
+        {selectedMarketRegion || 'None selected'}
+      </span>
+    </div>
+    <div className="flex justify-between">
+      <span>Log Entries:</span>
+      <span className="font-semibold">{consoleLogs.length}</span>
+    </div>
+  </div>
+  <Card.Actions className="mt-4">
+    <Button
+      color="secondary"
+      size="sm"
+      startIcon={<RefreshCw size={14} />}
+      onClick={() => setConsoleLogs([])}
+      disabled={consoleLogs.length === 0}
+    >
+      Clear Logs
+    </Button>
+  </Card.Actions>
+</Card.Body>
         </Card>
 
         <Card className="bg-base-100 shadow-xl">
@@ -473,4 +461,17 @@ const stopEli5Engine = async () => {
   );
 };
 // endregion
-export default Eli5EngineControlView;
+};
+
+// Wrap the component with ErrorBoundary
+export default function Eli5EngineControlViewWithBoundary() {
+  return (
+    <ErrorBoundary fallback={
+      <div className="p-4 text-error">
+        Failed to load engine control. Please try refreshing the page.
+      </div>
+    }>
+      <Eli5EngineControlView />
+    </ErrorBoundary>
+  );
+}

@@ -1,18 +1,13 @@
-import { Inter } from 'next/font/google';
+// src/app/layout.tsx
+'use client';
 
-// eslint-disable-next-line import/no-named-as-default
+import { Inter } from 'next/font/google';
 import Background from '@/components/ui/Background';
 import { UserProvider } from '@/contexts/UserContext';
-
-import ClientLayout from './layout-client'; // Import the client layout
-
+import ClientLayout from './layout-client';
+import { EngineProvider } from '@/contexts/EngineContext';
+import './globals.css';
 import type { Metadata } from 'next';
-
-
-import './globals.css'; // Uses src/app/globals.css
-
-
-
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -26,14 +21,6 @@ export const metadata: Metadata = {
   },
 };
 
-export function generateViewport() {
-  return {
-    width: 'device-width',
-    height: 'device-height',  
-    initialScale: 1.0,
-  };
-}
-
 export default function RootLayout({
   children,
 }: {
@@ -43,13 +30,15 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <Background
-  fill={true}
-  gradient={{ display: true, opacity: 0.8, x: 50, y: 30, colorStart: '#2e026d', colorEnd: '#15162c' }}
-  lines={{ display: true, opacity: 0.07, size: 70, thickness: 2, angle: 45, color: '#fff' }}
-  mask={{ x: 50, y: 50, radius: 0 }}
->
+          fill={true}
+          gradient={{ display: true, opacity: 0.8, x: 50, y: 30, colorStart: '#2e026d', colorEnd: '#15162c' }}
+          lines={{ display: true, opacity: 0.07, size: 70, thickness: 2, angle: 45, color: '#fff' }}
+          mask={{ x: 50, y: 50, radius: 0 }}
+        >
           <UserProvider>
-            <ClientLayout>{children}</ClientLayout> {/* ClientLayout wraps children and includes MainAppShell */}
+            <EngineProvider>
+              <ClientLayout>{children}</ClientLayout>
+            </EngineProvider>
           </UserProvider>
         </Background>
       </body>
