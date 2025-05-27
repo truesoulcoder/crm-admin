@@ -6,13 +6,25 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const nextConfig = {
-  reactStrictMode: false,
+  reactStrictMode: true,
   experimental: {
     serverActions: {
-      allowedOrigins: ['localhost:3000']
+      allowedOrigins: [
+        'localhost:3000',
+        'crm-admin.vercel.app',
+        'crm-admin-*.vercel.app'
+      ]
     }
   },
-  webpack: (config, { dev }) => {
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**',
+      },
+    ],
+  },
+  webpack: (config, { dev, isServer }) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
