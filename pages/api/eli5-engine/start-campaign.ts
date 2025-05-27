@@ -1,11 +1,17 @@
-import { SupabaseClient } from '@supabase/supabase-js';
+import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
+import type { NextApiRequest, NextApiResponse } from 'next';
+import type { Tables, Json } from '@/types/db_types';
+import { Database } from '@/types/db';
 
-import { getGmailService, getSupabaseClient, isValidEmail } from './_utils';
+import { getGmailService, isValidEmail } from './_utils';
 import { STATUS_KEY, logCampaignAttempt } from './email-metrics';
 import { sendConfiguredEmail, type EmailOptions } from './send-email';
 
-import type { Tables, Json } from '@/types/db_types'; 
-import type { NextApiRequest, NextApiResponse } from 'next'; 
+const supabase = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!
+);
 
 // #region Type Interfaces
 interface LeadContact {
@@ -35,10 +41,9 @@ interface CampaignDetails {
   campaign_id: string;
   name: string;
   dry_run: boolean;
-  sender_quota: number;
   min_interval_seconds: number;
   max_interval_seconds: number;
-  daily_limit: number;
+  sender_quota: number;
   market_region?: string;
 }
 
@@ -46,7 +51,7 @@ interface SenderState {
   id: string;
   name: string;
   email: string;
-  daily_limit: number;
+  sender_quota: number;
   in_memory_sent_today: number; // Tracks sends during this specific run, initialized from DB
   can_send_after_timestamp: number; // Timestamp (ms) when this sender can send next
 }
@@ -74,11 +79,22 @@ interface ActiveSenderState {
   cooldownUntil: Date;
 }
 
+interface CampaignJobAttempt {
+  campaign_id: string;
+  sender_id?: string;
+  sender_email: string;
+  contact_email: string;
+  status: 'queued' | 'sent' | 'failed';
+  error?: string;
+}
+
 interface CampaignAttempt {
   campaign_id: string;
   sender_email?: string;
-  success?: boolean;
+  status?: string;
   error_message?: string;
+  sender_id?: string;
+  contact_email?: string;
 }
 
 // #endregion
@@ -87,17 +103,17 @@ export async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  let campaignError: Error | null = null;
+  const campaignError: Error | null = null;
   const processingErrors: Array<{error: string; timestamp: string; leadId?: string; contact_email?: string}> = [];
   const leads: Lead[] = [];
   const successCount = 0;
   const failureCount = 0;
+  let logId: string | null = null;
   try {
     // ======================
     // STEP 1: INITIALIZATION
     // ======================
     const reqBody: StartCampaignRequestBody = req.body;
-    const supabase = getSupabaseClient();
     const selected_sender_ids = reqBody.selected_sender_ids || [];
 
     // Pre-check campaign status
@@ -147,7 +163,7 @@ export async function handler(
 
     console.log(`ELI5_CAMPAIGN_HANDLER: Received request to ${isDryRun ? 'DRY RUN' : 'START'} campaign (ID: ${currentCampaignId}) with settings:\n` +
       `- Intervals: ${req_min_interval_seconds}s-${req_max_interval_seconds}s\n` +
-      `- Daily Limit: ${sender_quota}\n` +
+      `- Sender Quota: ${sender_quota}\n` +
       `- Market Region: ${market_region || 'Any'}`);
 
     const { data: campaignDetails, error } = await supabase
@@ -167,12 +183,13 @@ export async function handler(
     }
 
     // Apply settings with request body overrides
-    const minIntervalSeconds = req_min_interval_seconds ?? campaignDetails.min_interval_seconds;
-    const maxIntervalSeconds = req_max_interval_seconds ?? campaignDetails.max_interval_seconds;
+    const minIntervalSeconds: number = req_min_interval_seconds ?? campaignDetails.min_interval_seconds;
+    const maxIntervalSeconds: number = req_max_interval_seconds ?? campaignDetails.max_interval_seconds;
+    const normalizedQuota = campaignDetails.sender_quota ?? 8; // Default to 8 emails/hour if null
 
     console.log(`ELI5_CAMPAIGN_HANDLER: Received request to ${isDryRun ? 'DRY RUN' : 'START'} campaign (ID: ${currentCampaignId}) with settings:\n` +
       `- Intervals: ${minIntervalSeconds}s-${maxIntervalSeconds}s\n` +
-      `- Daily Limit: ${campaignDetails.daily_limit}\n` +
+      `- Sender Quota: ${normalizedQuota}\n` +
       `- Market Region: ${campaignDetails.market_region || 'Any'}`);
 
     // ... rest of the code ...
@@ -184,7 +201,7 @@ async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_id
   try {
     let query = supabase
       .from('senders')
-      .select('id, name, email, daily_limit, sent_today')
+      .select('id, name, email, sender_quota, sent_today')
       .eq('is_active', true)
       .order('email', { ascending: true }) // Primary sort: Alphabetical by email
       .order('sent_today', { ascending: true }); // Secondary sort: Least used today
@@ -211,7 +228,7 @@ async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_id
       id: dbSender.id,
       name: dbSender.name,
       email: dbSender.email,
-      daily_limit: dbSender.daily_limit,
+      sender_quota: dbSender.sender_quota,
       in_memory_sent_today: dbSender.sent_today, // Initialize with current count from DB
       can_send_after_timestamp: 0, // Can send immediately if not over quota (Date.now() will be >= 0)
     }));
@@ -291,17 +308,7 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
       for (const lead of data) {
         const leadId = lead.id;
         const contactEmail = lead.email;
-        const { data: logEntry, error: logError } = await supabase
-          .from('email_logs')
-          .insert({
-            campaign_id: currentCampaignId,
-            contact_email: contactEmail,
-            status: 'pending'
-          })
-          .select('id');
-
-        if (logError) throw logError;
-        const logId = logEntry[0].id;
+        logId = crypto.randomBytes(4).toString('hex');
 
         // ... processing loop ...
 
@@ -311,9 +318,37 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
             leadEmail: contactEmail,
             templateId: reqBody.template_id
           });
-          await updateEmailLogStatus(logId, 'sent');
-        } catch (error) {
-          await updateEmailLogStatus(logId, 'failed');
+          await updateCampaignJobStatus(logId, 'sent');
+          await logCampaignAttempt({
+            campaign_id: currentCampaignId,
+            sender_email: senders[currentSenderIndex].id,
+            status: 'sent',
+            sender_id: senders[currentSenderIndex].id,
+            contact_email: lead.contact_email,
+          });
+        } catch (error: unknown) {
+          if (error instanceof Error) {
+            console.error(`[${logId}] Error:`, error.message);
+          } else {
+            console.error('Unknown error occurred');
+          }
+          await supabase
+            .from('campaigns')
+            .update({ 
+              status: 'failed',
+              error_message: error instanceof Error ? error.message : 'Unknown error', // Matches database column name
+              ended_at: new Date().toISOString()
+            })
+            .eq('id', currentCampaignId);
+          await updateCampaignJobStatus(logId, 'failed', error instanceof Error ? error.message : 'Unknown error');
+          await logCampaignAttempt({
+            campaign_id: currentCampaignId,
+            sender_email: senders[currentSenderIndex].id,
+            status: 'failed',
+            error_message: error instanceof Error ? error.message : 'Unknown error',
+            sender_id: senders[currentSenderIndex].id,
+            contact_email: lead.contact_email,
+          });
         }
 
         // Update quota
@@ -352,7 +387,7 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
 
     while (hasMoreLeads) {
       const availableSender = activeSenders.find(s => 
-        s.quotaUsed < sender_quota && 
+        s.quotaUsed < normalizedQuota && 
         s.cooldownUntil <= new Date()
       );
       
@@ -371,17 +406,26 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
         await logCampaignAttempt({
           campaign_id: currentCampaignId,
           sender_email: availableSender.id,
-          success: true,
+          status: 'sent',
+          sender_id: availableSender.id,
+          contact_email: lead.contact_email,
         });
-        await updateEmailLogStatus(logId, 'sent');
-      } catch (error) {
+        await updateCampaignJobStatus(logId, 'sent');
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          console.error(`[${logId}] Error:`, error.message);
+        } else {
+          console.error('Unknown error occurred');
+        }
+        await updateCampaignJobStatus(logId, 'failed', error instanceof Error ? error.message : 'Unknown error');
         await logCampaignAttempt({
           campaign_id: currentCampaignId,
           sender_email: availableSender.id,
-          success: false,
-          error_message: String(error)
+          status: 'failed',
+          error_message: error instanceof Error ? error.message : 'Unknown error',
+          sender_id: availableSender.id,
+          contact_email: lead.contact_email,
         });
-        await updateEmailLogStatus(logId, 'failed');
       }
       
       availableSender.quotaUsed++;
@@ -390,7 +434,7 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
       );
 
       // Update status calls:
-      await updateEmailLogStatus(logId, 'sent', new Date().toISOString());
+      await updateCampaignJobStatus(logId, 'sent', new Date().toISOString());
     }
 // endregion
     // region logging kpi
@@ -418,9 +462,12 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
       }
     });
     // ========================
-  } catch (err) {
-    const campaignError = new Error('Failed to start campaign');
-    console.error('ELI5_CAMPAIGN_HANDLER: Uncaught exception:', err);
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      console.error('ELI5_CAMPAIGN_HANDLER: Uncaught exception:', err.message);
+    } else {
+      console.error('ELI5_CAMPAIGN_HANDLER: Unknown error occurred');
+    }
     return res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -433,51 +480,41 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
 export default handler;
 
 // region Email Log Functions
-async function createEmailLogEntry(entry: Partial<Eli5EmailLogEntry>): Promise<number | null> {
-  const supabase = getSupabaseClient();
+async function createCampaignJobAttempt(entry: Partial<CampaignJobAttempt>): Promise<string | null> {
   try {
     const { data: logEntry, error: logError } = await supabase
-      .from('email_logs')
+      .from('campaign_jobs')
       .insert([entry])
       .select('id');
 
     if (logError) throw logError;
     return logEntry[0].id;
   } catch (e: unknown) {
-    let errorMessage = 'Unknown error creating email log entry';
-    let errorStack: string | undefined;
     if (e instanceof Error) {
-      errorMessage = e.message;
-      errorStack = e.stack;
-    } else if (typeof e === 'string') {
-      errorMessage = e;
+      console.error('Error in createCampaignJobAttempt:', e.message);
+    } else {
+      console.error('Unknown error occurred');
     }
-    console.error('Error in createEmailLogEntry:', errorMessage, errorStack);
     return null;
   }
 }
 
-async function updateEmailLogStatus(logId: number, status: string, timestamp?: string): Promise<void> {
-  const supabase = getSupabaseClient();
+async function updateCampaignJobStatus(logId: string, status: 'sent' | 'failed', error?: string): Promise<void> {
   try {
-    const { error } = await supabase
-      .from('email_logs')
-      .update({ status, email_sent_at: timestamp })
+    const { error: updateError } = await supabase
+      .from('campaign_jobs')
+      .update({ status, error })
       .eq('id', logId);
 
-    if (error) {
-      console.error('Error updating email log status:', error);
+    if (updateError) {
+      console.error('Error updating campaign job status:', updateError);
     }
   } catch (e: unknown) {
-    let errorMessage = 'Unknown error updating email log status';
-    let errorStack: string | undefined;
     if (e instanceof Error) {
-      errorMessage = e.message;
-      errorStack = e.stack;
-    } else if (typeof e === 'string') {
-      errorMessage = e;
+      console.error('Error in updateCampaignJobStatus:', e.message);
+    } else {
+      console.error('Unknown error occurred');
     }
-    console.error('Error in updateEmailLogStatus:', errorMessage, errorStack);
   }
 }
 // endregion

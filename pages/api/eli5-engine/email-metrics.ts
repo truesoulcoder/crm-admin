@@ -42,6 +42,7 @@ interface HttpError extends Error {
 export interface CampaignAttempt {
   campaign_id: string;
   sender_id: string;
+  sender_email: string;
   status: 'queued' | 'sent' | 'failed';
   contact_email: string;
   error?: string;
