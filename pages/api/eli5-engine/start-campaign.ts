@@ -1,18 +1,23 @@
+// External dependencies
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import type { NextApiRequest, NextApiResponse } from 'next';
+
+// Internal dependencies
+import { getGmailService, isValidEmail } from './_utils';
+import { STATUS_KEY, logCampaignJob } from './email-metrics';
+import { sendConfiguredEmail, type EmailOptions } from './send-email';
+
+// Type definitions
 import type { Tables, Json } from '@/types/db_types';
 import { Database } from '@/types/db';
-
-import { getGmailService, isValidEmail } from './_utils';
-import { STATUS_KEY, logCampaignAttempt } from './email-metrics';
-import { sendConfiguredEmail, type EmailOptions } from './send-email';
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
 
+// Type definitions
 // #region Type Interfaces
 interface LeadContact {
   email: string;
