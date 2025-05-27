@@ -1,16 +1,16 @@
 // External dependencies
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
+
+// Next.js and type imports
 import type { NextApiRequest, NextApiResponse } from 'next';
+import type { Tables, Json } from '@/types/db_types';
+import { Database } from '@/types/db';
 
 // Internal dependencies
 import { getGmailService, isValidEmail } from './_utils';
-import { STATUS_KEY, logCampaignJob } from './email-metrics';
+import { STATUS_KEY, logCampaignjob } from './email-metrics';
 import { sendConfiguredEmail, type EmailOptions } from './send-email';
-
-// Type definitions
-import type { Tables, Json } from '@/types/db_types';
-import { Database } from '@/types/db';
 
 const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
