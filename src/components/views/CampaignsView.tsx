@@ -1,253 +1,523 @@
-'use client';
-
-// CampaignsView.tsx
-// eslint-disable-next-line import/no-unresolved
-import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { useSupabaseClient, useUser } from '@supabase/auth-helpers-react';
+import { Button, Card, Table, Badge, Alert, Spinner, Progress } from 'flowbite-react';
+import { FiPlay, FiStopCircle, FiRefreshCw, FiAlertCircle, FiCheckCircle } from 'react-icons/fi';
 
-import { supabase } from '@/lib/supabase/client';
-
-type Campaign = {
+interface Campaign {
+  id: string;
   name: string;
-  description: string;
-  sender_emails: string[];
-  min_interval: number;
-  max_interval: number;
-  market_regions: string[];
-  is_dry_run: boolean;
-  sender_quotas: Record<string, number>;
-};
+  status: 'draft' | 'active' | 'running' | 'paused' | 'completed';
+  is_active: boolean;
+  market_region: string;
+  created_at: string;
+}
+
+interface CampaignJob {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  contact_name: string;
+  email_address: string;
+  assigned_sender_id: string;
+  next_processing_time: string;
+  error_message?: string;
+  processed_at?: string;
+}
 
 export default function CampaignsView() {
-  const router = useRouter();
-  const [campaign, setCampaign] = useState<Campaign>({
-    name: '',
-    description: '',
-    sender_emails: [],
-    min_interval: 5,
-    max_interval: 60,
-    market_regions: [],
-    is_dry_run: false,
-    sender_quotas: {},
-  });
-  const [senders, setSenders] = useState<{email: string}[]>([]);
-  const [marketRegions, setMarketRegions] = useState<{id: string, name: string}[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const supabase = useSupabaseClient();
+  const user = useUser();
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [jobs, setJobs] = useState<CampaignJob[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  // Fetch senders and market regions on component mount
-  useEffect(() => {
-    const fetchData = async () => {
-      const { data: sendersData } = await supabase
-        .from('email_senders')
-        .select('email');
-      const { data: regionsData } = await supabase
-        .from('market_regions')
-        .select('id, name');
-      
-      if (sendersData) setSenders(sendersData);
-      if (regionsData) setMarketRegions(regionsData);
-    };
-    
-    void fetchData();
-  }, []);
-
-  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
-    e.preventDefault();
-    setIsLoading(true);
-    
+  // Fetch campaigns
+  const fetchCampaigns = async () => {
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('campaigns')
-        .insert([campaign]);
-      
+        .select('*')
+        .order('created_at', { ascending: false });
+
       if (error) throw error;
+      setCampaigns(data || []);
       
-      // Reset form after successful submission
-      setCampaign({
-        name: '',
-        description: '',
-        sender_emails: [],
-        min_interval: 5,
-        max_interval: 60,
-        market_regions: [],
-        is_dry_run: false,
-        sender_quotas: {},
-      });
-      
-      alert('Campaign created successfully!');
-    } catch (error) {
-      console.error('Error creating campaign:', error);
-      alert('Failed to create campaign');
+      // Auto-select the first campaign if none selected
+      if (data?.length && !selectedCampaign) {
+        setSelectedCampaign(data[0]);
+      }
+    } catch (err) {
+      setError('Failed to load campaigns');
+      console.error('Error fetching campaigns:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSenderQuotaChange = (email: string, quota: number) => {
-    setCampaign(prev => ({
-      ...prev,
-      sender_quotas: {
-        ...prev.sender_quotas,
-        [email]: quota
-      }
-    }));
+  // Fetch jobs for selected campaign
+  const fetchJobs = async (campaignId: string) => {
+    if (!campaignId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('campaign_jobs')
+        .select('*')
+        .eq('campaign_id', campaignId)
+        .order('next_processing_time', { ascending: true });
+
+      if (error) throw error;
+      setJobs(data || []);
+    } catch (err) {
+      setError('Failed to load jobs');
+      console.error('Error fetching jobs:', err);
+    }
   };
 
-  return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Create New Campaign</h1>
+  // Start campaign
+  const startCampaign = async (campaignId: string) => {
+    setIsStarting(true);
+    setError(null);
+    setSuccess(null);
+    
+    try {
+      const { data, error } = await supabase
+        .rpc('start_eli5_engine', {
+          p_dry_run: false,
+          p_limit_per_run: 10,
+          p_market_region: selectedCampaign?.market_region || null
+        });
+
+      if (error) throw error;
       
-      <form onSubmit={(e) => {
-        e.preventDefault();
-        handleSubmit(e).catch(console.error);
-      }} className="space-y-6">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          {/* Campaign Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Campaign Name
-            </label>
-            <input
-              type="text"
-              value={campaign.name}
-              onChange={(e) => setCampaign({...campaign, name: e.target.value})}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              required
-            />
-          </div>
+      setSuccess('Campaign started successfully!');
+      // Refresh data
+      await fetchCampaigns();
+      if (selectedCampaign) {
+        await fetchJobs(selectedCampaign.id);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to start campaign');
+      console.error('Error starting campaign:', err);
+    } finally {
+      setIsStarting(false);
+    }
+  };
 
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Description
-            </label>
-            <textarea
-              value={campaign.description}
-              onChange={(e) => setCampaign({...campaign, description: e.target.value})}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              rows={3}
-            />
-          </div>
+  // Stop campaign
+  const stopCampaign = async () => {
+    if (!selectedCampaign) return;
+    
+    setIsStopping(true);
+    setError(null);
+    setSuccess(null);
+    
+    try {
+      const { data, error } = await supabase
+        .rpc('stop_eli5_engine');
 
-          {/* Sender Emails */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Select Senders
-            </label>
-            <select
-              multiple
-              value={campaign.sender_emails}
-              onChange={(e) => setCampaign({
-                ...campaign, 
-                sender_emails: Array.from(e.target.selectedOptions, option => option.value)
-              })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              required
-            >
-              {senders.map(sender => (
-                <option key={sender.email} value={sender.email}>
-                  {sender.email}
-                </option>
-              ))}
-            </select>
-          </div>
+      if (error) throw error;
+      
+      setSuccess('Campaign stopped successfully!');
+      // Refresh data
+      await fetchCampaigns();
+      await fetchJobs(selectedCampaign.id);
+    } catch (err) {
+      setError(err.message || 'Failed to stop campaign');
+      console.error('Error stopping campaign:', err);
+    } finally {
+      setIsStopping(false);
+    }
+  };
 
-          {/* Market Regions */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Select Market Regions
-            </label>
-            <select
-              multiple
-              value={campaign.market_regions}
-              onChange={(e) => setCampaign({
-                ...campaign, 
-                market_regions: Array.from(e.target.selectedOptions, option => option.value)
-              })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              required
-            >
-              {marketRegions.map(region => (
-                <option key={region.id} value={region.id}>
-                  {region.name}
-                </option>
-              ))}
-            </select>
-          </div>
+  // Initial load
+  useEffect(() => {
+    fetchCampaigns();
+  }, []);
 
-          {/* Interval Settings */}
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Minimum Interval (minutes)
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={campaign.min_interval}
-                onChange={(e) => setCampaign({...campaign, min_interval: Number(e.target.value)})}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Maximum Interval (minutes)
-              </label>
-              <input
-                type="number"
-                min="1"
-                value={campaign.max_interval}
-                onChange={(e) => setCampaign({...campaign, max_interval: Number(e.target.value)})}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              />
-            </div>
-          </div>
+  // Fetch jobs when selected campaign changes
+  useEffect(() => {
+    if (selectedCampaign) {
+      fetchJobs(selectedCampaign.id);
+    }
+  }, [selectedCampaign]);
 
-          {/* Dry Run Checkbox */}
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              checked={campaign.is_dry_run}
-              onChange={(e) => setCampaign({...campaign, is_dry_run: e.target.checked})}
-              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-            />
-            <label className="ml-2 block text-sm text-gray-700">
-              Dry Run (Test Mode)
-            </label>
-          </div>
+  // Set up real-time subscription
+  useEffect(() => {
+    if (!selectedCampaign) return;
 
-          {/* Sender Quotas */}
-          {campaign.sender_emails.length > 0 && (
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Sender Quotas (emails per hour)
-              </label>
-              {campaign.sender_emails.map(email => (
-                <div key={email} className="flex items-center">
-                  <span className="w-48 truncate">{email}</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={campaign.sender_quotas[email] || 10}
-                    onChange={(e) => handleSenderQuotaChange(email, Number(e.target.value))}
-                    className="ml-2 block w-20 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                  />
+    const channel = supabase
+      .channel('campaign_jobs_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'campaign_jobs',
+          filter: `campaign_id=eq.${selectedCampaign.id}`
+        },
+        (payload) => {
+          console.log('Change received!', payload);
+          fetchJobs(selectedCampaign.id);
+        }
+      )
+      .subscribe();
+
+    // Clean up subscription
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [selectedCampaign]);
+
+  // Calculate campaign stats
+  const campaignStats = {
+    total: jobs.length,
+    pending: jobs.filter(j => j.status === 'pending').length,
+    processing: jobs.filter(j => j.status === 'processing').length,
+    completed: jobs.filter(j => j.status === 'completed').length,
+    failed: jobs.filter(j => j.status === 'failed').length,
+  };
+
+  const progress = campaignStats.total > 0 
+    ? Math.round((campaignStats.completed / campaignStats.total) * 100) 
+    : 0;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Spinner size="xl" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-6">Campaigns</h1>
+      
+      {error && (
+        <Alert color="failure" className="mb-4" onDismiss={() => setError(null)}>
+          <span className="font-medium">Error:</span> {error}
+        </Alert>
+      )}
+      
+      {success && (
+        <Alert color="success" className="mb-4" onDismiss={() => setSuccess(null)}>
+          {success}
+        </Alert>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        {/* Campaign List */}
+        <Card className="lg:col-span-1">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Your Campaigns</h2>
+            <Button size="xs" onClick={fetchCampaigns}>
+              <FiRefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+          </div>
+          
+          <div className="space-y-2">
+            {campaigns.map((campaign) => (
+              <div
+                key={campaign.id}
+                className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                  selectedCampaign?.id === campaign.id
+                    ? 'bg-blue-50 border border-blue-200'
+                    : 'hover:bg-gray-50'
+                }`}
+                onClick={() => setSelectedCampaign(campaign)}
+              >
+                <div className="font-medium">{campaign.name}</div>
+                <div className="flex items-center justify-between text-sm text-gray-600">
+                  <span>
+                    {new Date(campaign.created_at).toLocaleDateString()}
+                  </span>
+                  <Badge
+                    color={
+                      campaign.status === 'running'
+                        ? 'success'
+                        : campaign.status === 'paused'
+                        ? 'warning'
+                        : campaign.status === 'completed'
+                        ? 'indigo'
+                        : 'gray'
+                    }
+                  >
+                    {campaign.status}
+                  </Badge>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </div>
+            ))}
+          </div>
+        </Card>
 
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
-          >
-            {isLoading ? 'Creating...' : 'Create Campaign'}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
+        {/* Campaign Details */}
+        {selectedCampaign ? (
+          <div className="lg:col-span-2 space-y-6">
+            <Card>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">{selectedCampaign.name}</h2>
+                <div className="flex space-x-2">
+                  {selectedCampaign.status === 'running' ? (
+                    <Button
+                      color="failure"
+                      size="sm"
+                      onClick={stopCampaign}
+                      disabled={isStopping}
+                    >
+                      {isStopping ? (
+                        <Spinner size="sm" className="mr-2" />
+                      ) : (
+                        <FiStopCircle className="mr-2 h-4 w-4" />
+                      )}
+                      Stop Campaign
+                    </Button>
+                  ) : (
+                    <Button
+                      color="success"
+                      size="sm"
+                      onClick={() => startCampaign(selectedCampaign.id)}
+                      disabled={isStarting}
+                    >
+                      {isStarting ? (
+                        <Spinner size="sm" className="mr-2" />
+                      ) : (
+                        <FiPlay className="mr-2 h-4 w-4" />
+                      )}
+                      Start Campaign
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Status</h3>
+                  <div className="mt-1">
+                    <Badge
+                      color={
+                        selectedCampaign.status === 'running'
+                          ? 'success'
+                          : selectedCampaign.status === 'paused'
+                          ? 'warning'
+                          : selectedCampaign.status === 'completed'
+                          ? 'indigo'
+                          : 'gray'
+                      }
+                      size="lg"
+                    >
+                      {selectedCampaign.status}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Progress</h3>
+                  <div className="mt-2">
+                    <Progress
+                      progress={progress}
+                      color="blue"
+                      size="lg"
+                      labelProgress
+                      labelText
+                    />
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <span>{campaignStats.completed} of {campaignStats.total} completed</span>
+                      <span>{progress}%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <div className="text-sm font-medium text-gray-500">Pending</div>
+                    <div className="text-2xl font-bold">{campaignStats.pending}</div>
+                  </div>
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <div className="text-sm font-medium text-blue-700">In Progress</div>
+                    <div className="text-2xl font-bold text-blue-700">{campaignStats.processing}</div>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-lg">
+                    <div className="text-sm font-medium text-green-700">Completed</div>
+                    <div className="text-2xl font-bold text-green-700">{campaignStats.completed}</div>
+                  </div>
+                  <div className="bg-red-50 p-3 rounded-lg">
+                    <div className="text-sm font-medium text-red-700">Failed</div>
+                    <div className="text-2xl font-bold text-red-700">{campaignStats.failed}</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* Jobs Table */}
+            <Card>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Email Jobs</h3>
+                <Button size="xs" onClick={() => selectedCampaign && fetchJobs(selectedCampaign.id)}>
+                  <FiRefreshCw className="mr-2 h-4 w-4" />
+                  Refresh
+                </Button>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <Table hoverable>
+                                    <Table.Head>
+                                      <Table.HeadCell>Contact</Table.HeadCell>
+                                      <Table.HeadCell>Email</Table.HeadCell>
+                                      <Table.HeadCell>Status</Table.HeadCell>
+                                      <Table.HeadCell>Sender</Table.HeadCell>
+                                      <Table.HeadCell>Scheduled For</Table.HeadCell>
+                                      <Table.HeadCell>Actions</Table.HeadCell>
+                                    </Table.Head>
+                                    <Table.Body className="divide-y">
+                                      {jobs.length > 0 ? (
+                                        jobs.map((job) => (
+                                          <Table.Row
+                                            key={job.id}
+                                            className="bg-white dark:border-gray-700 dark:bg-gray-800"
+                                          >
+                                            <Table.Cell className="whitespace-nowrap font-medium text-gray-900 dark:text-white">
+                                              {job.contact_name}
+                                            </Table.Cell>
+                                            <Table.Cell>{job.email_address}</Table.Cell>
+                                            <Table.Cell>
+                                              <Badge
+                                                color={
+                                                  job.status === 'completed'
+                                                    ? 'success'
+                                                    : job.status === 'failed'
+                                                    ? 'failure'
+                                                    : job.status === 'processing'
+                                                    ? 'warning'
+                                                    : 'gray'
+                                                }
+                                                className="capitalize"
+                                              >
+                                                {job.status}
+                                              </Badge>
+                                            </Table.Cell>
+                                            <Table.Cell>
+                                              {job.assigned_sender_id ? (
+                                                <span className="text-sm text-gray-600">
+                                                  {job.assigned_sender_id.slice(0, 8)}...
+                                                </span>
+                                              ) : (
+                                                <span className="text-gray-400">Not assigned</span>
+                                              )}
+                                            </Table.Cell>
+                                            <Table.Cell>
+                                              {job.next_processing_time
+                                                ? new Date(job.next_processing_time).toLocaleString()
+                                                : 'N/A'}
+                                            </Table.Cell>
+                                            <Table.Cell>
+                                              {job.status === 'failed' && (
+                                                <Button
+                                                  size="xs"
+                                                  color="light"
+                                                  onClick={() => {
+                                                    // Add retry logic here
+                                                  }}
+                                                >
+                                                  Retry
+                                                </Button>
+                                              )}
+                                            </Table.Cell>
+                                          </Table.Row>
+                                        ))
+                                      ) : (
+                                        <Table.Row>
+                                          <Table.Cell colSpan={6} className="text-center py-8 text-gray-500">
+                                            No jobs found for this campaign.
+                                          </Table.Cell>
+                                        </Table.Row>
+                                      )}
+                                    </Table.Body>
+                                  </Table>
+                                </div>
+                                
+                                {/* Job Details Modal */}
+                                {selectedJob && (
+                                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                                    <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                                      <div className="p-6">
+                                        <div className="flex justify-between items-center mb-4">
+                                          <h3 className="text-xl font-semibold">Job Details</h3>
+                                          <button
+                                            onClick={() => setSelectedJob(null)}
+                                            className="text-gray-500 hover:text-gray-700"
+                                          >
+                                            &times;
+                                          </button>
+                                        </div>
+                                        
+                                        <div className="space-y-4">
+                                          <div>
+                                            <h4 className="text-sm font-medium text-gray-500">Contact</h4>
+                                            <p className="mt-1">{selectedJob.contact_name}</p>
+                                          </div>
+                                          
+                                          <div>
+                                            <h4 className="text-sm font-medium text-gray-500">Email</h4>
+                                            <p className="mt-1">{selectedJob.email_address}</p>
+                                          </div>
+                                          
+                                          <div>
+                                            <h4 className="text-sm font-medium text-gray-500">Status</h4>
+                                            <div className="mt-1">
+                                              <Badge
+                                                color={
+                                                  selectedJob.status === 'completed'
+                                                    ? 'success'
+                                                    : selectedJob.status === 'failed'
+                                                    ? 'failure'
+                                                    : 'gray'
+                                                }
+                                                className="capitalize"
+                                              >
+                                                {selectedJob.status}
+                                              </Badge>
+                                            </div>
+                                          </div>
+                                          
+                                          {selectedJob.error_message && (
+                                            <div>
+                                              <h4 className="text-sm font-medium text-gray-500">Error</h4>
+                                              <div className="mt-1 p-3 bg-red-50 text-red-700 rounded-md">
+                                                {selectedJob.error_message}
+                                              </div>
+                                            </div>
+                                          )}
+                                          
+                                          <div className="pt-4 border-t border-gray-200">
+                                            <Button
+                                              color="blue"
+                                              onClick={() => {
+                                                // Add retry logic here
+                                                setSelectedJob(null);
+                                              }}
+                                              disabled={selectedJob.status !== 'failed'}
+                                            >
+                                              Retry Job
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </Card>
+                            </div>
+                          ) : (
+                            <div className="lg:col-span-2 flex items-center justify-center h-64 bg-gray-50 rounded-lg">
+                              <p className="text-gray-500">Select a campaign to view details</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
