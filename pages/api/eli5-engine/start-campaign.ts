@@ -7,10 +7,10 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 // Internal dependencies
-import { STATUS_KEY } from './email-metrics.js';
-import { logCampaignJob } from './log-campaign-job.js';
-import { sendConfiguredEmail } from './send-email.js';
-import { updateCampaignJobStatus } from './update-campaign-job-status.js';
+import { STATUS_KEY } from './email-metrics';
+import { logCampaignJob } from './log-campaign-job';
+import { sendConfiguredEmail } from './send-email';
+import { updateCampaignJobStatus } from './update-campaign-job-status';
 
 // Types
 
@@ -73,6 +73,7 @@ interface StartCampaignRequestBody {
 interface Lead {
   id: string;
   email: string;
+  contact_email?: string; // Make it optional with '?' since it might not always be present
 }
 
 interface ActiveSenderState {
@@ -116,6 +117,64 @@ interface DbSender {
 }
 
 // #endregion
+
+/**
+ * Fetches and prepares sender information from the database
+ * @param supabase Supabase client instance
+ * @param filter_sender_ids Optional array of sender IDs to filter by
+ * @returns Array of prepared sender states
+ */
+async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_ids: string[] = []): Promise<SenderState[]> {
+  try {
+    let query = supabase
+      .from('senders')
+      .select('id, name, email, sender_quota, sent_today')
+      .eq('is_active', true)
+      .order('email', { ascending: true });
+
+    // Apply sender ID filter if provided
+    if (filter_sender_ids && filter_sender_ids.length > 0) {
+      query = query.in('id', filter_sender_ids);
+    }
+
+    const { data: senders, error } = await query;
+
+    if (error) {
+      console.error('Error fetching senders:', error);
+      throw new Error('Failed to fetch senders');
+    }
+
+    if (!senders || senders.length === 0) {
+      console.warn(`No active senders found${filter_sender_ids.length > 0 ? ' matching the provided IDs' : ''}`);
+      return [];
+    }
+
+    // Convert to SenderState format with initial values
+    const preparedSenders: SenderState[] = senders.map(sender => ({
+      id: sender.id,
+      name: sender.name,
+      email: sender.email,
+      sender_quota: sender.sender_quota || 100, // Default to 100 if not set
+      in_memory_sent_today: sender.sent_today || 0,
+      can_send_after_timestamp: Date.now() // Can send immediately
+    }));
+
+    console.log(`CAMPAIGN_HANDLER (fetchAndPrepareSenders): ${preparedSenders.length} senders prepared with initial state.`);
+    return preparedSenders;
+  } catch (e: unknown) {
+    let errorMessage = 'Unknown error fetching senders';
+    let errorStack: string | undefined;
+    if (e instanceof Error) {
+      errorMessage = e.message;
+      errorStack = e.stack;
+    } else if (typeof e === 'string') {
+      errorMessage = e;
+    }
+    console.error('CAMPAIGN_HANDLER (fetchAndPrepareSenders): Exception:', errorMessage, errorStack);
+    return [];
+  }
+}
+
 // region Fetch Settings
 // Initialize Supabase client
 const supabase = createClient(
@@ -312,10 +371,6 @@ async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_id
   }
 }
 
-// #endregion
-
-// #region Sender State Management
-
 async function incrementSenderSentCount(supabase: SupabaseClient, senderId: string) {
   try {
     const { error } = await supabase.rpc('increment_sender_sent_count', {
@@ -337,7 +392,9 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
     console.error('Error in incrementSenderSentCount:', errorMessage, errorStack);
   }
 }
+
 // #endregion
+
 // region Fetch Leads
     // ================================
     // STEP 5: FETCH LEADS
@@ -440,12 +497,18 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
     let hasMoreLeads = true;
     let currentOffset = offset; // Track offset for pagination
 
-    const fetchNextLead = async () => {
-      const { data } = await supabase
+    const fetchNextLead = async (): Promise<Lead | undefined> => {
+      const { data, error } = await supabase
         .from(leadsTable)
         .select('*')
         .order('id', { ascending: true })
-        .range(currentOffset, currentOffset + limit - 1);
+        .range(currentOffset, currentOffset + limit - 1) as { data: Lead[] | null; error: any };
+      
+      if (error) {
+        console.error('Error fetching next lead:', error);
+        return undefined;
+      }
+      
       currentOffset += limit;
       return data?.[0];
     };
@@ -466,10 +529,16 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
       }
       
       const lead = await fetchNextLead();
+      if (!lead) {
+        console.log('No more leads to process');
+        hasMoreLeads = false;
+        continue;
+      }
+      
       try {
         await sendConfiguredEmail({
           senderId: availableSender.id,
-          leadEmail: lead.email,
+          leadEmail: lead.email || lead.contact_email || '',
           templateId: reqBody.template_id
         });
         await logCampaignJob({
@@ -545,8 +614,6 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
     });
   }
 }
-
-export default handler;
 
 // region Email Log Functions
 async function createCampaignJob(entry: Partial<CampaignJob>): Promise<string | null> {

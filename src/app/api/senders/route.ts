@@ -62,8 +62,7 @@ export interface EmailSender {
  *         description: Internal server error
  */
 export async function GET(req: NextRequest) {
-  const cookieStorePromise = cookies(); // Renaming for clarity
-  const cookieStore = await cookieStorePromise;
+  const cookieStore = cookies(); // No need to await cookies()
   console.log('Cookies in email-senders API route:', cookieStore.getAll());
   const supabaseUserClient = createServerClient(
     supabaseUrl!,
@@ -213,8 +212,7 @@ export async function GET(req: NextRequest) {
  *         description: Internal server error
  */
 export async function POST(req: NextRequest) {
-  const cookieStorePromise = cookies();
-  const cookieStore = await cookieStorePromise;
+  const cookieStore = cookies(); // No need to await cookies()
   const supabaseUserClient = createServerClient(
     supabaseUrl!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
