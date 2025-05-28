@@ -1,60 +1,57 @@
 // src/app/api/leads/upload/route.ts
-import { randomUUID } from 'crypto'
-import * as fs from 'fs/promises'
-import * as path from 'path'
-import { Readable } from 'stream'
-import { parse } from 'papaparse'
-
-import { createServerClient } from '@/lib/supabase/client'
-import { NextRequest, NextResponse } from 'next/server'
+import { randomUUID } from 'crypto';
+import { parse } from 'papaparse';
+import { createServerClient } from '@/lib/supabase/client';
+import { NextRequest, NextResponse } from 'next/server';
 
 // Max execution time for this API route (in seconds)
 export const maxDuration = 60; // 1 minute
 
-// Helper function to process file in chunks with streaming
-const processFileInChunks = (
-  file: File,
+// Helper function to process file in chunks
+const processCSV = async (
+  fileText: string,
   chunkSize: number,
   processChunk: (chunk: any[], isLastChunk: boolean) => Promise<void>
 ) => {
-  return new Promise<void>((resolve, reject) => {
-    // Convert File to text first
-    const reader = new FileReader();
-    
-    reader.onload = async (event) => {
-      try {
-        const fileText = event.target?.result as string;
-
+  return new Promise<void>(async (resolve, reject) => {
+    try {
       let originalHeaders: string[] = [];
       let headerParseError: Error | null = null;
 
+      // First, parse just the headers to get column names
       parse(fileText, {
-        preview: 1, // Only parse the first row
-        header: false, // Treat the first row as an array of strings
-        skipEmptyLines: true,
-        complete: (results) => {
-          if (results.data.length > 0 && Array.isArray(results.data[0])) {
-            originalHeaders = results.data[0] as string[];
+      try {
+        const fileText = event.target?.result as string;
+        let originalHeaders: string[] = [];
+        let headerParseError: Error | null = null;
+
+        parse(fileText, {
+          preview: 1, // Only parse the first row
+          header: false, // Treat the first row as an array of strings
+          skipEmptyLines: true,
+          complete: (results) => {
+            if (results.data.length > 0 && Array.isArray(results.data[0])) {
+              originalHeaders = results.data[0] as string[];
+            }
+          },
+          error: (error: Error) => {
+            // Capture error to reject promise outside
+            headerParseError = new Error(`Failed to parse header row: ${error.message}`);
           }
-        },
-        error: (error: Error) => {
-          // Capture error to reject promise outside
-          headerParseError = new Error(`Failed to parse header row: ${error.message}`);
-        }
-      });
+        });
 
         if (headerParseError) {
           reject(headerParseError);
           return;
         }
 
-      if (originalHeaders.length === 0 && file.size > 0) {
-        reject(new Error('No header row found in CSV file.'));
-        return;
-      }
+        if (originalHeaders.length === 0 && file.size > 0) {
+          reject(new Error('No header row found in CSV file.'));
+          return;
+        }
       
-      const finalHeaders: string[] = [];
-      const headerCounts: { [key: string]: number } = {};
+        const finalHeaders: string[] = [];
+        const headerCounts: { [key: string]: number } = {};
       
       for (const h of originalHeaders) {
         const snakeCasedHeader = convertToSnakeCase(h); // convertToSnakeCase must be defined above or passed in
@@ -131,12 +128,11 @@ const processFileInChunks = (
           reject(error); 
         }
       });
-    } catch (error) { // Catch errors from await file.text() or other synchronous parts
+    } catch (error) {
       reject(error);
     }
   });
 };
-
 
 // Utility function to convert strings to snake_case
 const convertToSnakeCase = (str: string): string => {
