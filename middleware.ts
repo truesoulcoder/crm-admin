@@ -61,14 +61,14 @@ export async function middleware(request: NextRequest) {
   // Auth redirects
   if (!session) {
     // If not authenticated and not on an auth page, redirect to login
-    if (!request.nextUrl.pathname.startsWith('/auth')) {
-      const redirectUrl = new URL('/auth/login', request.url)
+    if (!request.nextUrl.pathname.startsWith('/')) {
+      const redirectUrl = new URL('/login', request.url)
       redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
       return NextResponse.redirect(redirectUrl)
     }
   } else {
     // If authenticated and trying to access auth pages, redirect to dashboard
-    if (request.nextUrl.pathname.startsWith('/auth')) {
+    if (request.nextUrl.pathname.startsWith('/')) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
   }
