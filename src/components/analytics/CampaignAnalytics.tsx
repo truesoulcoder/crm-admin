@@ -1,17 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
-
+import { useState, useEffect, useMemo } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { createClient } from '@/lib/supabase/client';
 
-// Types based on your database schema
 interface CampaignJob {
   id: string;
   created_at: string;
   next_processing_time: string;
   status: string;
-  assigned_sender_id: string;
+  assigned_sender_id: string | null;
   email_address: string;
 }
 
@@ -21,6 +19,12 @@ interface Sender {
   name: string;
 }
 
+interface TimeData {
+  time: string;
+  count: number;
+  [key: string]: string | number; // For dynamic sender counts
+}
+
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
 
 export default function CampaignAnalytics() {
@@ -28,9 +32,85 @@ export default function CampaignAnalytics() {
   const [senders, setSenders] = useState<Sender[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<'hour' | 'day' | 'week'>('day');
   const supabase = createClient();
 
-  // Fetch data on component mount
+  // Format date based on selected time range
+  const formatDate = (date: Date): string => {
+    const d = new Date(date);
+    if (timeRange === 'hour') {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (timeRange === 'week') {
+      return `Week ${Math.ceil(d.getDate() / 7)} ${d.toLocaleString('default', { month: 'short' })}`;
+    } else {
+      // day
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+  };
+
+  // Group jobs by time
+  const groupJobsByTime = useMemo(() => {
+    if (!jobs.length) return [];
+    
+    const now = new Date();
+    let timeMap = new Map<string, TimeData>();
+    
+    // Initialize time slots
+    const timeSlots: Date[] = [];
+    const count = timeRange === 'hour' ? 24 : timeRange === 'day' ? 7 : 4; // Show 24h, 7d, or 4w
+    
+    for (let i = count - 1; i >= 0; i--) {
+      const date = new Date();
+      if (timeRange === 'hour') {
+        date.setHours(date.getHours() - i, 0, 0, 0);
+      } else if (timeRange === 'day') {
+        date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+      } else {
+        // week
+        date.setDate(date.getDate() - (i * 7));
+        date.setHours(0, 0, 0, 0);
+      }
+      timeSlots.push(date);
+      
+      const timeKey = formatDate(date);
+      timeMap.set(timeKey, { time: timeKey, count: 0 });
+    }
+    
+    // Count jobs in each time slot
+    jobs.forEach(job => {
+      const jobDate = new Date(job.next_processing_time);
+      const timeKey = formatDate(jobDate);
+      
+      if (timeMap.has(timeKey)) {
+        const data = timeMap.get(timeKey)!;
+        data.count += 1;
+        
+        // Count by sender if available
+        if (job.assigned_sender_id) {
+          const sender = senders.find(s => s.id === job.assigned_sender_id);
+          const senderKey = sender ? sender.name : 'Unassigned';
+          data[senderKey] = (data[senderKey] as number || 0) + 1;
+        }
+      }
+    });
+    
+    return Array.from(timeMap.values());
+  }, [jobs, senders, timeRange]);
+
+  // Get unique senders for the chart
+  const uniqueSenders = useMemo(() => {
+    const senderSet = new Set<string>();
+    jobs.forEach(job => {
+      if (job.assigned_sender_id) {
+        const sender = senders.find(s => s.id === job.assigned_sender_id);
+        if (sender) senderSet.add(sender.name);
+      }
+    });
+    return Array.from(senderSet);
+  }, [jobs, senders]);
+
+  // Fetch data
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -74,12 +154,11 @@ export default function CampaignAnalytics() {
           table: 'campaign_jobs' 
         }, 
         () => {
-          void fetchData(); // Refresh data on changes
+          void fetchData();
         }
       )
       .subscribe();
 
-    // Cleanup subscription on unmount
     return () => {
       supabase.removeChannel(channel).catch(console.error);
     };
@@ -90,195 +169,147 @@ export default function CampaignAnalytics() {
   }
 
   if (error) {
-    return <div className="p-4 text-red-500">Error: {error}</div>;
+    return <div className="p-4 text-error">Error: {error}</div>;
   }
 
-  if (jobs.length === 0) {
-    return <div className="p-4">No campaign data available.</div>;
+  if (!jobs.length) {
+    return <div className="p-4">No campaign jobs found.</div>;
   }
-
-  // Process data for lead distribution over time
-  const leadData = jobs.map(job => ({
-    timestamp: new Date(job.next_processing_time).getTime(),
-    status: job.status === 'completed' ? 1 : job.status === 'failed' ? -1 : 0, // Convert status to numerical value
-    email: job.email_address,
-    statusText: job.status
-  }));
-
-  // Process data for sender distribution
-  const senderData = jobs
-    .filter(job => job.assigned_sender_id) // Only include jobs with assigned senders
-    .map(job => {
-      const sender = senders.find(s => s.id === job.assigned_sender_id);
-      return {
-        timestamp: new Date(job.next_processing_time).getTime(),
-        senderId: job.assigned_sender_id,
-        senderName: sender?.name || 'Unknown',
-        email: job.email_address,
-        // Create a numerical value for the Y-axis based on sender ID
-        senderY: (sender?.id?.charCodeAt(0) || 0) % 10 // Ensure we have a number for Y-axis
-      };
-    });
-
-  // Format date for X-axis
-  const formatXAxis = (tickItem: number) => {
-    return new Date(tickItem).toLocaleTimeString();
-  };
-
-  // Custom tooltip for lead distribution
-  interface TooltipPayload {
-    payload: {
-      timestamp: number;
-      email: string;
-      statusText: string;
-    };
-  }
-
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: TooltipPayload[] }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-base-100 p-3 border border-base-300 rounded-box shadow-lg text-sm">
-          <p className="font-semibold">{new Date(payload[0].payload.timestamp).toLocaleString()}</p>
-          <p>Email: {payload[0].payload.email}</p>
-          <p>Status: {payload[0].payload.statusText}</p>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  // Custom tooltip for sender distribution
-  interface SenderPayload {
-    payload: {
-      senderName: string;
-      timestamp: number;
-      email: string;
-    };
-  }
-
-  const SenderTooltip = ({ active, payload }: { active?: boolean; payload?: SenderPayload[] }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-base-100 p-3 border border-base-300 rounded-box shadow-lg text-sm">
-          <p className="font-semibold">{payload[0].payload.senderName}</p>
-          <p>Time: {new Date(payload[0].payload.timestamp).toLocaleString()}</p>
-          <p>Email: {payload[0].payload.email}</p>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  // Get unique statuses for Y-axis
-  const statuses = [...new Set(jobs.map(job => job.status))];
-  const statusToY = statuses.reduce((acc, status, index) => ({
-    ...acc,
-    [status]: index + 1
-  }), {});
 
   return (
     <div className="space-y-8 p-4">
-      {/* Lead Distribution Over Time */}
+      {/* Time Range Selector */}
+      <div className="flex justify-end space-x-2">
+        <button 
+          className={`btn btn-sm ${timeRange === 'hour' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setTimeRange('hour')}
+        >
+          Last 24 Hours
+        </button>
+        <button 
+          className={`btn btn-sm ${timeRange === 'day' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setTimeRange('day')}
+        >
+          Last 7 Days
+        </button>
+        <button 
+          className={`btn btn-sm ${timeRange === 'week' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => setTimeRange('week')}
+        >
+          Last 4 Weeks
+        </button>
+      </div>
+
+      {/* Job Distribution Over Time */}
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body">
-          <h2 className="card-title text-xl mb-4">Lead Distribution Over Time</h2>
-          <div className="h-[500px] w-full">
+          <h2 className="card-title">Job Distribution Over Time</h2>
+          <p className="text-sm text-base-content/70">
+            {timeRange === 'hour' 
+              ? 'Jobs per hour for the last 24 hours' 
+              : timeRange === 'day' 
+                ? 'Jobs per day for the last 7 days' 
+                : 'Jobs per week for the last 4 weeks'}
+          </p>
+          <div className="h-96 w-full mt-4">
             <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart
+              <BarChart
+                data={groupJobsByTime}
                 margin={{
                   top: 20,
-                  right: 20,
-                  bottom: 40,
+                  right: 30,
                   left: 20,
+                  bottom: 60,
                 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--bc)/0.1)" />
-                <XAxis
-                  type="number"
-                  dataKey="timestamp"
-                  name="Time"
-                  tickFormatter={formatXAxis}
-                  domain={['auto', 'auto']}
-                  tick={{ fill: 'hsl(var(--bc)/0.8)' }}
-                  tickLine={{ stroke: 'hsl(var(--bc)/0.2)' }}
+                <XAxis 
+                  dataKey="time" 
+                  angle={-45} 
+                  textAnchor="end" 
+                  height={60}
+                  tick={{ fill: 'hsl(var(--bc)/0.8)', fontSize: 12 }}
                 />
                 <YAxis 
-                  type="number"
-                  dataKey="status"
-                  name="Status"
                   tick={{ fill: 'hsl(var(--bc)/0.8)' }}
                   tickLine={{ stroke: 'hsl(var(--bc)/0.2)' }}
-                  tickFormatter={(value) => {
-                    const status = statuses[Math.round(value) - 1];
-                    return status || '';
+                />
+                <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--b1))',
+                    borderColor: 'hsl(var(--bc)/0.1)',
+                    borderRadius: 'var(--rounded-box, 1rem)'
                   }}
                 />
-                <ZAxis type="category" dataKey="email" name="Email" />
-                <Tooltip content={<CustomTooltip />} />
-                <Scatter name="Leads" data={leadData}>
-                  {leadData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[statuses.indexOf(entry.statusText) % COLORS.length]}
-                    />
-                  ))}
-                </Scatter>
-              </ScatterChart>
+                <Legend />
+                <Bar 
+                  dataKey="count" 
+                  name="Total Jobs" 
+                  fill="hsl(var(--p))"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
       {/* Sender Distribution Over Time */}
-      <div className="card bg-base-100 shadow-xl">
-        <div className="card-body">
-          <h2 className="card-title text-xl mb-4">Sender Distribution Over Time</h2>
-          <div className="h-[500px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart
-                margin={{
-                  top: 20,
-                  right: 20,
-                  bottom: 40,
-                  left: 20,
-                }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--bc)/0.1)" />
-                <XAxis
-                  type="number"
-                  dataKey="timestamp"
-                  name="Time"
-                  tickFormatter={formatXAxis}
-                  domain={['auto', 'auto']}
-                  tick={{ fill: 'hsl(var(--bc)/0.8)' }}
-                  tickLine={{ stroke: 'hsl(var(--bc)/0.2)' }}
-                />
-                <YAxis
-                  type="number"
-                  dataKey="senderY"
-                  name="Sender"
-                  tick={{ fill: 'hsl(var(--bc)/0.8)' }}
-                  tickLine={{ stroke: 'hsl(var(--bc)/0.2)' }}
-                  tickFormatter={(value) => {
-                    const sender = senderData.find(d => d.senderY === value);
-                    return sender?.senderName || '';
+      {uniqueSenders.length > 0 && (
+        <div className="card bg-base-100 shadow-xl">
+          <div className="card-body">
+            <h2 className="card-title">Sender Distribution Over Time</h2>
+            <p className="text-sm text-base-content/70">
+              Jobs per sender over time
+            </p>
+            <div className="h-96 w-full mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={groupJobsByTime}
+                  margin={{
+                    top: 20,
+                    right: 30,
+                    left: 20,
+                    bottom: 60,
                   }}
-                />
-                <ZAxis type="category" dataKey="email" name="Email" />
-                <Tooltip content={<SenderTooltip />} />
-                <Scatter name="Senders" data={senderData}>
-                  {senderData.map((entry, index) => (
-                    <Cell
-                      key={`sender-cell-${index}`}
-                      fill={COLORS[entry.senderId?.charCodeAt(0) % COLORS.length]}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--bc)/0.1)" />
+                  <XAxis 
+                    dataKey="time" 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={60}
+                    tick={{ fill: 'hsl(var(--bc)/0.8)', fontSize: 12 }}
+                  />
+                  <YAxis 
+                    tick={{ fill: 'hsl(var(--bc)/0.8)' }}
+                    tickLine={{ stroke: 'hsl(var(--bc)/0.2)' }}
+                  />
+                  <Tooltip 
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--b1))',
+                      borderColor: 'hsl(var(--bc)/0.1)',
+                      borderRadius: 'var(--rounded-box, 1rem)'
+                    }}
+                  />
+                  <Legend />
+                  {uniqueSenders.map((sender, index) => (
+                    <Line
+                      key={sender}
+                      type="monotone"
+                      dataKey={sender}
+                      stroke={COLORS[index % COLORS.length]}
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 6 }}
                     />
                   ))}
-                </Scatter>
-              </ScatterChart>
-            </ResponsiveContainer>
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
