@@ -26,21 +26,31 @@ export default function ClientLayoutWrapper({
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [supabase]);
+ useEffect(() => {
+   // Handle the session promise with error handling
+   supabase.auth.getSession()
+     .then(({ data: { session } }) => {
+       setSession(session);
+       setLoading(false);
+     })
+     .catch((error) => {
+       console.error('Error getting session:', error);
+       setLoading(false);
+     });
+ 
+   // Set up auth state change listener
+   const {
+     data: { subscription },
+   } = supabase.auth.onAuthStateChange((_event, session) => {
+     setSession(session);
+     setLoading(false);
+   });
+ 
+   // Cleanup subscription on unmount
+   return () => {
+     subscription?.unsubscribe();
+   };
+ }, []);
 
   useEffect(() => {
     if (!loading) {
