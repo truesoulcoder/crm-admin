@@ -93,11 +93,16 @@ export default function CampaignAnalytics() {
     return <div className="p-4 text-red-500">Error: {error}</div>;
   }
 
+  if (jobs.length === 0) {
+    return <div className="p-4">No campaign data available.</div>;
+  }
+
   // Process data for lead distribution over time
   const leadData = jobs.map(job => ({
     timestamp: new Date(job.next_processing_time).getTime(),
-    status: job.status,
-    email: job.email_address
+    status: job.status === 'completed' ? 1 : job.status === 'failed' ? -1 : 0, // Convert status to numerical value
+    email: job.email_address,
+    statusText: job.status
   }));
 
   // Process data for sender distribution
@@ -109,7 +114,9 @@ export default function CampaignAnalytics() {
         timestamp: new Date(job.next_processing_time).getTime(),
         senderId: job.assigned_sender_id,
         senderName: sender?.name || 'Unknown',
-        email: job.email_address
+        email: job.email_address,
+        // Create a numerical value for the Y-axis based on sender ID
+        senderY: (sender?.id?.charCodeAt(0) || 0) % 10 // Ensure we have a number for Y-axis
       };
     });
 
@@ -121,19 +128,19 @@ export default function CampaignAnalytics() {
   // Custom tooltip for lead distribution
   interface TooltipPayload {
     payload: {
-      timestamp: string | number | Date;
+      timestamp: number;
       email: string;
-      status: string;
+      statusText: string;
     };
   }
 
-  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipPayload[]; label?: string }) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: TooltipPayload[] }) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white p-3 border border-gray-200 rounded shadow">
+        <div className="bg-base-100 p-3 border border-base-300 rounded-box shadow-lg text-sm">
           <p className="font-semibold">{new Date(payload[0].payload.timestamp).toLocaleString()}</p>
           <p>Email: {payload[0].payload.email}</p>
-          <p>Status: {payload[0].payload.status}</p>
+          <p>Status: {payload[0].payload.statusText}</p>
         </div>
       );
     }
@@ -141,22 +148,20 @@ export default function CampaignAnalytics() {
   };
 
   // Custom tooltip for sender distribution
-  interface PayloadItem {
+  interface SenderPayload {
     payload: {
       senderName: string;
-      timestamp: string | number | Date;
+      timestamp: number;
       email: string;
     };
   }
 
-  const SenderTooltip = ({ active, payload, label }: { active?: boolean; payload?: PayloadItem[]; label?: string }) => {
+  const SenderTooltip = ({ active, payload }: { active?: boolean; payload?: SenderPayload[] }) => {
     if (active && payload && payload.length) {
-      const timestamp = payload[0].payload.timestamp;
-      const date = typeof timestamp === 'number' || typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
       return (
-        <div className="bg-white p-3 border border-gray-200 rounded shadow">
+        <div className="bg-base-100 p-3 border border-base-300 rounded-box shadow-lg text-sm">
           <p className="font-semibold">{payload[0].payload.senderName}</p>
-          <p>Time: {date.toLocaleString()}</p>
+          <p>Time: {new Date(payload[0].payload.timestamp).toLocaleString()}</p>
           <p>Email: {payload[0].payload.email}</p>
         </div>
       );
@@ -164,103 +169,114 @@ export default function CampaignAnalytics() {
     return null;
   };
 
+  // Get unique statuses for Y-axis
+  const statuses = [...new Set(jobs.map(job => job.status))];
+  const statusToY = statuses.reduce((acc, status, index) => ({
+    ...acc,
+    [status]: index + 1
+  }), {});
+
   return (
-    <div className="p-6 space-y-12">
+    <div className="space-y-8 p-4">
       {/* Lead Distribution Over Time */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-xl font-semibold mb-4">Lead Distribution Over Time</h2>
-        <div className="h-[500px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart
-              margin={{
-                top: 20,
-                right: 20,
-                bottom: 20,
-                left: 20,
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                type="number"
-                dataKey="timestamp"
-                name="Time"
-                tickFormatter={formatXAxis}
-                domain={['auto', 'auto']}
-              />
-              <YAxis 
-                type="number" 
-                dataKey="status" 
-                name="Status" 
-                tick={false}
-                label={{ value: 'Status', angle: -90, position: 'insideLeft' }}
-              />
-              <ZAxis type="category" dataKey="email" name="Email" />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend />
-              <Scatter
-                name="Leads"
-                data={leadData}
-                fill="#8884d8"
-                shape="circle"
+      <div className="card bg-base-100 shadow-xl">
+        <div className="card-body">
+          <h2 className="card-title text-xl mb-4">Lead Distribution Over Time</h2>
+          <div className="h-[500px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ScatterChart
+                margin={{
+                  top: 20,
+                  right: 20,
+                  bottom: 40,
+                  left: 20,
+                }}
               >
-                {leadData.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={COLORS[index % COLORS.length]}
-                  />
-                ))}
-              </Scatter>
-            </ScatterChart>
-          </ResponsiveContainer>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--bc)/0.1)" />
+                <XAxis
+                  type="number"
+                  dataKey="timestamp"
+                  name="Time"
+                  tickFormatter={formatXAxis}
+                  domain={['auto', 'auto']}
+                  tick={{ fill: 'hsl(var(--bc)/0.8)' }}
+                  tickLine={{ stroke: 'hsl(var(--bc)/0.2)' }}
+                />
+                <YAxis 
+                  type="number"
+                  dataKey="status"
+                  name="Status"
+                  tick={{ fill: 'hsl(var(--bc)/0.8)' }}
+                  tickLine={{ stroke: 'hsl(var(--bc)/0.2)' }}
+                  tickFormatter={(value) => {
+                    const status = statuses[Math.round(value) - 1];
+                    return status || '';
+                  }}
+                />
+                <ZAxis type="category" dataKey="email" name="Email" />
+                <Tooltip content={<CustomTooltip />} />
+                <Scatter name="Leads" data={leadData}>
+                  {leadData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[statuses.indexOf(entry.statusText) % COLORS.length]}
+                    />
+                  ))}
+                </Scatter>
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 
       {/* Sender Distribution Over Time */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-xl font-semibold mb-4">Sender Distribution Over Time</h2>
-        <div className="h-[500px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart
-              margin={{
-                top: 20,
-                right: 20,
-                bottom: 20,
-                left: 20,
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                type="number"
-                dataKey="timestamp"
-                name="Time"
-                tickFormatter={formatXAxis}
-                domain={['auto', 'auto']}
-              />
-              <YAxis
-                type="category"
-                dataKey="senderName"
-                name="Sender"
-                tick={false}
-                label={{ value: 'Sender', angle: -90, position: 'insideLeft' }}
-              />
-              <ZAxis type="category" dataKey="email" name="Email" />
-              <Tooltip content={<SenderTooltip />} />
-              <Legend />
-              <Scatter
-                name="Senders"
-                data={senderData}
-                fill="#82ca9d"
-                shape="circle"
+      <div className="card bg-base-100 shadow-xl">
+        <div className="card-body">
+          <h2 className="card-title text-xl mb-4">Sender Distribution Over Time</h2>
+          <div className="h-[500px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ScatterChart
+                margin={{
+                  top: 20,
+                  right: 20,
+                  bottom: 40,
+                  left: 20,
+                }}
               >
-                {senderData.map((entry, index) => (
-                  <Cell
-                    key={`sender-cell-${index}`}
-                    fill={COLORS[entry.senderId?.charCodeAt(0) % COLORS.length]}
-                  />
-                ))}
-              </Scatter>
-            </ScatterChart>
-          </ResponsiveContainer>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--bc)/0.1)" />
+                <XAxis
+                  type="number"
+                  dataKey="timestamp"
+                  name="Time"
+                  tickFormatter={formatXAxis}
+                  domain={['auto', 'auto']}
+                  tick={{ fill: 'hsl(var(--bc)/0.8)' }}
+                  tickLine={{ stroke: 'hsl(var(--bc)/0.2)' }}
+                />
+                <YAxis
+                  type="number"
+                  dataKey="senderY"
+                  name="Sender"
+                  tick={{ fill: 'hsl(var(--bc)/0.8)' }}
+                  tickLine={{ stroke: 'hsl(var(--bc)/0.2)' }}
+                  tickFormatter={(value) => {
+                    const sender = senderData.find(d => d.senderY === value);
+                    return sender?.senderName || '';
+                  }}
+                />
+                <ZAxis type="category" dataKey="email" name="Email" />
+                <Tooltip content={<SenderTooltip />} />
+                <Scatter name="Senders" data={senderData}>
+                  {senderData.map((entry, index) => (
+                    <Cell
+                      key={`sender-cell-${index}`}
+                      fill={COLORS[entry.senderId?.charCodeAt(0) % COLORS.length]}
+                    />
+                  ))}
+                </Scatter>
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
     </div>
