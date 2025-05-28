@@ -19,7 +19,7 @@ function createSupabaseServerClient() {
             value: cookie.value
           }));
         },
-        setAll(cookies) {
+        setAll(cookies: Array<{ name: string; value: string } & CookieOptions>) {
           cookies.forEach(({ name, value, ...options }) => {
             try {
               cookieStore.set({ name, value, ...options });
