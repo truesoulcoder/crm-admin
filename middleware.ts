@@ -39,26 +39,25 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Public paths that don't require auth
-  const publicPaths = ['/login', '/auth/callback']
+  const publicPaths = ['/login', '/auth/callback', '/_next', '/favicon.ico']
   const isPublicPath = publicPaths.some(path => 
-    pathname === path || pathname.startsWith(`${path}/`)
+    pathname === path || pathname.startsWith(path)
   )
 
   // If no session and not on a public path, redirect to login
-  if (!session && !isPublicPath && pathname !== '/') {
-    return NextResponse.redirect(new URL('/', request.url))
+  if (!session && !isPublicPath) {
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // If session exists and trying to access root, redirect based on role
+  // If we have a session and trying to access root, redirect based on role
   if (session && pathname === '/') {
-    // Get user role (you might need to fetch this from your profiles table)
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', session.user.id)
       .single()
 
-    const role = profile?.role || 'guest'
+    const role = profile?.role
     const redirectTo = role === 'superadmin' ? '/dashboard' : '/crm'
     return NextResponse.redirect(new URL(redirectTo, request.url))
   }
@@ -67,7 +66,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|_next/data).*)',
-  ],
+  matcher: ['/((?!api|_next/static|_next/image|_next/data).*)'],
 }

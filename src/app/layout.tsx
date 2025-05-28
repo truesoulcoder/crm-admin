@@ -4,11 +4,14 @@
 import { Session } from '@supabase/supabase-js';
 import { Inter } from 'next/font/google';
 import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { EngineProvider } from '@/contexts/EngineContext';
 import { UserProvider } from '@/contexts/UserContext';
 import { createClient } from '@/lib/supabase/client';
+import { Navbar } from '@/components/layout/Navbar';
+import { Sidebar } from '@/components/layout/Sidebar';
 
 import './globals.css';
 
@@ -20,86 +23,104 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const [session, setSession] = useState<Session | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [role, setRole] = useState<string>('guest');
+  const [isLoading, setIsLoading] = useState(true);
   const supabase = createClient();
+  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    let mounted = true;
-    
-    const initializeAuth = async () => {
-      try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        if (mounted) {
-          setSession(initialSession);
-        }
-      } catch (err) {
-        console.error('Error initializing auth:', err);
-        if (mounted) {
-          setError('Failed to initialize authentication. Please refresh the page.');
-        }
-      }
-    };
-
-    // Use void to explicitly mark the promise as intentionally not awaited
-    void initializeAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (mounted) {
+    // Check auth state
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
         setSession(session);
+        
+        if (session) {
+          // Get user role
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session.user.id)
+            .single();
+          
+          setRole(profile?.role || 'guest');
+        } else {
+          setRole('guest');
+        }
+        
+        setIsLoading(false);
       }
-    });
+    );
+
+    // Initial check
+    const checkSession = async () => {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      setSession(currentSession);
+      
+      if (currentSession) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', currentSession.user.id)
+          .single();
+        
+        setRole(profile?.role || 'guest');
+      }
+      
+      setIsLoading(false);
+    };
+    
+    checkSession();
 
     return () => {
-      mounted = false;
       subscription.unsubscribe();
     };
-  }, [supabase.auth]);
+  }, [supabase.auth, router]);
 
-  const handleError = (error: Error, errorInfo: any) => {
-    console.error('Root boundary caught error:', error, errorInfo);
-    setError(error.message);
-  };
-
-  if (error) {
+  // Show loading state while checking auth
+  if (isLoading) {
     return (
       <html lang="en" data-theme="custom_crm_theme">
         <body className={`${inter.className} bg-base-100`}>
-          <div className="min-h-screen flex items-center justify-center p-4">
-            <div className="card bg-base-200 shadow-xl max-w-2xl w-full">
-              <div className="card-body">
-                <h2 className="card-title text-error text-2xl mb-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  Application Error
-                </h2>
-                <div className="bg-base-300 rounded-lg p-4 mb-4">
-                  <p className="font-semibold">{error}</p>
-                  <p className="text-sm mt-2">Please try refreshing the page or contact support if the problem persists.</p>
-                </div>
-                <div className="card-actions justify-end">
-                  <button 
-                    className="btn btn-primary"
-                    onClick={() => window.location.reload()}
-                  >
-                    Refresh Page
-                  </button>
-                </div>
-              </div>
-            </div>
+          <div className="flex min-h-screen items-center justify-center">
+            <span className="loading loading-spinner loading-lg"></span>
           </div>
         </body>
       </html>
     );
   }
 
+  // If no session and not on login page, show login
+  if (!session && pathname !== '/login') {
+    return (
+      <html lang="en" data-theme="custom_crm_theme">
+        <body className={`${inter.className} bg-base-100`}>
+          <UserProvider initialSession={session}>
+            <EngineProvider>
+              {children}
+            </EngineProvider>
+          </UserProvider>
+        </body>
+      </html>
+    );
+  }
+
+  // For authenticated users, show the full layout with sidebar and navbar
   return (
     <html lang="en" data-theme="custom_crm_theme">
       <body className={`${inter.className} bg-base-100`}>
         <ErrorBoundary>
           <UserProvider initialSession={session}>
             <EngineProvider>
-              {children}
+              <div className="flex min-h-screen">
+                <Sidebar role={role} />
+                <div className="flex-1 flex flex-col">
+                  <Navbar user={session?.user} role={role} />
+                  <main className="flex-1 p-6 overflow-auto">
+                    {children}
+                  </main>
+                </div>
+              </div>
             </EngineProvider>
           </UserProvider>
         </ErrorBoundary>
