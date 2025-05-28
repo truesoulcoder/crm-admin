@@ -19,7 +19,7 @@ export function createClient() {
           if (parts.length === 2) return parts.pop()?.split(';').shift() || null
           return null
         },
-        set(name: string, value: string, options: { path: string; maxAge: number; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: 'lax' | 'strict' | 'none' }) => {
+        set(name: string, value: string, options: { path: string; maxAge: number; domain?: string; secure?: boolean; httpOnly?: boolean; sameSite?: 'lax' | 'strict' | 'none' }) {
           if (typeof document === 'undefined') return
           document.cookie = `${name}=${value}; Path=${options.path}; Max-Age=${options.maxAge}; ${
             options.domain ? `Domain=${options.domain};` : ''

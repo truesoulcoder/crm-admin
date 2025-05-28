@@ -1,7 +1,8 @@
 // hooks/useUser.ts
-import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
-import { createClient } from '@/utils/supabase/client';
+import { useEffect, useState } from 'react';
+
+import { createClient } from '@/lib/supabase/client';
 
 export function useUser() {
   const [user, setUser] = useState<User | null>(null);
