@@ -17,8 +17,8 @@ export async function signOut() {
             value: cookie.value
           }));
         },
-        setAll(cookies) {
-          cookies.forEach(({ name, value, ...options }) => {
+        setAll(cookies: Array<{ name: string; value: string; options?: CookieOptions }>) {
+          cookies.forEach(({ name, value, options }) => {
             try {
               cookieStore.set({ name, value, ...options });
             } catch (error) {
