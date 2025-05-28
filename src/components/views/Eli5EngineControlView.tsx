@@ -72,7 +72,14 @@ const supabase = createBrowserClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const Eli5EngineControlViewInner: React.FC = () => {
+console.log('Supabase client initialized with:', {
+  url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  key: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+});
+
+const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, children }) => {
+  console.log('Dashboard component mounting');
+  
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const [consoleLogs] = useState<LogEntry[]>([]);
   const [isDryRun, setIsDryRun] = useState<boolean>(false);
@@ -288,13 +295,17 @@ const Eli5EngineControlViewInner: React.FC = () => {
   }>({ isRunning: false });
 
   const fetchEngineStatus = useCallback(async () => {
+    console.log('Fetching engine status...');
     try {
+      console.log('Making Supabase query to engine_control');
       const { data, error } = await supabase
         .from('engine_control')
         .select('*')
         .limit(1)
         .single()
         .throwOnError();
+
+      console.log('Supabase query completed', { data, error });
 
       if (!data) {
         // If no data exists, initialize the table
