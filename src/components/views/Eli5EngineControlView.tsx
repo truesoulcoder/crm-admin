@@ -196,28 +196,27 @@ const Eli5EngineControlViewInner: React.FC = () => {
         console.error('Failed to fetch email metrics:', err);
       }
     };
-    void fetchData().catch(error => {
-      console.error('Error in fetchData:', error);
-    });
+    
+    void fetchData();
 
     const subscription = supabase
       .channel('email_metrics_changes')
       .on<MetricsPayload>(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'email_metrics_by_sender' },
-        (payload) => {
-          console.log('Change received:', payload);
+        () => {
           void fetchEmailMetrics().catch(err => 
             console.error('Failed to refresh metrics:', handleError(err))
           );
         }
       );
+    
     void subscription.subscribe();
 
     return () => {
       void subscription.unsubscribe();
     };
-  }, [fetchEmailMetrics, supabase]);
+  }, [fetchEmailMetrics]);
 
   // Effect to fetch senders on mount
   useEffect(() => {
@@ -354,9 +353,7 @@ const Eli5EngineControlViewInner: React.FC = () => {
   };
 
   const handleButtonClick = (handler: () => Promise<void>) => {
-    return () => {
-      void handler().catch(console.error);
-    };
+    return () => void handler().catch(console.error);
   };
 
   return (
@@ -537,7 +534,7 @@ const Eli5EngineControlViewInner: React.FC = () => {
                 <span className="relative flex h-2 w-2 mr-1">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                </span>
+              </span>
                 Logging active
               </span>
             ) : (
