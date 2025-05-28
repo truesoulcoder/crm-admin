@@ -11,8 +11,7 @@ const nextConfig = {
     serverActions: {
       allowedOrigins: [
         'localhost:3000',
-        'crm-admin.vercel.app',
-        'crm-admin-*.vercel.app'
+        'truesoulpartners.vercel.app',
       ]
     }
   },
