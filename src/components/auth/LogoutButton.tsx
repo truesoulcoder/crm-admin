@@ -1,4 +1,4 @@
-// components/auth/LoginButton.tsx
+// src/components/auth/LoginButton.tsx
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
@@ -13,6 +13,10 @@ export function LoginButton() {
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
       },
     })
 
@@ -22,7 +26,10 @@ export function LoginButton() {
   }
 
   return (
-    <button onClick={handleGoogleLogin} className="btn btn-primary">
+    <button 
+      onClick={handleGoogleLogin} 
+      className="btn btn-primary"
+    >
       Sign in with Google
     </button>
   )

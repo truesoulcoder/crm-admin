@@ -56,14 +56,17 @@ export async function middleware(request: NextRequest) {
   )
 
   // Refresh session if expired
-  await supabase.auth.getSession()
-
-  // Protected routes
   const { data: { session } } = await supabase.auth.getSession()
-  const isAuthPage = request.nextUrl.pathname.startsWith('/login') || 
-                    request.nextUrl.pathname.startsWith('/signup')
 
-  if (!session && !isAuthPage) {
+  // Public paths that don't require auth
+  const publicPaths = ['/login', '/auth/callback', '/_next', '/favicon.ico']
+  const isPublicPath = publicPaths.some(path => 
+    request.nextUrl.pathname === path || 
+    request.nextUrl.pathname.startsWith(path)
+  )
+
+  // If no session and not on a public path, redirect to login
+  if (!session && !isPublicPath) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 

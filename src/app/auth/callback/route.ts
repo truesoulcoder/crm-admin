@@ -1,4 +1,4 @@
-// src/app/api/auth/google/route.ts
+// src/app/auth/callback/route.ts
 import { createRouteHandlerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
@@ -13,12 +13,11 @@ export async function GET(request: Request) {
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore })
     
     try {
-      const { error } = await supabase.auth.exchangeCodeForSession(code)
-      if (error) throw error
+      await supabase.auth.exchangeCodeForSession(code)
     } catch (error) {
       console.error('Error exchanging code for session:', error)
       return NextResponse.redirect(
-        new URL(`/login?error=authentication_error`, requestUrl.origin)
+        new URL(`/login?error=auth_error`, requestUrl.origin)
       )
     }
   }
