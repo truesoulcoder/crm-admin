@@ -1,59 +1,52 @@
 'use client';
 
-import { useState } from 'react';
-import { LayoutDashboard, Users, FileText, Settings, Contact, ChevronLeft } from 'lucide-react';
-import Image from 'next/image';
+import { LayoutDashboard, Users, Mail, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-// External dependencies
 import { useState } from 'react';
- 
-import { AnimatedDealpig } from '@/components/ui/AnimatedDealpig';
-import { useUser } from '@/contexts/UserContext'; 
-import { LetterFx } from '@/once-ui/components';
 
-type CrmView = 'dashboard' | 'leads' | 'crm' | 'analytics' | 'settings' | 'campaigns' | 'templates' | 'senders';
-
-type ViewPath = {
-  [K in CrmView]: string;
-};
+import { useUser } from '@/contexts/UserContext';
+import { cn } from '@/lib/utils';
 
 interface MenuItem {
-  view: CrmView;
-  icon: React.ReactElement;
-  label: string;
+  name: string;
+  href: string;
+  icon: React.ReactNode;
 }
 
 const menuItems: MenuItem[] = [
-  { view: 'dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
-  { view: 'leads', icon: <Users size={20} />, label: 'Upload Leads' },
-  { view: 'crm', icon: <Contact size={20} />, label: 'CRM' },
-  { view: 'analytics', icon: <FileText size={20} />, label: 'Analytics' },
-  { view: 'settings', icon: <Settings size={20} />, label: 'Settings' },
+  {
+    name: 'Dashboard',
+    href: '/dashboard',
+    icon: <LayoutDashboard size={20} />,
+  },
+  {
+    name: 'Leads',
+    href: '/leads',
+    icon: <Users size={20} />,
+  },
+  {
+    name: 'Campaigns',
+    href: '/campaigns',
+    icon: <Mail size={20} />,
+  },
+  {
+    name: 'Settings',
+    href: '/settings',
+    icon: <Settings size={20} />,
+  },
 ];
 
-const Sidebar: React.FC = () => {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export default function Sidebar({ onClose }: SidebarProps = {}) {
+  const { user, loading } = useUser();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  
-  const toggleSidebar = () => {
-    setIsCollapsed(!isCollapsed);
-  };
-
-  const { role, isLoading: userLoading, user } = useUser(); // Get role and loading state
-  // TODO: Replace this with actual logic to fetch/get companyLogoUrl from settings
-  const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null);
-  // TODO: Replace this with actual logic to fetch/get companyName from settings
-  const [companyName, setCompanyName] = useState<string | null>(null);
-
-  // Example: Fetch settings on component mount (you'll need to adapt this)
-  // useEffect(() => {
-  //   const fetchSettings = async () => {
-  //     // Replace with your actual settings fetching logic
-  //     // const settings = await getAppSettings(); 
-  //     // if (settings && settings.logoUrl) {
   const pathname = usePathname();
 
-  if (isLoading) {
+  if (loading) {
     return (
       <aside className="bg-base-200 text-base-content w-16 min-h-screen p-4 flex flex-col items-center justify-center">
         <span className="loading loading-spinner loading-md"></span>
@@ -95,7 +88,7 @@ const Sidebar: React.FC = () => {
                       : 'hover:bg-base-300'
                   )}
                 >
-                  <item.icon className="w-5 h-5" />
+                  {item.icon}
                   {!isCollapsed && <span className="ml-3">{item.name}</span>}
                 </Link>
               </li>
@@ -105,7 +98,7 @@ const Sidebar: React.FC = () => {
       </nav>
       
       <button 
-        onClick={toggleSidebar}
+        onClick={() => setIsCollapsed(!isCollapsed)}
         className="absolute -right-3 top-4 bg-base-200 rounded-full p-1 shadow-md hover:bg-base-300 transition-colors"
       >
         <ChevronLeft className={`w-4 h-4 transition-transform ${isCollapsed ? 'rotate-180' : ''}`} />
@@ -132,4 +125,4 @@ const Sidebar: React.FC = () => {
       )}
     </aside>
   );
-};
+}

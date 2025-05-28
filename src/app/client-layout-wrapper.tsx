@@ -1,15 +1,16 @@
 // app/client-layout-wrapper.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Session } from '@supabase/supabase-js';
-import { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import AppLayout from '@/components/layout/AppLayout';
 import { EngineProvider } from '@/contexts/EngineContext';
 import { UserProvider } from '@/contexts/UserContext';
 import { createClient } from '@/lib/supabase/client';
+
+import type { Session } from '@supabase/supabase-js';
 
 export default function ClientLayoutWrapper({
   children,
@@ -69,13 +70,18 @@ export default function ClientLayoutWrapper({
     );
   }
 
-  return (
+  // Wrap everything in AppLayout for consistent UI
+  const content = (
     <ErrorBoundary>
-      <UserProvider initialSession={session}>
+      <UserProvider>
         <EngineProvider>
-          {children}
+          <AppLayout>
+            {children}
+          </AppLayout>
         </EngineProvider>
       </UserProvider>
     </ErrorBoundary>
   );
+
+  return content;
 }

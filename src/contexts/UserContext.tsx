@@ -1,7 +1,8 @@
 // src/contexts/UserContext.tsx
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+
+import { createClient } from '@/lib/supabase/client';
 
 type UserContextType = {
   user: User | null;
@@ -19,7 +20,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     // Check active sessions and set the user
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = createClient().auth.onAuthStateChange(
       async (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
@@ -33,7 +34,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await createClient().auth.signOut();
     setUser(null);
     setSession(null);
     return { error };
