@@ -1,42 +1,44 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { NextResponse, type NextRequest } from 'next/server';
 
-export async function GET(req: NextRequest) {
-  console.log('[API /auth/google] Initiating Google OAuth flow.');
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!supabaseUrl) {
-    return NextResponse.json({ error: 'Supabase URL not set' }, { status: 500 });
-  }
-
-  // Determine the base URL for redirects
-  const appBaseUrl = req.nextUrl.origin || process.env.NEXT_PUBLIC_SITE_URL || 
-    (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : null);
+export async function GET(request: NextRequest) {
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get('code');
+  const next = requestUrl.searchParams.get('next') || '/dashboard';
+  
+  if (code) {
+    const cookieStore = cookies();
     
-  if (!appBaseUrl) {
-    return NextResponse.json(
-      { error: 'App base URL configuration error for OAuth callback' }, 
-      { status: 500 }
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            cookieStore.set({ name, value, ...options });
+          },
+          remove(name: string, options: CookieOptions) {
+            cookieStore.set({ name, value: '', ...options });
+          },
+        },
+      }
     );
+
+    try {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error exchanging code for session:', error);
+      return NextResponse.redirect(
+        new URL(`/login?error=authentication_error`, requestUrl.origin)
+      );
+    }
   }
 
-  // Path in your app that handles the OAuth hash
-  const appFinalRedirectUri = new URL('/', appBaseUrl).href;
-  
-  // Scopes for Google OAuth
-  const scopes = [
-    'openid',
-    'https://www.googleapis.com/auth/userinfo.email',
-    'https://www.googleapis.com/auth/userinfo.profile'
-  ];
-
-  const params = new URLSearchParams({
-    provider: 'google',
-    redirect_to: appFinalRedirectUri,
-    scopes: scopes.join(' ')
-  });
-
-  return NextResponse.redirect(
-    `${supabaseUrl}/auth/v1/authorize?${params.toString()}`
-  );
-  
+  // URL to redirect to after sign in process completes
+  return NextResponse.redirect(new URL(next, requestUrl.origin));
 }
-

@@ -3,13 +3,19 @@ import crypto from 'crypto';
 
 // Supabase
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
 import { Database } from '@/types/db_types';
 
 // Next.js
 
 // Internal dependencies
 import { STATUS_KEY } from './email-metrics';
+import { logCampaignJob } from './log-campaign-job';
 import { sendConfiguredEmail } from './send-email';
+import { updateCampaignJobStatus } from './update-campaign-job-status';
+
+import { supabaseServerClient } from '@/lib/supabase/server';
+
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 // Types
