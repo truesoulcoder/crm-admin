@@ -3,10 +3,10 @@ import { randomUUID } from 'crypto'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Readable } from 'stream'
+import { parse } from 'papaparse'
 
 import { createServerClient } from '@/lib/supabase/client'
 import { NextRequest, NextResponse } from 'next/server'
-import { parse } from 'papaparse'
 
 // Max execution time for this API route (in seconds)
 export const maxDuration = 60; // 1 minute
@@ -17,9 +17,13 @@ const processFileInChunks = (
   chunkSize: number,
   processChunk: (chunk: any[], isLastChunk: boolean) => Promise<void>
 ) => {
-  return new Promise<void>(async (resolve, reject) => { // Added async here
-    try { // Wrap in try-catch for async operations like file.text()
-      const fileText = await file.text(); // Get the full text once
+  return new Promise<void>((resolve, reject) => {
+    // Convert File to text first
+    const reader = new FileReader();
+    
+    reader.onload = async (event) => {
+      try {
+        const fileText = event.target?.result as string;
 
       let originalHeaders: string[] = [];
       let headerParseError: Error | null = null;
@@ -39,10 +43,10 @@ const processFileInChunks = (
         }
       });
 
-      if (headerParseError) {
-        reject(headerParseError);
-        return;
-      }
+        if (headerParseError) {
+          reject(headerParseError);
+          return;
+        }
 
       if (originalHeaders.length === 0 && file.size > 0) {
         reject(new Error('No header row found in CSV file.'));
@@ -194,15 +198,13 @@ export async function POST(request: NextRequest) {
 
   let objectPath: string | null = null; // To store the path for potential cleanup, used after reassembly
   // Initialize Supabase admin client with service role key and proper configuration
-  const supabaseAdmin = createServerClient({
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-      detectSessionInUrl: false
-    },
-    db: {
-      schema: 'public'
-    }
+  // Create admin client with service role key
+  const supabaseAdmin = createServerClient();
+  
+  // Configure admin client options
+  supabase.auth.setSession({
+    access_token: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    refresh_token: ''
   });
   const bucket = 'lead-uploads'; // Define bucket name
 
