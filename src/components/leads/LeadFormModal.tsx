@@ -9,10 +9,36 @@ import { Database } from '@/types/db_types';
 interface LeadFormModalProps {
   lead?: Partial<Database['public']['Tables']['crm_leads']['Row']>;
   onClose: () => void;
-  onSubmit: (lead: Partial<Database['public']['Tables']['crm_leads']['Insert']>) => void;
+  onSubmit: (lead: Omit<Partial<Database['public']['Tables']['crm_leads']['Insert']>, 'baths'|'beds'|'assessed_total'|'year_built'|'lot_size_sqft'|'square_footage'> & {
+    baths?: number | null;
+    beds?: number | null;
+    assessed_total?: number | null;
+    year_built?: number | null;
+    lot_size_sqft?: number | null;
+    square_footage?: number | null;
+  }) => void;
   isOpen: boolean;
   isLoaded: boolean;
   initialPanoramaPosition?: { lat: number; lng: number } | null;
+}
+
+interface LeadFormData {
+  contact_name: string;
+  contact_email: string;
+  contact_type: string;
+  contact_phone: string;
+  property_address: string;
+  property_city: string;
+  property_state: string;
+  property_postal_code: string;
+  assessed_total: number | null;
+  property_type: string;
+  square_footage: number | null;
+  beds: number | null;
+  baths: number | null;
+  year_built: number | null;
+  lot_size_sqft: number | null;
+  notes: string;
 }
 
 const LeadFormModal = ({ 
@@ -26,7 +52,24 @@ const LeadFormModal = ({
   const { isLoaded: mapsLoaded, loadError } = useGoogleMapsApi();
   const [streetViewLoaded, setStreetViewLoaded] = useState(false);
   const [panoramaPosition, setPanoramaPosition] = useState<{ lat: number; lng: number } | null>(initialPanoramaPosition);
-  const [formData, setFormData] = useState<Partial<Database['public']['Tables']['crm_leads']['Row']>>(lead);
+  const [formData, setFormData] = useState<LeadFormData>({
+    contact_name: lead.contact_name ?? '',
+    contact_email: lead.contact_email ?? '',
+    contact_type: lead.contact_type ?? '',
+    contact_phone: lead.contact_phone ?? '',
+    property_address: lead.property_address ?? '',
+    property_city: lead.property_city ?? '',
+    property_state: lead.property_state ?? '',
+    property_postal_code: lead.property_postal_code ?? '',
+    assessed_total: lead.assessed_total ? Number(lead.assessed_total) : null,
+    property_type: lead.property_type ?? '',
+    square_footage: lead.square_footage ? Number(lead.square_footage) : null,
+    beds: lead.beds ? Number(lead.beds) : null,
+    baths: lead.baths ? Number(lead.baths) : null,
+    year_built: lead.year_built ? Number(lead.year_built) : null,
+    lot_size_sqft: lead.lot_size_sqft ? Number(lead.lot_size_sqft) : null,
+    notes: lead.notes ?? ''
+  } as LeadFormData);
 
   const initStreetView = useCallback(async () => {
     if (!formData.property_address || !mapsLoaded || loadError) return;
@@ -61,19 +104,37 @@ const LeadFormModal = ({
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     try {
-      void onSubmit(formData);
+      void onSubmit({
+        ...formData,
+        assessed_total: formData.assessed_total,
+        square_footage: formData.square_footage,
+        beds: formData.beds,
+        baths: formData.baths,
+        year_built: formData.year_built,
+        lot_size_sqft: formData.lot_size_sqft
+      });
     } catch (error) {
-      console.error('Form submission error:', error);
-      // Optionally, handle error display to the user
+      console.error('Failed to submit lead:', error);
     }
   };
 
   const onInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev: Partial<Database['public']['Tables']['crm_leads']['Row']>) => ({
-      ...prev,
-      [name]: value
-    }));
+    
+    // Safely update form data by checking if the field exists in our type
+    if (name in formData) {
+      if (['assessed_total', 'square_footage', 'beds', 'baths', 'year_built', 'lot_size_sqft'].includes(name)) {
+        setFormData(prev => ({
+          ...prev,
+          [name as keyof LeadFormData]: value === '' ? null : Number(value)
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          [name as keyof LeadFormData]: value
+        }));
+      }
+    }
   };
 
   const onGeocode = () => {
@@ -189,13 +250,13 @@ const LeadFormModal = ({
                 />
               </div>
               <div>
-                <label className="label"><span className="label-text">Zip</span></label>
+                <label className="label"><span className="label-text">Postal Code</span></label>
                 <input 
                   type="text" 
-                  name="property_zip" 
-                  placeholder="Zip" 
-                  className={`input input-sm input-bordered w-full ${formData.property_zip ? 'input-success' : ''}`} 
-                  value={formData.property_zip || ''} 
+                  name="property_postal_code" 
+                  placeholder="Postal Code" 
+                  className={`input input-sm input-bordered w-full ${formData.property_postal_code ? 'input-success' : ''}`} 
+                  value={formData.property_postal_code || ''} 
                   onChange={onInputChange} 
                 />
               </div>
@@ -207,10 +268,8 @@ const LeadFormModal = ({
                 type="number" 
                 name="assessed_total" 
                 placeholder="e.g., 250000" 
-                className={`input input-sm input-bordered w-full ${formData.assessed_total ? 'input-success' : ''}`} 
-                value={formData.assessed_total || ''} 
-                min="0"
-                step="0.01"
+                className={`input input-sm input-bordered w-full ${formData.assessed_total !== null ? 'input-success' : ''}`} 
+                value={formData.assessed_total !== null ? formData.assessed_total.toString() : ''} 
                 onChange={onInputChange} 
               />
             </div>
@@ -251,8 +310,8 @@ const LeadFormModal = ({
                     type="number" 
                     name="square_footage" 
                     placeholder="Square Footage" 
-                    className={`input input-sm input-bordered w-full ${formData.square_footage ? 'input-success' : ''}`} 
-                    value={formData.square_footage || ''} 
+                    className={`input input-sm input-bordered w-full ${formData.square_footage !== null ? 'input-success' : ''}`} 
+                    value={formData.square_footage !== null ? formData.square_footage.toString() : ''} 
                     onChange={onInputChange} 
                   />
                 </div>
@@ -262,8 +321,8 @@ const LeadFormModal = ({
                     type="number" 
                     name="beds" 
                     placeholder="Beds" 
-                    className={`input input-sm input-bordered w-full ${formData.beds ? 'input-success' : ''}`} 
-                    value={formData.beds || ''} 
+                    className={`input input-sm input-bordered w-full ${formData.beds !== null ? 'input-success' : ''}`} 
+                    value={formData.beds !== null ? formData.beds.toString() : ''} 
                     onChange={onInputChange} 
                   />
                 </div>
@@ -273,8 +332,8 @@ const LeadFormModal = ({
                     type="number" 
                     name="baths" 
                     placeholder="Baths" 
-                    className={`input input-sm input-bordered w-full ${formData.baths ? 'input-success' : ''}`} 
-                    value={formData.baths || ''} 
+                    className={`input input-sm input-bordered w-full ${formData.baths !== null ? 'input-success' : ''}`} 
+                    value={formData.baths !== null ? formData.baths.toString() : ''} 
                     onChange={onInputChange} 
                   />
                 </div>
@@ -284,8 +343,8 @@ const LeadFormModal = ({
                     type="number" 
                     name="year_built" 
                     placeholder="Year Built" 
-                    className={`input input-sm input-bordered w-full ${formData.year_built ? 'input-success' : ''}`} 
-                    value={formData.year_built || ''} 
+                    className={`input input-sm input-bordered w-full ${formData.year_built !== null ? 'input-success' : ''}`} 
+                    value={formData.year_built !== null ? formData.year_built.toString() : ''} 
                     onChange={onInputChange} 
                   />
                 </div>
@@ -300,8 +359,8 @@ const LeadFormModal = ({
                     type="number" 
                     name="lot_size_sqft" 
                     placeholder="Lot Size" 
-                    className={`input input-sm input-bordered w-full ${formData.lot_size_sqft ? 'input-success' : ''}`} 
-                    value={formData.lot_size_sqft || ''} 
+                    className={`input input-sm input-bordered w-full ${formData.lot_size_sqft !== null ? 'input-success' : ''}`} 
+                    value={formData.lot_size_sqft !== null ? formData.lot_size_sqft.toString() : ''} 
                     onChange={onInputChange} 
                   />
                 </div>
@@ -350,3 +409,5 @@ const LeadFormModal = ({
     </div>
   );
 };
+
+export { LeadFormModal };

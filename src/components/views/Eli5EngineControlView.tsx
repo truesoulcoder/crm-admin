@@ -39,20 +39,20 @@ interface LogEntry {
 type EngineStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error' | 'test_sending';
 
 type EmailMetrics = {
-  email: string;
-  name: string;
-  sent: number;
-  delivered: number;
-  bounced: number;
-  opened: number;
-  clicked: number;
-  replied: number;
-  total_sent: number;
-  delivery_rate: number;
-  bounce_rate: number;
-  open_rate: number;
-  click_rate: number;
-  reply_rate: number;
+  email: string | null;
+  name: string | null;
+  sent: number | null;
+  delivered: number | null;
+  bounced: number | null;
+  opened: number | null;
+  clicked: number | null;
+  replied: number | null;
+  total_sent: number | null;
+  delivery_rate: number | null;
+  bounce_rate: number | null;
+  open_rate: number | null;
+  click_rate: number | null;
+  reply_rate: number | null;
 };
 
 type MetricsPayload = {
@@ -178,7 +178,11 @@ const Eli5EngineControlViewInner: React.FC = () => {
         .select('*')
         .order('sent', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Failed to fetch email metrics:', error);
+        setEmailMetrics([]);
+        return;
+      }
       setEmailMetrics(data || []);
     } catch (err) {
       console.error('Error fetching email metrics:', handleError(err));
@@ -295,9 +299,9 @@ const Eli5EngineControlViewInner: React.FC = () => {
 
       setEngineStatus({
         isRunning: data?.is_running || false,
-        currentCampaign: data?.current_campaign_id,
-        lastStarted: data?.last_started_at,
-        lastStopped: data?.last_stopped_at
+        currentCampaign: data?.current_campaign_id ? data.current_campaign_id : undefined,
+        lastStarted: data?.last_started_at || undefined,
+        lastStopped: data?.last_stopped_at || undefined
       });
     } catch (err) {
       console.error('Error fetching engine status:', handleError(err));
@@ -610,20 +614,20 @@ const Eli5EngineControlViewInner: React.FC = () => {
                       <div className="font-medium">{metric.name}</div>
                       <div className="text-xs text-gray-500">{metric.email}</div>
                     </td>
-                    <td>{metric.sent.toLocaleString()}</td>
-                    <td>{metric.delivered.toLocaleString()}</td>
-                    <td>{metric.bounced.toLocaleString()}</td>
-                    <td>{metric.opened.toLocaleString()}</td>
-                    <td>{metric.clicked.toLocaleString()}</td>
-                    <td>{metric.replied.toLocaleString()}</td>
+                    <td>{metric.sent?.toLocaleString() ?? 'N/A'}</td>
+                    <td>{metric.delivered?.toLocaleString() ?? 'N/A'}</td>
+                    <td>{metric.bounced?.toLocaleString() ?? 'N/A'}</td>
+                    <td>{metric.opened?.toLocaleString() ?? 'N/A'}</td>
+                    <td>{metric.clicked?.toLocaleString() ?? 'N/A'}</td>
+                    <td>{metric.replied?.toLocaleString() ?? 'N/A'}</td>
                     <td>
-                      <span className={`font-medium ${metric.delivery_rate >= 90 ? 'text-success' : metric.delivery_rate >= 80 ? 'text-warning' : 'text-error'}`}>
-                        {metric.delivery_rate.toFixed(1)}%
+                      <span className={`font-medium ${(metric.delivery_rate ?? 0) >= 90 ? 'text-success' : (metric.delivery_rate ?? 0) >= 80 ? 'text-warning' : 'text-error'}`}>
+                        {(metric.delivery_rate?.toFixed(1) ?? '0.0')}%
                       </span>
                     </td>
                     <td>
-                      <span className={`font-medium ${metric.open_rate >= 30 ? 'text-success' : metric.open_rate >= 20 ? 'text-warning' : 'text-error'}`}>
-                        {metric.open_rate.toFixed(1)}%
+                      <span className={`font-medium ${(metric.open_rate ?? 0) >= 50 ? 'text-success' : (metric.open_rate ?? 0) >= 30 ? 'text-warning' : 'text-error'}`}>
+                        {(metric.open_rate?.toFixed(1) ?? '0.0')}%
                       </span>
                     </td>
                   </tr>
