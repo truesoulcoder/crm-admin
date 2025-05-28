@@ -1,110 +1,36 @@
-// src/middleware.ts
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { NextResponse, type NextRequest } from 'next/server';
-
-// List of public paths that don't require authentication
-const publicPaths = ['/login', '/reset-password'];
+// middleware.ts
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient({ req: request, res });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value;
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          });
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          });
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          });
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          });
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          });
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          });
-        },
-      },
-    }
-  );
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  // Refresh session if expired - required for Server Components
-  const { data: { session } } = await supabase.auth.getSession();
-  
-  // Get the user's role if they're logged in
-  let userRole: string | null = null;
-  if (session) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', session.user.id)
-      .single();
-    userRole = profile?.role || null;
+  // If user is not signed in and the current path is not /login redirect to /login
+  if (!session && !request.nextUrl.pathname.startsWith('/auth')) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = '/auth/login';
+    redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname);
+    return NextResponse.redirect(redirectUrl);
   }
 
-  const { pathname } = request.nextUrl;
-  const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
-
-  // Redirect logic
-  if (!session && !isPublicPath) {
-    // Redirect to login if not authenticated and not on a public path
-    return NextResponse.redirect(new URL('/login', request.url));
+  // If user is signed in and tries to access auth pages, redirect to dashboard
+  if (session && request.nextUrl.pathname.startsWith('/auth')) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = '/dashboard';
+    return NextResponse.redirect(redirectUrl);
   }
 
-  if (session) {
-    // Redirect to dashboard if authenticated and trying to access login/signup
-    if (['/login', '/signup'].includes(pathname)) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
-    }
-
-    // Role-based redirects
-    if (pathname.startsWith('/admin') && userRole !== 'superadmin') {
-      return NextResponse.redirect(new URL('/unauthorized', request.url));
-    }
-  }
-
-  return response;
+  return res;
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|auth/reset-password).*)',
   ],
 };
