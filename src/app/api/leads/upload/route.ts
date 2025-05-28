@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto';
 import { parse } from 'papaparse';
 import { createServerClient } from '@/lib/supabase/client';
 import { NextRequest, NextResponse } from 'next/server';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 // Max execution time for this API route (in seconds)
 export const maxDuration = 60; // 1 minute
@@ -20,41 +22,35 @@ const processCSV = async (
 
       // First, parse just the headers to get column names
       parse(fileText, {
-      try {
-        const fileText = event.target?.result as string;
-        let originalHeaders: string[] = [];
-        let headerParseError: Error | null = null;
-
-        parse(fileText, {
-          preview: 1, // Only parse the first row
-          header: false, // Treat the first row as an array of strings
-          skipEmptyLines: true,
-          complete: (results) => {
-            if (results.data.length > 0 && Array.isArray(results.data[0])) {
-              originalHeaders = results.data[0] as string[];
-            }
-          },
-          error: (error: Error) => {
-            // Capture error to reject promise outside
-            headerParseError = new Error(`Failed to parse header row: ${error.message}`);
+        preview: 1, // Only parse the first row
+        header: false, // Treat the first row as an array of strings
+        skipEmptyLines: true,
+        complete: (results) => {
+          if (results.data.length > 0 && Array.isArray(results.data[0])) {
+            originalHeaders = results.data[0] as string[];
           }
-        });
-
-        if (headerParseError) {
-          reject(headerParseError);
-          return;
+        },
+        error: (error: Error) => {
+          // Capture error to reject promise outside
+          headerParseError = new Error(`Failed to parse header row: ${error.message}`);
         }
+      });
 
-        if (originalHeaders.length === 0 && file.size > 0) {
-          reject(new Error('No header row found in CSV file.'));
-          return;
-        }
-      
-        const finalHeaders: string[] = [];
-        const headerCounts: { [key: string]: number } = {};
-      
+      if (headerParseError) {
+        reject(headerParseError);
+        return;
+      }
+
+      if (originalHeaders.length === 0) {
+        reject(new Error('No header row found in CSV file.'));
+        return;
+      }
+    
+      const finalHeaders: string[] = [];
+      const headerCounts: { [key: string]: number } = {};
+    
       for (const h of originalHeaders) {
-        const snakeCasedHeader = convertToSnakeCase(h); // convertToSnakeCase must be defined above or passed in
+        const snakeCasedHeader = convertToSnakeCase(h);
         if (headerCounts[snakeCasedHeader] === undefined) {
           headerCounts[snakeCasedHeader] = 0;
           finalHeaders.push(snakeCasedHeader);
@@ -64,13 +60,13 @@ const processCSV = async (
         }
       }
 
-      // Now, the main parsing, using the `fileText` obtained earlier
-      let isHeaderRowSkipped = false; // To skip the first row in the main parse
+      // Now, the main parsing
+      let isHeaderRowSkipped = false;
       let chunk: any[] = [];
       let rowCount = 0;
 
-      parse(fileText, { // Use the full fileText here
-        header: false, // IMPORTANT: Headers are now manually handled
+      parse(fileText, {
+        header: false,
         skipEmptyLines: true,
         step: (row, parser) => {
           const rowDataArray = row.data as any[];
@@ -90,7 +86,6 @@ const processCSV = async (
             if (index < rowDataArray.length) {
               csvRowData[headerKey] = rowDataArray[index];
             } else {
-              // If rowDataArray is shorter than finalHeaders, assign null to missing fields
               csvRowData[headerKey] = null; 
             }
           });
@@ -170,12 +165,11 @@ export async function POST(request: NextRequest) {
   const uploadId = formData.get('uploadId') as string | null;
   const chunkIndexStr = formData.get('chunkIndex') as string | null;
   const totalChunksStr = formData.get('totalChunks') as string | null;
-  const originalFileName = formData.get('fileName') as string | null; // Added this
+  const originalFileName = formData.get('fileName') as string | null;
 
   console.log('API: Chunk upload request received.');
   console.log(`API: uploadId: ${uploadId}, chunkIndex: ${chunkIndexStr}, totalChunks: ${totalChunksStr}, fileName: ${originalFileName}, marketRegion: ${marketRegion}`);
   console.log('API: Chunk file object:', chunkFile ? { name: chunkFile.name, type: chunkFile.type, size: chunkFile.size } : 'No chunk file found');
-
 
   if (!chunkFile || !uploadId || chunkIndexStr === null || totalChunksStr === null || !originalFileName || !marketRegion) {
     console.error('API Error: Missing chunk metadata or file.');
@@ -192,17 +186,14 @@ export async function POST(request: NextRequest) {
   const tempDir = path.join('/tmp', uploadId);
   const chunkFilePath = path.join(tempDir, `chunk_${chunkIndex}.bin`);
 
-  let objectPath: string | null = null; // To store the path for potential cleanup, used after reassembly
-  // Initialize Supabase admin client with service role key and proper configuration
-  // Create admin client with service role key
+  let objectPath: string | null = null;
   const supabaseAdmin = createServerClient();
   
-  // Configure admin client options
   supabase.auth.setSession({
     access_token: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
     refresh_token: ''
   });
-  const bucket = 'lead-uploads'; // Define bucket name
+  const bucket = 'lead-uploads';
 
   try {
     await fs.mkdir(tempDir, { recursive: true });
@@ -223,26 +214,23 @@ export async function POST(request: NextRequest) {
         const currentChunkPath = path.join(tempDir, `chunk_${i}.bin`);
         const buffer = await fs.readFile(currentChunkPath);
         reassembledFileBuffers.push(buffer);
-        await fs.unlink(currentChunkPath); // Delete individual chunk file after reading
+        await fs.unlink(currentChunkPath);
       }
-      await fs.rmdir(tempDir); // Remove the temporary directory for this uploadId
+      await fs.rmdir(tempDir);
       console.log(`API: Temporary chunks deleted and directory ${tempDir} removed.`);
 
       const reassembledFileBuffer = Buffer.concat(reassembledFileBuffers);
       console.log(`API: File ${originalFileName} reassembled. Total size: ${reassembledFileBuffer.length} bytes.`);
       
-      // MAX_FILE_SIZE check on the reassembled file
       const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
       if (reassembledFileBuffer.length > MAX_FILE_SIZE) {
         console.error(`API Error: Reassembled file size (${reassembledFileBuffer.length}) exceeds 50MB limit.`);
-        // Note: tempDir is already cleaned up at this point.
         return NextResponse.json({ ok: false, error: 'Reassembled file size exceeds 50MB limit.' }, { status: 413 });
       }
 
-      // Simulate a File-like object for processFileInChunks and Supabase upload
       const reassembledFile = {
         name: originalFileName,
-        type: chunkFile.type, // Use type from the last chunk, assuming consistency
+        type: chunkFile.type,
         size: reassembledFileBuffer.length,
         arrayBuffer: async () => reassembledFileBuffer.buffer.slice(
             reassembledFileBuffer.byteOffset, 
@@ -251,14 +239,13 @@ export async function POST(request: NextRequest) {
         text: async () => reassembledFileBuffer.toString('utf-8'),
       };
       
-      // --- BEGIN MAIN PROCESSING LOGIC (adapted from original) ---
       console.log('API: Attempting to upload reassembled file to storage...');
       const sanitizedFileName = originalFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-      objectPath = `${randomUUID()}-${Date.now()}-${sanitizedFileName}`; // Used for Supabase path
+      objectPath = `${randomUUID()}-${Date.now()}-${sanitizedFileName}`;
 
       const { error: uploadError } = await supabaseAdmin.storage
         .from(bucket)
-        .upload(objectPath, await reassembledFile.arrayBuffer(), { // Use reassembled file buffer
+        .upload(objectPath, await reassembledFile.arrayBuffer(), {
           cacheControl: '3600',
           contentType: reassembledFile.type || 'text/csv',
           upsert: false,
@@ -266,7 +253,6 @@ export async function POST(request: NextRequest) {
 
       if (uploadError) {
         console.error('Storage upload failed for reassembled file:', uploadError);
-        // tempDir is already cleaned. No specific cleanup here other than general error response.
         return NextResponse.json(
           { ok: false, error: 'Storage upload failed for reassembled file.', details: uploadError.message },
           { status: 500 }
@@ -282,33 +268,17 @@ export async function POST(request: NextRequest) {
 
       try {
         const BATCH_SIZE = 100; 
-        // Pass the reassembledFile (File-like object) to processFileInChunks
-        await processFileInChunks(
-          reassembledFile as any, // Cast to 'any' if processFileInChunks expects a strict File type
+        await processCSV(
+          await reassembledFile.text(),
           BATCH_SIZE,
-          async (chunkToProcess, isLastChunk) => { // Renamed 'chunk' to 'chunkToProcess' for clarity
+          async (chunkToProcess, isLastChunk) => {
             if (hasError) return;
             try {
               console.log(`Processing chunk of ${chunkToProcess.length} rows from reassembled file...`);
-              const leadsToInsert = chunkToProcess.map((processedCsvRowData: any) => { // Name updated to processedCsvRowData
+              const leadsToInsert = chunkToProcess.map((processedCsvRowData: any) => {
                 const rawDataPayload: { [key: string]: any } = {};
-                // Keys in processedCsvRowData are already snake_cased and de-duplicated
                 for (const key in processedCsvRowData) {
                   if (Object.prototype.hasOwnProperty.call(processedCsvRowData, key)) {
-                    // The keys are already processed (snake_cased and de-duplicated).
-                    // Specific renaming like 'lot_size_sq_ft' to 'lot_size_sqft'
-                    // and 'property_postal_code' to 'property_zip'
-                    // should be handled by the initial header processing if they are common patterns
-                    // or as a separate step if they are complex transformations.
-                    // For now, we directly use the key as it is.
-                    // However, the existing code still has these specific remappings.
-                    // To fully align with the "NO LONGER NEEDED here" instruction,
-                    // we will remove them. If these are truly needed,
-                    // they should be part of a more robust header mapping strategy.
-                    const finalKey = key;
-                    // Example of how specific post-processing could be applied IF NECESSARY,
-                    // but the goal is that `finalHeaders` from `processFileInChunks` is definitive.
-                    // According to instructions, specific remapping is no longer needed here.
                     rawDataPayload[key] = processedCsvRowData[key];
                   }
                 }
@@ -316,7 +286,7 @@ export async function POST(request: NextRequest) {
                   uploaded_by: userId, 
                   original_filename: originalFileName, 
                   market_region: marketRegion, 
-                  raw_data: rawDataPayload, // rawDataPayload now uses the keys directly from processedCsvRowData
+                  raw_data: rawDataPayload,
                 };
               });
 
@@ -327,24 +297,23 @@ export async function POST(request: NextRequest) {
 
               if (batchInsertErr) {
                 console.error('Batch insert error:', batchInsertErr);
-                throw batchInsertErr; // Propagate to trigger outer catch for this chunk processing
+                throw batchInsertErr;
               }
               if (batchInsertedData) allInsertedData = [...allInsertedData, ...batchInsertedData];
-              totalProcessed += chunkToProcess.length; // Use chunkToProcess.length
+              totalProcessed += chunkToProcess.length;
               console.log(`Successfully processed ${totalProcessed} rows from reassembled file so far...`);
 
             } catch (error) {
               hasError = true;
               processingError = error;
-              throw error; // Propagate to stop further processing in processFileInChunks
+              throw error;
             }
           }
         );
 
-        if (hasError && processingError) throw processingError; // Throw if any chunk processing failed
+        if (hasError && processingError) throw processingError;
         console.log('API: Finished processing reassembled CSV. Total rows processed:', totalProcessed);
         if (totalProcessed === 0) {
-          // Attempt to cleanup storage if no data found
           if (objectPath) {
             await supabaseAdmin.storage.from(bucket).remove([objectPath]);
             console.log(`Cleaned up storage file ${objectPath} due to no data in CSV.`);
@@ -365,135 +334,119 @@ export async function POST(request: NextRequest) {
 
       console.log('API: All data from reassembled file inserted. Total rows:', allInsertedData.length);
 
-// ---------- 3. CALL THE NORMALIZATION FUNCTION ----------
-console.log('API: Calling normalize_staged_leads for market_region:', marketRegion);
-const { error: rpcError } = await supabaseAdmin.rpc('normalize_staged_leads', { p_market_region: marketRegion });
-if (rpcError) {
-  console.error('RPC normalize_staged_leads failed:', rpcError);
-  if (objectPath) await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-  return NextResponse.json({ 
-    ok: false, 
-    error: 'Failed to normalize staged leads.', 
-    details: rpcError.message 
-  }, { status: 500 });
-}
-console.log('API: Normalization successful.');
+      // Call the normalization function
+      console.log('API: Calling normalize_staged_leads for market_region:', marketRegion);
+      const { error: rpcError } = await supabaseAdmin.rpc('normalize_staged_leads', { p_market_region: marketRegion });
+      if (rpcError) {
+        console.error('RPC normalize_staged_leads failed:', rpcError);
+        if (objectPath) await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+        return NextResponse.json({ 
+          ok: false, 
+          error: 'Failed to normalize staged leads.', 
+          details: rpcError.message 
+        }, { status: 500 });
+      }
+      console.log('API: Normalization successful.');
 
-// ---------- 4. CREATE MARKET-SPECIFIC FINE-CUT LEADS TABLE ----------
-console.log(`API: Creating market-specific fine-cut leads table for market: ${marketRegion}`);
+      // Create market-specific fine-cut leads table
+      console.log(`API: Creating market-specific fine-cut leads table for market: ${marketRegion}`);
 
-// Ensure marketRegion is not null or empty before calling the RPC
-if (!marketRegion) {
-  console.error('API Error: marketRegion is null or empty before calling create_market_specific_fine_cut_leads_table.');
-  if (objectPath) {
-    console.log(`Attempting to cleanup storage file ${objectPath} due to missing marketRegion...`);
-    await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-  }
-  return NextResponse.json({
-    ok: false,
-    error: 'Market region is missing, cannot create fine-cut leads table.'
-  }, { status: 400 });
-}
+      if (!marketRegion) {
+        console.error('API Error: marketRegion is null or empty before calling create_market_specific_fine_cut_leads_table.');
+        if (objectPath) {
+          console.log(`Attempting to cleanup storage file ${objectPath} due to missing marketRegion...`);
+          await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+        }
+        return NextResponse.json({
+          ok: false,
+          error: 'Market region is missing, cannot create fine-cut leads table.'
+        }, { status: 400 });
+      }
 
-const { data: createdTableName, error: fineCutTableError } = await supabaseAdmin.rpc(
-  'create_market_specific_fine_cut_leads_table',
-  {
-    p_market_region_raw_name: marketRegion
-  }
-);
+      const { data: createdTableName, error: fineCutTableError } = await supabaseAdmin.rpc(
+        'create_market_specific_fine_cut_leads_table',
+        {
+          p_market_region_raw_name: marketRegion
+        }
+      );
 
-console.log('RPC create_market_specific_fine_cut_leads_table response:', { data: createdTableName, error: fineCutTableError });
+      console.log('RPC create_market_specific_fine_cut_leads_table response:', { data: createdTableName, error: fineCutTableError });
 
-if (fineCutTableError) {
-  console.error(`RPC call to create_market_specific_fine_cut_leads_table failed for ${marketRegion}:`, fineCutTableError);
-  if (objectPath) {
-    console.log(`Attempting to cleanup storage file ${objectPath} due to fine-cut leads table creation RPC error...`);
-    await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-  }
-  return NextResponse.json({
-    ok: false,
-    error: `RPC error when creating market-specific fine-cut leads table for '${marketRegion}'.`,
-    details: fineCutTableError.message
-  }, { status: 500 });
-}
+      if (fineCutTableError) {
+        console.error(`RPC call to create_market_specific_fine_cut_leads_table failed for ${marketRegion}:`, fineCutTableError);
+        if (objectPath) {
+          console.log(`Attempting to cleanup storage file ${objectPath} due to fine-cut leads table creation RPC error...`);
+          await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+        }
+        return NextResponse.json({
+          ok: false,
+          error: `RPC error when creating market-specific fine-cut leads table for '${marketRegion}'.`,
+          details: fineCutTableError.message
+        }, { status: 500 });
+      }
 
-// The new function returns the table name (string) on success, or raises an error.
-// It doesn't return an object with a 'success' boolean or 'record_count'.
-if (!createdTableName || typeof createdTableName !== 'string') {
-  console.error(`API: Market-specific fine-cut leads table creation for ${marketRegion} did not return a valid table name. Response:`, createdTableName);
-  if (objectPath) {
-    console.log(`Attempting to cleanup storage file ${objectPath} due to unexpected response from table creation...`);
-    await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-  }
-  return NextResponse.json({
-    ok: false,
-    error: `Market-specific fine-cut leads table creation for '${marketRegion}' failed to return a table name or returned unexpected data.`,
-    details: createdTableName === null ? 'No data returned.' : createdTableName
-  }, { status: 500 });
-}
+      if (!createdTableName || typeof createdTableName !== 'string') {
+        console.error(`API: Market-specific fine-cut leads table creation for ${marketRegion} did not return a valid table name. Response:`, createdTableName);
+        if (objectPath) {
+          console.log(`Attempting to cleanup storage file ${objectPath} due to unexpected response from table creation...`);
+          await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+        }
+        return NextResponse.json({
+          ok: false,
+          error: `Market-specific fine-cut leads table creation for '${marketRegion}' failed to return a table name or returned unexpected data.`,
+          details: createdTableName === null ? 'No data returned.' : createdTableName
+        }, { status: 500 });
+      }
 
-console.log(`API: Market-specific fine-cut leads table '${createdTableName}' operation successful for ${marketRegion}.`);
+      console.log(`API: Market-specific fine-cut leads table '${createdTableName}' operation successful for ${marketRegion}.`);
 
-// ---------- 5. UPSERT INTO market_regions TABLE ----------
-console.log(`API: Upserting market region data for ${marketRegion} with lead count ${totalProcessed}`);
-const { data: marketRegionData, error: marketRegionError } = await supabaseAdmin
-  .from('market_regions')
-  .upsert(
-    {
-      name: marketRegion, // User-provided market region
-      lead_count: totalProcessed,
-      created_by: userId,
-      // updated_at should be handled by the database trigger
-    },
-    {
-      onConflict: 'name', // `name` is the unique column for conflict resolution
-    }
-  )
-  .select(); // Optionally select the result
+      // Upsert into market_regions table
+      console.log(`API: Upserting market region data for ${marketRegion} with lead count ${totalProcessed}`);
+      const { data: marketRegionData, error: marketRegionError } = await supabaseAdmin
+        .from('market_regions')
+        .upsert(
+          {
+            name: marketRegion,
+            lead_count: totalProcessed,
+            created_by: userId,
+          },
+          {
+            onConflict: 'name',
+          }
+        )
+        .select();
 
-if (marketRegionError) {
-  // Log the error but do not make it a critical failure for now
-  console.error(`API Error: Failed to upsert into market_regions for ${marketRegion}:`, marketRegionError);
-  // If this were a critical error, we might do:
-  // if (objectPath) {
-  //   await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-  // }
-  // return NextResponse.json({
-  //   ok: false,
-  //   error: `Failed to log to market_regions for '${marketRegion}'.`,
-  //   details: marketRegionError.message
-  // }, { status: 500 });
-} else {
-  console.log(`API: Successfully upserted market region ${marketRegion} with lead count ${totalProcessed}. Data:`, marketRegionData);
-}
+      if (marketRegionError) {
+        console.error(`API Error: Failed to upsert into market_regions for ${marketRegion}:`, marketRegionError);
+      } else {
+        console.log(`API: Successfully upserted market region ${marketRegion} with lead count ${totalProcessed}. Data:`, marketRegionData);
+      }
 
-// ---------- 6. TRUNCATE normalized_leads TABLE ----------
-console.log('API: Attempting to truncate normalized_leads table...');
-const { error: truncateError } = await supabaseAdmin.rpc('truncate_normalized_leads');
+      // Truncate normalized_leads table
+      console.log('API: Attempting to truncate normalized_leads table...');
+      const { error: truncateError } = await supabaseAdmin.rpc('truncate_normalized_leads');
 
-if (truncateError) {
-  console.error('API Error: Failed to truncate normalized_leads table:', truncateError);
-  // This is a critical step. If it fails, return an error.
-  if (objectPath) {
-    console.log(`Attempting to cleanup storage file ${objectPath} due to normalized_leads truncation RPC error...`);
-    await supabaseAdmin.storage.from(bucket).remove([objectPath]);
-  }
-  return NextResponse.json({
-    ok: false,
-    error: 'Failed to clear normalized_leads table after processing.',
-    details: truncateError.message
-  }, { status: 500 });
-} else {
-  console.log('API: normalized_leads table truncated successfully.');
-}
+      if (truncateError) {
+        console.error('API Error: Failed to truncate normalized_leads table:', truncateError);
+        if (objectPath) {
+          console.log(`Attempting to cleanup storage file ${objectPath} due to normalized_leads truncation RPC error...`);
+          await supabaseAdmin.storage.from(bucket).remove([objectPath]);
+        }
+        return NextResponse.json({
+          ok: false,
+          error: 'Failed to clear normalized_leads table after processing.',
+          details: truncateError.message
+        }, { status: 500 });
+      } else {
+        console.log('API: normalized_leads table truncated successfully.');
+      }
 
-return NextResponse.json({
-  ok: true,
-  message: `Successfully processed ${totalProcessed} leads from ${originalFileName}. Market-specific fine-cut leads table '${createdTableName}' created for market '${marketRegion}'. Market region info updated. Staging area cleared.`,
-  staged_lead_count: totalProcessed, // totalProcessed is from the CSV parsing part
-  created_fine_cut_table: createdTableName
-});
-      // --- END MAIN PROCESSING LOGIC ---
+      return NextResponse.json({
+        ok: true,
+        message: `Successfully processed ${totalProcessed} leads from ${originalFileName}. Market-specific fine-cut leads table '${createdTableName}' created for market '${marketRegion}'. Market region info updated. Staging area cleared.`,
+        staged_lead_count: totalProcessed,
+        created_fine_cut_table: createdTableName
+      });
 
     } else {
       // Not all chunks received yet
@@ -505,7 +458,8 @@ return NextResponse.json({
 
   } catch (error: any) {
     console.error('API: Unhandled error in POST /api/leads/upload (chunk processing):', error);
-    // Attempt to clean up tempDir if it exists and error happened
+    
+    // Cleanup temp directory
     try {
       const dirExists = await fs.stat(tempDir).then(stat => stat.isDirectory()).catch(() => false);
       if (dirExists) {
@@ -521,8 +475,8 @@ return NextResponse.json({
       console.error(`API: Error during tempDir cleanup for ${uploadId}:`, cleanupError);
     }
     
-    // If an error occurs after Supabase upload (objectPath is set), try to remove the orphaned file
-    if (objectPath) { // This check might be redundant if error occurs before objectPath is set
+    // Cleanup storage file if exists
+    if (objectPath) {
       console.log(`Attempting to cleanup orphaned storage file: ${objectPath} due to error...`);
       try {
         await supabaseAdmin.storage.from(bucket).remove([objectPath]);
@@ -534,7 +488,6 @@ return NextResponse.json({
 
     const errorMessage = 'An unexpected error occurred during chunk processing.';
     const errorDetails = error.message || 'No additional details available.';
-    // Error specific messages can be added here if needed
     
     return NextResponse.json(
       { ok: false, error: errorMessage, details: errorDetails },
