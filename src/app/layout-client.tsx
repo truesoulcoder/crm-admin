@@ -2,10 +2,12 @@
 
 import { Session } from '@supabase/supabase-js';
 import { ReactNode } from 'react';
+
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { EngineProvider } from '@/contexts/EngineContext';
 import { UserProvider } from '@/contexts/UserContext';
-import ClientLayout from './layout-client';
+
+import ClientLayout from './client-layout-wrapper';
 
 export default function ClientLayoutWrapper({
   children,
