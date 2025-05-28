@@ -2,16 +2,16 @@
 
 import clsx from 'clsx';
 import { LayoutDashboard, Users, FileText, Send, UserCog, Settings, Briefcase, Contact } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import React, { useState } from 'react';
+import { useState } from 'react';
 
+import { AnimatedDealpig } from '@/components/ui/AnimatedDealpig';
 import { useUser } from '@/contexts/UserContext'; 
 import { LetterFx } from '@/once-ui/components';
 
-import PigAnimation from './PigAnimation';
-
-import type { CrmView } from '@/types/index';
+type CrmView = 'dashboard' | 'leads' | 'crm' | 'analytics' | 'settings' | 'campaigns' | 'templates' | 'senders';
 
 type ViewPath = {
   [K in CrmView]: string;
@@ -27,6 +27,7 @@ const menuItems: MenuItem[] = [
   { view: 'dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
   { view: 'leads', icon: <Users size={20} />, label: 'Upload Leads' },
   { view: 'crm', icon: <Contact size={20} />, label: 'CRM' },
+  { view: 'analytics', icon: <FileText size={20} />, label: 'Analytics' },
   { view: 'settings', icon: <Settings size={20} />, label: 'Settings' },
 ];
 
@@ -56,6 +57,7 @@ const Sidebar: React.FC = () => {
     leads: '/leads',
     campaigns: '/campaigns',
     templates: '/templates',
+    analytics: '/analytics',
     senders: '/senders',
     crm: '/crm',
     settings: '/settings'
@@ -94,11 +96,11 @@ const Sidebar: React.FC = () => {
     return (
         <aside className="bg-base-200 text-base-content w-64 min-h-screen p-4 flex flex-col">
             <div className="flex items-center justify-center mb-8">
-                <img 
+                <Image 
                     src={companyLogoUrl || 'https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media//logo.png'} 
                     alt="Company Logo" 
-                    width="180" 
-                    height="45" 
+                    width={180} 
+                    height={45} 
                     className="object-contain" 
                 />
             </div>
@@ -114,11 +116,11 @@ const Sidebar: React.FC = () => {
   return (
     <aside className="bg-base-200 text-base-content w-64 min-h-screen p-4 flex flex-col">
       <div className="flex items-center justify-center mb-8">
-        <img 
+        <Image 
           src={companyLogoUrl || 'https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media//logo.png'} 
           alt="Company Logo" 
-          width="180" 
-          height="45" 
+          width={180} 
+          height={45} 
           className="object-contain" 
         />
       </div>
@@ -143,7 +145,7 @@ const Sidebar: React.FC = () => {
       <div className="mt-auto">
         {/* Animated Pig */}
         <div className="mb-2">
-          <PigAnimation />
+          <AnimatedDealpig />
         </div>
         <p className="text-xs text-center text-base-content/70">
           &copy; {new Date().getFullYear()} {companyName || 'True Soul Partners'}

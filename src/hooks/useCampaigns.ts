@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+
 import { supabase } from '@/lib/supabase/client';
 import { Campaign, CampaignJob } from '@/types/campaign';
 import { Database } from '@/types/db_types';
@@ -9,28 +10,29 @@ export function useCampaigns() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchCampaigns = useCallback(async () => {
+  const fetchCampaigns = useCallback(async (): Promise<Campaign[]> => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('campaigns')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .returns<Campaign[]>();
 
       if (error) throw error;
       setCampaigns(data || []);
       return data || [];
     } catch (err: any) {
-      const errorMessage = err?.message || 'Failed to load campaigns';
+      const errorMessage: string = err?.message || 'Failed to load campaigns';
       setError(errorMessage);
       console.error('Error fetching campaigns:', err);
       return [];
     } finally {
       setIsLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
-  const fetchJobs = useCallback(async (campaignId: string) => {
+  const fetchJobs = useCallback(async (campaignId: string): Promise<CampaignJob[]> => {
     if (!campaignId) return [];
     
     setIsLoading(true);
@@ -43,15 +45,15 @@ export function useCampaigns() {
 
       if (error) throw error;
       setJobs(data || []);
-      return data || [];
+      return (data || []) as CampaignJob[];
     } catch (err) {
       setError('Failed to load jobs');
       console.error('Error fetching jobs:', err);
-      return [];
+      return [] as CampaignJob[];
     } finally {
       setIsLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
   // Add other shared methods like startCampaign, stopCampaign, etc.
 

@@ -4,6 +4,8 @@ import { Component, ErrorInfo, ReactNode } from 'react';
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+  resetKeys?: any[];
 }
 
 interface State {
@@ -22,12 +24,31 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+    console.error('ErrorBoundary caught:', error, errorInfo);
+    this.props.onError?.(error, errorInfo);
+  }
+
+  public componentDidUpdate(prevProps: Props) {
+    if (this.state.hasError && 
+        JSON.stringify(prevProps.resetKeys) !== JSON.stringify(this.props.resetKeys)) {
+      this.setState({ hasError: false, error: null });
+    }
   }
 
   public render() {
     if (this.state.hasError) {
-      return this.props.fallback || <div>Something went wrong. Please refresh the page.</div>;
+      return this.props.fallback || (
+        <div className="alert alert-error">
+          <h3>Something went wrong</h3>
+          <p>{this.state.error?.message}</p>
+          <button 
+            className="btn btn-sm mt-2"
+            onClick={() => this.setState({ hasError: false, error: null })}
+          >
+            Try again
+          </button>
+        </div>
+      );
     }
 
     return this.props.children;

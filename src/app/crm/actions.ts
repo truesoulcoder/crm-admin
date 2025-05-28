@@ -23,7 +23,7 @@ function getLeadsTableName(marketRegion: string): keyof Database['public']['Tabl
 
 // Action to CREATE a new CRM lead
 export async function createCrmLeadAction(newLeadData: Partial<Omit<CrmLead, 'id' | 'created_at' | 'updated_at'>>): Promise<ServerActionResponse<CrmLead>> {
-  const supabase = await createClient();
+  const supabase = createClient();
   console.log('Server Action createCrmLeadAction called with:', newLeadData);
 
   if (!newLeadData.contact_type) {
@@ -97,7 +97,7 @@ export async function updateCrmLeadAction(leadId: number, updatedLeadData: Parti
   }
   
   const tableName = getLeadsTableName(updatedLeadData.market_region);
-  const supabase = await createClient();
+  const supabase = createClient();
   console.log(`Server Action updateCrmLeadAction called for ID ${leadId} with:`, updatedLeadData);
 
   if (!leadId) {
@@ -134,7 +134,7 @@ export async function updateCrmLeadAction(leadId: number, updatedLeadData: Parti
 
 // Action to DELETE a CRM lead
 export async function deleteCrmLeadAction(leadId: number): Promise<ServerActionResponse<null>> {
-  const supabase = await createClient();
+  const supabase = createClient();
   console.log('Server Action deleteCrmLeadAction called for ID:', leadId);
 
   if (!leadId) {

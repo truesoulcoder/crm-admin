@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
+
 import { createClient } from '@/lib/supabase/client';
 
 // Types based on your database schema
@@ -61,7 +62,7 @@ export default function CampaignAnalytics() {
       }
     };
 
-    fetchData();
+    void fetchData();
 
     // Set up real-time subscription
     const channel = supabase
@@ -73,14 +74,14 @@ export default function CampaignAnalytics() {
           table: 'campaign_jobs' 
         }, 
         () => {
-          fetchData(); // Refresh data on changes
+          void fetchData(); // Refresh data on changes
         }
       )
       .subscribe();
 
     // Cleanup subscription on unmount
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(channel).catch(console.error);
     };
   }, [supabase]);
 
@@ -118,7 +119,15 @@ export default function CampaignAnalytics() {
   };
 
   // Custom tooltip for lead distribution
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  interface TooltipPayload {
+    payload: {
+      timestamp: string | number | Date;
+      email: string;
+      status: string;
+    };
+  }
+
+  const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: TooltipPayload[]; label?: string }) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-3 border border-gray-200 rounded shadow">
@@ -132,12 +141,22 @@ export default function CampaignAnalytics() {
   };
 
   // Custom tooltip for sender distribution
-  const SenderTooltip = ({ active, payload, label }: any) => {
+  interface PayloadItem {
+    payload: {
+      senderName: string;
+      timestamp: string | number | Date;
+      email: string;
+    };
+  }
+
+  const SenderTooltip = ({ active, payload, label }: { active?: boolean; payload?: PayloadItem[]; label?: string }) => {
     if (active && payload && payload.length) {
+      const timestamp = payload[0].payload.timestamp;
+      const date = typeof timestamp === 'number' || typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
       return (
         <div className="bg-white p-3 border border-gray-200 rounded shadow">
           <p className="font-semibold">{payload[0].payload.senderName}</p>
-          <p>Time: {new Date(payload[0].payload.timestamp).toLocaleString()}</p>
+          <p>Time: {date.toLocaleString()}</p>
           <p>Email: {payload[0].payload.email}</p>
         </div>
       );

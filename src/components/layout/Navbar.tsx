@@ -1,17 +1,14 @@
 'use client';
 
-import { Menu, UserCircle, Search } from 'lucide-react';
-import Image from 'next/image';
+import { Menu, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import { updateUserProfile } from '@/actions/update-user-profile';
 import ThemeSelector from '@/components/ThemeSelector';
 import { useUser } from '@/contexts/UserContext';
-import { supabase } from '@/lib/supabase/client';
 
 // Helper function to generate initials from a name
-function getInitials(name?: string): string {
+function getInitials(name?: string | null): string {
   if (!name || name.trim() === '') return '??';
   const parts = name.trim().split(' ').filter(p => p !== '');
   if (parts.length === 1 && parts[0].length > 0) return parts[0].substring(0, 2).toUpperCase();
@@ -28,8 +25,7 @@ interface NavbarProps {
 }
 
 const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
-  const { user, isLoading } = useUser();
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const { user, loading } = useUser();
   const [fullName, setFullName] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
@@ -40,32 +36,18 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
     if (!user) {
       setFullName(null);
       setEmail(null);
-      setAvatarUrl(null);
       return;
     }
 
-    // Get user data from the user object
-    const avatarUrl = user.user_metadata?.avatar_url || 
-                     user.user_metadata?.picture ||
-                     user.identities?.[0]?.identity_data?.avatar_url ||
-                     user.identities?.[0]?.identity_data?.picture ||
-                     null;
-    
-    const fullName = user.user_metadata?.full_name ||
+    const fullName: string | null = user.user_metadata?.full_name ||
                     user.user_metadata?.name ||
                     user.identities?.[0]?.identity_data?.full_name ||
                     user.identities?.[0]?.identity_data?.name ||
                     user.email?.split('@')[0] ||
-                    'User';
+                    null;
     
-    // Force HTTPS if the URL is from Google and using HTTP
-    const processedAvatarUrl = avatarUrl?.startsWith('http://') && avatarUrl.includes('googleusercontent.com')
-      ? avatarUrl.replace('http://', 'https://')
-      : avatarUrl;
-    
-    setAvatarUrl(processedAvatarUrl || null);
     setFullName(fullName);
-    setEmail(user.email || null);
+    setEmail(user.email ?? null);
   }, [user]);
 
   return (
@@ -97,11 +79,11 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
               <div className="w-10 h-10 rounded-full ring ring-primary ring-offset-base-100 ring-offset-1 flex items-center justify-center bg-base-200 overflow-hidden">
-                {isLoading ? (
-                  <div className="w-10 h-10 rounded-full bg-base-300 animate-pulse" />
+                {loading ? (
+                    <div className="w-10 h-10 rounded-full bg-base-300 animate-pulse" />
                 ) : (
                   <div className="w-10 h-10 flex items-center justify-center rounded-full bg-primary text-primary-content text-lg font-bold border-2 border-base-100 shadow" title={fullName || ''}>
-                    {getInitials(fullName ?? undefined)}
+                    {getInitials(fullName)}
                   </div>
                 )}
               </div>

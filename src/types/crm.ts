@@ -8,7 +8,8 @@ export type CrmView =
   | 'templates'
   | 'senders'
   | 'crm'
-  | 'settings';
+  | 'settings'
+  | 'analytics';
 
 // Example Lead type (align with your Supabase schema)
 // This type seems to be a mix of mock data structure and previous schema ideas.

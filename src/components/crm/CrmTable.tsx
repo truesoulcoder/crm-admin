@@ -1,12 +1,9 @@
 // src/components/crm/CrmTable.tsx
 'use client';
 
-import { Autocomplete } from '@react-google-maps/api';
 import { Table, flexRender } from '@tanstack/react-table';
 import { ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
 import React, { useState } from 'react';
-
-import StreetViewMap from '@/components/maps/StreetViewMap';
 
 // Re-export Lead and StatusOption if they are defined here and used by CrmView
 // Otherwise, CrmView should import them from their original source (e.g., a types file)

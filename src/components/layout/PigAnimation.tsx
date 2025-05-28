@@ -30,7 +30,7 @@ const PigAnimation: React.FC = () => {
           eraseSvg.classList.remove('active');
           drawSvg.classList.add('active');
         }
-      }, 10000); // 10 seconds per animation cycle
+      }, 5000); // 5 seconds per animation cycle
 
       return () => clearInterval(animationInterval);
     }

@@ -1,15 +1,23 @@
+// src/components/views/CrmView.tsx
 'use client';
 
+// External dependencies
 import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
-import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react'; 
+import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
+import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
 import { toast } from 'react-hot-toast';
 
+// Internal components
 import { createCrmLeadAction, updateCrmLeadAction, deleteCrmLeadAction } from '@/app/crm/actions';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { LeadFormModal } from '@/components/leads/LeadFormModal';
 import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader';
+// Utilities and types
 import { supabase } from '@/lib/supabase/client';
 
 import type { CrmLead } from '@/types/crm';
+
+// Actions
 
 interface ColumnConfig {
   key: keyof CrmLead | string;
@@ -63,7 +71,7 @@ export interface CrmFormData {
   updated_at?: string | undefined;
 }
 
-const CrmView: React.FC = () => {
+const CrmViewInner: React.FC = () => {
   // ...existing state and hooks
 
   // Handler to process geocode results and update form fields
@@ -121,16 +129,16 @@ const CrmView: React.FC = () => {
     const fetchMarketRegions = async () => {
       const { data, error } = await supabase
         .from('market_regions')
-        .select('name')
-        .order('name', { ascending: true });
+        .select('id')
+        .order('id', { ascending: true });
       if (error) {
         console.error('Failed to fetch market regions:', error);
         setAvailableMarkets([]);
       } else if (data) {
-        setAvailableMarkets(data.map((region: { name: string }) => region.name));
+        setAvailableMarkets(data.map((region: { id: string }) => region.id));
       }
     };
-    fetchMarketRegions();
+    void fetchMarketRegions();
   }, []);
 
   const [panoramaPosition, setPanoramaPosition] = useState<{ lat: number; lng: number } | null>(null);
@@ -364,7 +372,7 @@ const CrmView: React.FC = () => {
       } else {
         // For new leads, ensure id is not sent
         const { id, ...createData } = finalDataForAction;
-        const result = await createCrmLeadAction(createData as any);
+        const result = await createCrmLeadAction(createData as Partial<Omit<CrmLead, 'id' | 'created_at' | 'updated_at'>>);
         if (result.error) throw new Error(result.error);
         await fetchLeads();
       }
@@ -725,4 +733,18 @@ const CrmView: React.FC = () => {
     </div>
   );
 }
-export default CrmView;
+
+export default function CrmView() {
+  return (
+    <ErrorBoundary 
+      fallback={
+        <div className="alert alert-error">
+          CRM view failed to load. Please try refreshing the page.
+        </div>
+      }
+      onError={(error) => console.error('CRM view error:', error)}
+    >
+      <CrmViewInner />
+    </ErrorBoundary>
+  );
+}

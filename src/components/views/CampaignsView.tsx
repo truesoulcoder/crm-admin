@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Badge, Alert } from 'react-daisyui';
 import { FiPlay, FiStopCircle, FiRefreshCw } from 'react-icons/fi';
+
 import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/db_types';

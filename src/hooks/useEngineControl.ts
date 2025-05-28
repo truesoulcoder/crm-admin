@@ -1,9 +1,10 @@
 // src/hooks/useEngineControl.ts
 import { useState, useCallback, useEffect } from 'react';
+
 import { supabase } from '@/lib/supabase/client';
 import { Database } from '@/types/db_types';
 
-type EngineStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error' | 'test_sending';
+export type EngineStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error' | 'test_sending';
 
 type EngineState = {
   status: EngineStatus;
@@ -26,33 +27,33 @@ export function useEngineControl() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Fetch the current engine status
-  const fetchEngineStatus = useCallback(async () => {
+  const fetchEngineStatus = useCallback(async (): Promise<EngineState | null> => {
     try {
       const { data, error } = await supabase
-        .from('eli5_engine_status')
+        .from('engine_control')
         .select('*')
-        .eq('status_key', 'campaign_processing_enabled')
         .single();
 
       if (error) throw error;
-      
-      // Update engine status based on is_enabled
+      if (!data) return null;
+
+      const engineData: EngineState = data;
       const status: EngineStatus = data.is_enabled ? 'running' : 'idle';
       setEngineStatus(status);
-      setEngineState(data);
-      return data;
+      setEngineState(engineData);
+      return engineData;
     } catch (err) {
       console.error('Error fetching engine status:', err);
       setError('Failed to fetch engine status');
       setEngineStatus('error');
       return null;
     }
-  }, [supabase]);
+  }, []);
 
   // Set up real-time subscription to engine status
   useEffect(() => {
     // Initial fetch
-    fetchEngineStatus();
+    void fetchEngineStatus().catch(console.error);
 
     // Set up subscription
     const subscription = supabase
@@ -62,19 +63,19 @@ export function useEngineControl() {
         {
           event: '*',
           schema: 'public',
-          table: 'eli5_engine_status',
+          table: 'engine_control',
           filter: 'status_key=eq.campaign_processing_enabled'
         },
         (payload) => {
           console.log('Engine status change:', payload);
-          fetchEngineStatus();
+          fetchEngineStatus().catch(console.error);
         }
       )
       .subscribe();
 
     // Clean up subscription on unmount
     return () => {
-      subscription.unsubscribe();
+      void subscription.unsubscribe();
     };
   }, [fetchEngineStatus]);
 
@@ -105,7 +106,7 @@ export function useEngineControl() {
       // Update local state with the new status
       await fetchEngineStatus();
       
-      return data;
+      return data as { status: string, message?: string };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to start engine';
       setError(errorMessage);
@@ -114,7 +115,7 @@ export function useEngineControl() {
     } finally {
       setIsLoading(false);
     }
-  }, [supabase, fetchEngineStatus]);
+  }, [fetchEngineStatus]);
 
   const stopEngine = useCallback(async () => {
     setIsLoading(true);
@@ -136,7 +137,7 @@ export function useEngineControl() {
     } finally {
       setIsLoading(false);
     }
-  }, [supabase, fetchEngineStatus]);
+  }, [fetchEngineStatus]);
 
   return {
     engineStatus,
