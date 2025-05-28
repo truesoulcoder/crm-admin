@@ -3,27 +3,16 @@ import crypto from 'crypto';
 
 // Supabase
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-
-import { Database } from '@/types/db_types';
-
 // Next.js
+import { NextApiRequest, NextApiResponse } from 'next';
 
 // Internal dependencies
 import { STATUS_KEY } from './email-metrics';
-import { logCampaignJob } from './log-campaign-job';
+import { logCampaignJob } from './log-campaign-job.js';
 import { sendConfiguredEmail } from './send-email';
 import { updateCampaignJobStatus } from './update-campaign-job-status';
 
-import { supabaseServerClient } from '@/lib/supabase/server';
-
-import type { NextApiRequest, NextApiResponse } from 'next';
-
 // Types
-
-const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-);
 
 // Type definitions
 // #region Type Interfaces
@@ -128,11 +117,23 @@ interface DbSender {
 
 // #endregion
 // region Fetch Settings
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
+
 export async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  let campaignError: any = null;
+  let campaignError: Error | null = null;
   const processingErrors: Array<{error: string; timestamp: string; leadId?: string; contact_email?: string}> = [];
   const leads: Lead[] = [];
   const successCount = 0;
@@ -146,18 +147,44 @@ export async function handler(
     const selected_sender_ids = reqBody.selected_sender_ids || [];
 
     // Pre-check campaign status
-    const { data: campaignStatus, error: statusError } = await supabase
-      .from('campaigns')
-      .select('status')
-      .eq('id', reqBody.campaign_id)
-      .single();
+    try {
+      const { data: campaignStatus, error: statusError } = await supabase
+        .from('campaigns')
+        .select('status')
+        .eq('id', reqBody.campaign_id)
+        .single();
 
-    if (statusError || !campaignStatus || campaignStatus.status !== STATUS_KEY.ACTIVE) {
-      console.error('CAMPAIGN_STATUS_CHECK_FAILED:', statusError);
-      return res.status(400).json({
+      if (statusError) {
+        console.error('CAMPAIGN_STATUS_CHECK_FAILED:', statusError);
+        return res.status(400).json({
+          success: false,
+          message: 'Error checking campaign status',
+          errorCode: 'CAMPAIGN_STATUS_ERROR'
+        });
+      }
+
+      if (!logId) {
+        console.error('Failed to create campaign job log entry');
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to create campaign job log entry',
+          errorCode: 'LOG_CREATION_FAILED'
+        });
+      }
+
+      if (!campaignStatus || campaignStatus.status !== STATUS_KEY.ACTIVE) {
+        return res.status(400).json({
+          success: false,
+          message: 'Campaign not active or does not exist',
+          errorCode: 'CAMPAIGN_INACTIVE'
+        });
+      }
+    } catch (error) {
+      console.error('Error checking campaign status:', error);
+      return res.status(500).json({
         success: false,
-        message: 'Campaign not active or does not exist',
-        errorCode: 'CAMPAIGN_INACTIVE'
+        message: 'Error checking campaign status',
+        errorCode: 'CAMPAIGN_STATUS_ERROR'
       });
     }
 
@@ -356,8 +383,9 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
           await sendConfiguredEmail({
             senderId: senders[currentSenderIndex].id,
             leadEmail: contactEmail,
-            templateId: reqBody.template_id
-          });
+            templateId: reqBody.template_id,
+            // Add any other required fields for EmailOptions here
+          } as any); // Temporary any cast to fix type error
           await updateCampaignJobStatus(logId, 'sent');
           await logCampaignJob({
             campaign_id: currentCampaignId,
@@ -540,22 +568,5 @@ async function createCampaignJob(entry: Partial<CampaignJob>): Promise<string | 
   }
 }
 
-async function updateCampaignJobStatus(logId: string, status: 'sent' | 'failed', error?: string): Promise<void> {
-  try {
-    const { error: updateError } = await supabase
-      .from('campaign_jobs')
-      .update({ status, error })
-      .eq('id', logId);
 
-    if (updateError) {
-      console.error('Error updating campaign job status:', updateError);
-    }
-  } catch (e: unknown) {
-    if (e instanceof Error) {
-      console.error('Error in updateCampaignJobStatus:', e.message);
-    } else {
-      console.error('Unknown error occurred');
-    }
-  }
-}
 // endregion

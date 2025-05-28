@@ -16,14 +16,21 @@ export default async function handler(
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        getAll() {
+          return cookieStore.getAll().map(cookie => ({
+            name: cookie.name,
+            value: cookie.value
+          }));
         },
-        set(name: string, value: string, options) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name: string, options) {
-          cookieStore.set({ name, value: '', ...options });
+        setAll(cookies) {
+          cookies.forEach(({ name, value, ...options }) => {
+            try {
+              cookieStore.set({ name, value, ...options });
+            } catch (error) {
+              // Handle the error if needed
+              console.error('Error setting cookie:', error);
+            }
+          });
         },
       },
     }
