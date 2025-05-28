@@ -1,14 +1,12 @@
 // src/app/api/leads/upload/route.ts
-import { randomUUID } from 'crypto';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { Readable } from 'stream';
+import { randomUUID } from 'crypto'
+import * as fs from 'fs/promises'
+import * as path from 'path'
+import { Readable } from 'stream'
 
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
-import { parse } from 'papaparse';
+import { createServerClient } from '@/lib/supabase/client'
+import { NextRequest, NextResponse } from 'next/server'
+import { parse } from 'papaparse'
 
 // Max execution time for this API route (in seconds)
 export const maxDuration = 60; // 1 minute
@@ -156,29 +154,8 @@ type LeadStagingRow = Record<string, any>;
 export async function POST(request: NextRequest) {
   console.log('API: /api/leads/upload POST request received.');
 
-  const cookieStorePromise = cookies();
-  const cookieStore = await cookieStorePromise;
-  const supabaseUserClient = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        // set and remove are not strictly needed here if we only fetch the user
-        // but are good practice to include for the ssr client configuration
-        set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          cookieStore.set({ name, value: '', ...options });
-        },
-      },
-    }
-  );
-
-  const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser();
+  const supabase = createServerClient();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
 
   if (userError || !user) {
     console.error('API Error: User not authenticated for lead upload.', userError);
@@ -217,20 +194,16 @@ export async function POST(request: NextRequest) {
 
   let objectPath: string | null = null; // To store the path for potential cleanup, used after reassembly
   // Initialize Supabase admin client with service role key and proper configuration
-  const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false
-      },
-      db: {
-        schema: 'public'
-      }
+  const supabaseAdmin = createServerClient({
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false
+    },
+    db: {
+      schema: 'public'
     }
-  );
+  });
   const bucket = 'lead-uploads'; // Define bucket name
 
   try {
