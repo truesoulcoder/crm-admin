@@ -2,6 +2,10 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+// This page needs to be dynamic to handle auth state
+// https://nextjs.org/docs/app/building-your-application/rendering/server-components#server-rendering-strategies
+export const dynamic = 'force-dynamic';
+
 export default async function Home() {
   try {
     const cookieStore = cookies();
