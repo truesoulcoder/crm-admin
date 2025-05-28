@@ -67,6 +67,11 @@ const handleError = (err: unknown): string => {
   return 'An unknown error occurred';
 };
 
+const supabase = createBrowserClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
 const Eli5EngineControlViewInner: React.FC = () => {
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const [consoleLogs] = useState<LogEntry[]>([]);
@@ -80,23 +85,19 @@ const Eli5EngineControlViewInner: React.FC = () => {
 
   // Use the custom hooks
   const {
-    engineStatus,
+    engineStatus: engineControlStatus,
     engineState,
     error: engineError,
     isLoading,
     startEngine,
     stopEngine,
   } = useEngineControl();
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
   const {
     marketRegions, 
     selectedMarketRegion, 
     setSelectedMarketRegion,
-    error: regionsError,
-    isLoading: regionsLoading
+    loading: regionsLoading,
+    fetchMarketRegions
   } = useMarketRegions();
   
   // State for email metrics
@@ -107,6 +108,7 @@ const Eli5EngineControlViewInner: React.FC = () => {
   // Fetch available senders
   const fetchSenders = useCallback(async () => {
     try {
+      setMetricsLoading(true);
       const { data, error } = await supabase
         .from('senders')
         .select('id, name, email')
@@ -115,19 +117,20 @@ const Eli5EngineControlViewInner: React.FC = () => {
       if (error) throw error;
       setAvailableSenders(data || []);
     } catch (err) {
-      console.error('Error fetching senders:', err);
-      setError(handleError(err));
+      console.error('Error fetching senders:', handleError(err));
+    } finally {
+      setMetricsLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
   // Handle start engine
   const handleStartEngine = useCallback(async () => {
-    if (!selectedMarketRegion) {
-      setError('Please select a market region');
-      return;
-    }
-
     try {
+      if (!selectedMarketRegion) {
+        setError('Please select a market region');
+        return;
+      }
+
       await startEngine({
         marketRegion: selectedMarketRegion,
         isDryRun,
@@ -138,24 +141,22 @@ const Eli5EngineControlViewInner: React.FC = () => {
       });
       setError(null);
     } catch (err) {
-      console.error('Failed to start engine:', err);
-      setError(handleError(err));
+      console.error('Failed to start engine:', handleError(err));
     }
   }, [selectedMarketRegion, isDryRun, senderQuota, minIntervalSeconds, maxIntervalSeconds, selectedSenderIds, startEngine]);
 
   // Handle stop engine
   const handleStopEngine = useCallback(async () => {
-    if (!selectedMarketRegion) {
-      setError('Please select a market region');
-      return;
-    }
-
     try {
+      if (!selectedMarketRegion) {
+        setError('Please select a market region');
+        return;
+      }
+
       await stopEngine();
       setError(null);
     } catch (err) {
-      console.error('Failed to stop engine:', err);
-      setError(handleError(err));
+      console.error('Failed to stop engine:', handleError(err));
     }
   }, [selectedMarketRegion, stopEngine]);
 
@@ -171,6 +172,7 @@ const Eli5EngineControlViewInner: React.FC = () => {
   // Fetch email metrics
   const fetchEmailMetrics = useCallback(async () => {
     try {
+      setMetricsLoading(true);
       const { data, error } = await supabase
         .from('email_metrics_by_sender')
         .select('*')
@@ -179,12 +181,11 @@ const Eli5EngineControlViewInner: React.FC = () => {
       if (error) throw error;
       setEmailMetrics(data || []);
     } catch (err) {
-      console.error('Error fetching email metrics:', err);
-      setMetricsError(handleError(err));
+      console.error('Error fetching email metrics:', handleError(err));
     } finally {
       setMetricsLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
   // Set up real-time subscription to email metrics
   useEffect(() => {
@@ -195,14 +196,10 @@ const Eli5EngineControlViewInner: React.FC = () => {
         console.error('Failed to fetch email metrics:', err);
       }
     };
-    // Explicitly void the Promise since we handle errors via catch
-    // This is done to avoid TypeScript complaining about unhandled Promises
     void fetchData().catch(error => {
       console.error('Error in fetchData:', error);
-      // TODO: Add proper error handling for your use case
     });
 
-    // Set up subscription
     const subscription = supabase
       .channel('email_metrics_changes')
       .on<MetricsPayload>(
@@ -210,7 +207,6 @@ const Eli5EngineControlViewInner: React.FC = () => {
         { event: '*', schema: 'public', table: 'email_metrics_by_sender' },
         (payload) => {
           console.log('Change received:', payload);
-          // Explicitly voiding Promise since we handle errors via .catch()
           void fetchEmailMetrics().catch(err => 
             console.error('Failed to refresh metrics:', handleError(err))
           );
@@ -218,7 +214,6 @@ const Eli5EngineControlViewInner: React.FC = () => {
       );
     void subscription.subscribe();
 
-    // Clean up subscription on unmount
     return () => {
       void subscription.unsubscribe();
     };
@@ -226,10 +221,7 @@ const Eli5EngineControlViewInner: React.FC = () => {
 
   // Effect to fetch senders on mount
   useEffect(() => {
-    fetchSenders().catch((error) => {
-      console.error('Failed to fetch senders:', error);
-      setError(handleError(error));
-    });
+    void fetchSenders();
   }, [fetchSenders]);
 
   // Effect to handle engine errors
@@ -285,19 +277,86 @@ const Eli5EngineControlViewInner: React.FC = () => {
   const handleMetricsUpdate = (payload: MetricsPayload) => {
     console.log('Metrics updated:', payload);  };
 
-  const handleStartEngineWrapper = async () => {
-    await startEngine({
-      marketRegion: selectedMarketRegion,
-      isDryRun,
-      limitPerRun: senderQuota,
-      minIntervalSeconds,
-      maxIntervalSeconds,
-      selectedSenderIds
-    });
+  const [engineStatus, setEngineStatus] = useState<{
+    isRunning: boolean;
+    currentCampaign?: string;
+    lastStarted?: string;
+    lastStopped?: string;
+  }>({ isRunning: false });
+
+  const fetchEngineStatus = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('engine_control')
+        .select('*')
+        .limit(1)
+        .single();
+
+      if (error) throw error;
+
+      setEngineStatus({
+        isRunning: data?.is_running || false,
+        currentCampaign: data?.current_campaign_id,
+        lastStarted: data?.last_started_at,
+        lastStopped: data?.last_stopped_at
+      });
+    } catch (err) {
+      console.error('Error fetching engine status:', handleError(err));
+      if ((err as any).code === 'PGRST116') {
+        const { error: insertError } = await supabase
+          .from('engine_control')
+          .insert([{ is_running: false }])
+          .select()
+          .single();
+        
+        if (insertError) throw insertError;
+        await fetchEngineStatus();
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchEngineStatus();
+  }, [fetchEngineStatus]);
+
+  const handleStartEngineSupabase = async () => {
+    try {
+      const { error } = await supabase
+        .from('engine_control')
+        .update({ 
+          is_running: true,
+          last_started_at: new Date().toISOString()
+        })
+        .eq('is_running', false);
+
+      if (error) throw error;
+      await fetchEngineStatus();
+    } catch (err) {
+      console.error('Error starting engine:', err);
+    }
   };
 
-  const handleStopEngineWrapper = async () => {
-    await handleStopEngine().catch(console.error);
+  const handleStopEngineSupabase = async () => {
+    try {
+      const { error } = await supabase
+        .from('engine_control')
+        .update({ 
+          is_running: false,
+          last_stopped_at: new Date().toISOString()
+        })
+        .eq('is_running', true);
+
+      if (error) throw error;
+      await fetchEngineStatus();
+    } catch (err) {
+      console.error('Error stopping engine:', err);
+    }
+  };
+
+  const handleButtonClick = (handler: () => Promise<void>) => {
+    return () => {
+      void handler().catch(console.error);
+    };
   };
 
   return (
@@ -306,7 +365,7 @@ const Eli5EngineControlViewInner: React.FC = () => {
         <h1 className="text-2xl font-bold">ELI5 Engine Control</h1>
         <div className="flex items-center space-x-2">
           <span className="text-sm text-gray-500">Status:</span>
-          {getStatusBadge(engineStatus)}
+          {getStatusBadge(engineControlStatus)}
         </div>
       </div>
       
@@ -320,7 +379,7 @@ const Eli5EngineControlViewInner: React.FC = () => {
       )}
 
       <Card className="relative">
-        {engineStatus === 'running' && (
+        {engineControlStatus === 'running' && (
           <div className="absolute top-4 right-4">
             <div className="flex items-center space-x-1 bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
               <span className="relative flex h-2 w-2">
@@ -337,12 +396,12 @@ const Eli5EngineControlViewInner: React.FC = () => {
               <label htmlFor="marketRegion" className="block mb-2">Market Region</label>
               <Select 
                 id="marketRegion"
-                value={selectedMarketRegion}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMarketRegion(e.target.value)}
+                value={selectedMarketRegion || ''}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMarketRegion(e.target.value || null)}
                 disabled={isLoading || regionsLoading}
               >
                 {marketRegions.map(region => (
-                  <option key={region.id} value={region.name}>
+                  <option key={region.id} value={region.id}>
                     {region.name}
                   </option>
                 ))}
@@ -427,12 +486,10 @@ const Eli5EngineControlViewInner: React.FC = () => {
         <div className="flex space-x-4 mt-6">
           <Button
             color="primary"
-            onClick={() => {
-              handleStartEngineWrapper().catch(console.error);
-            }}
-            disabled={isLoading || ['running', 'starting'].includes(engineStatus)}
+            onClick={handleButtonClick(handleStartEngine)}
+            disabled={isLoading || ['running', 'starting'].includes(engineControlStatus)}
           >
-            {isLoading && ['starting'].includes(engineStatus) ? (
+            {isLoading && ['starting'].includes(engineControlStatus) ? (
               <div className="flex items-center">
                 <div className="loading loading-spinner loading-sm mr-2"></div>
                 Starting...
@@ -442,15 +499,31 @@ const Eli5EngineControlViewInner: React.FC = () => {
           
           <Button
             color="error"
-            onClick={() => void handleStopEngineWrapper()}
-            disabled={isLoading || ['idle', 'stopping'].includes(engineStatus)}
+            onClick={handleButtonClick(handleStopEngine)}
+            disabled={isLoading || ['idle', 'stopping'].includes(engineControlStatus)}
           >
-            {isLoading && ['stopping'].includes(engineStatus) ? (
+            {isLoading && ['stopping'].includes(engineControlStatus) ? (
               <div className="flex items-center">
                 <div className="loading loading-spinner loading-sm mr-2"></div>
                 Stopping...
               </div>
             ) : 'Stop Engine'}
+          </Button>
+
+          <Button
+            color="primary"
+            onClick={handleButtonClick(handleStartEngineSupabase)}
+            disabled={isLoading || engineStatus.isRunning}
+          >
+            Start Engine (Supabase)
+          </Button>
+
+          <Button
+            color="error"
+            onClick={handleButtonClick(handleStopEngineSupabase)}
+            disabled={isLoading || !engineStatus.isRunning}
+          >
+            Stop Engine (Supabase)
           </Button>
         </div>
       </Card>
@@ -459,7 +532,7 @@ const Eli5EngineControlViewInner: React.FC = () => {
         <div className="flex justify-between items-center mb-2">
           <h2 className="text-lg font-semibold">Console Output</h2>
           <div className="text-sm text-gray-500">
-            {engineStatus === 'running' ? (
+            {engineControlStatus === 'running' ? (
               <span className="flex items-center">
                 <span className="relative flex h-2 w-2 mr-1">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -493,9 +566,7 @@ const Eli5EngineControlViewInner: React.FC = () => {
           <h2 className="text-lg font-semibold">Email Metrics by Sender</h2>
           <Button 
             size="sm" 
-            onClick={() => {
-              fetchEmailMetrics().catch(console.error);
-            }}
+            onClick={handleButtonClick(fetchEmailMetrics)}
             disabled={metricsLoading}
           >
             {metricsLoading ? 'Refreshing...' : 'Refresh'}
