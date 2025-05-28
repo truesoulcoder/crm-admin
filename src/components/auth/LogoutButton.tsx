@@ -1,31 +1,29 @@
-'use client';
+// components/auth/LoginButton.tsx
+'use client'
 
-import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
-import { signOut } from '@/actions/auth';
+export function LoginButton() {
+  const router = useRouter()
+  const supabase = createClient()
 
-import { Button } from '@/components/ui/button';
+  const handleGoogleLogin = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
 
-export function LogoutButton({ className }: { className?: string }) {
-  const router = useRouter();
-
-  const handleLogout = async () => {
-    try {
-      await signOut();
-      // Force a full page reload to clear all client-side state
-      window.location.href = '/login';
-    } catch (error) {
-      console.error('Error signing out:', error);
+    if (error) {
+      console.error('Error logging in:', error.message)
     }
-  };
+  }
 
   return (
-    <Button 
-      variant="ghost" 
-      className={className}
-      onClick={handleLogout}
-    >
-      Sign Out
-    </Button>
-  );
+    <button onClick={handleGoogleLogin} className="btn btn-primary">
+      Sign in with Google
+    </button>
+  )
 }
