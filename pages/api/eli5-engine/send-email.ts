@@ -3,6 +3,8 @@ import path from 'path';
 
 import { configure, renderString } from 'nunjucks';
 
+// Local imports
+import { withApiKey } from '@/lib/apiAuth';
 import { generateLoiPdf } from './_pdfUtils';
 import {
   getSupabaseClient,
@@ -75,7 +77,7 @@ export async function sendConfiguredEmail(options: EmailOptions) {
   // TO DO: implement sendConfiguredEmail function
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
     return res.status(405).end(`Method ${req.method} Not Allowed`);
@@ -519,4 +521,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
     return res.status(500).json({ success: false, error: errorMessage });
   }
-}
+};
+
+export default withApiKey(handler);

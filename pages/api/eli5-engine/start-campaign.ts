@@ -9,7 +9,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 // Internal dependencies
 import { STATUS_KEY } from './email-metrics';
 import { logCampaignJob } from './log-campaign-job';
-import { sendConfiguredEmail } from './send-email';
+// Email sending is handled via API endpoint
 import { updateCampaignJobStatus } from './update-campaign-job-status';
 
 // Types
@@ -319,7 +319,7 @@ export async function handler(
  * @param filter_sender_ids Optional array of sender IDs to filter by
  * @returns Array of prepared sender states
  */
-async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_ids?: string[]): Promise<SenderState[]> {
+const fetchAndPrepareSenders = async (supabase: SupabaseClient, filter_sender_ids: string[] = []): Promise<SenderState[]> => {
   try {
     let query = supabase
       .from('senders')
@@ -328,7 +328,7 @@ async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_id
       .order('email', { ascending: true }) // Primary sort: Alphabetical by email
       .order('sent_today', { ascending: true }); // Secondary sort: Least used today
 
-    if (filter_sender_ids && filter_sender_ids.length > 0) {
+    if (filter_sender_ids.length > 0) {
       query = query.in('id', filter_sender_ids);
       console.log(`Filtering senders by IDs: ${filter_sender_ids.join(', ')}`);
     }
@@ -369,9 +369,9 @@ async function fetchAndPrepareSenders(supabase: SupabaseClient, filter_sender_id
     console.error('CAMPAIGN_HANDLER (fetchAndPrepareSenders): Exception:', errorMessage, errorStack);
     return [];
   }
-}
+};
 
-async function incrementSenderSentCount(supabase: SupabaseClient, senderId: string) {
+const incrementSenderSentCount = async (supabase: SupabaseClient, senderId: string): Promise<void> => {
   try {
     const { error } = await supabase.rpc('increment_sender_sent_count', {
       sender_id: senderId
@@ -391,7 +391,7 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
     }
     console.error('Error in incrementSenderSentCount:', errorMessage, errorStack);
   }
-}
+};
 
 // #endregion
 
@@ -437,12 +437,23 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
         // ... processing loop ...
 
         try {
-          await sendConfiguredEmail({
-            senderId: senders[currentSenderIndex].id,
-            leadEmail: contactEmail,
-            templateId: reqBody.template_id,
-            // Add any other required fields for EmailOptions here
-          } as any); // Temporary any cast to fix type error
+          // Call the send-email API endpoint with API key authentication
+          const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/eli5-engine/send-email`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': process.env.API_KEY || ''
+            },
+            body: JSON.stringify({
+              market_region: reqBody.market_region,
+              ...(reqBody.template_id && { template_id: reqBody.template_id })
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Failed to send email');
+          }
           await updateCampaignJobStatus(logId, 'sent');
           await logCampaignJob({
             campaign_id: currentCampaignId,
@@ -536,11 +547,23 @@ async function incrementSenderSentCount(supabase: SupabaseClient, senderId: stri
       }
       
       try {
-        await sendConfiguredEmail({
-          senderId: availableSender.id,
-          leadEmail: lead.email || lead.contact_email || '',
-          templateId: reqBody.template_id
+        // Call the send-email API endpoint with API key authentication
+        const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/eli5-engine/send-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.API_KEY || ''
+          },
+          body: JSON.stringify({
+            market_region: reqBody.market_region,
+            ...(reqBody.template_id && { template_id: reqBody.template_id })
+          }),
         });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to send email');
+        }
         await logCampaignJob({
           campaign_id: currentCampaignId,
           sender_email: availableSender.id,
