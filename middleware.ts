@@ -2,6 +2,14 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+const PUBLIC_PATHS = ['/login', '/auth/callback', '/_next', '/favicon.ico']
+const isPublicPath = (path: string) => 
+  PUBLIC_PATHS.some(publicPath => 
+    path === publicPath || 
+    path.startsWith(publicPath) ||
+    path.startsWith('/_next/static')
+  )
+
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next()
   const supabase = createServerClient(
@@ -14,16 +22,15 @@ export async function middleware(request: NextRequest) {
         },
         set(name: string, value: string, options: any) {
           request.cookies.set({ name, value, ...options })
-          response = NextResponse.next({
-            request: { headers: request.headers },
-          })
+          response = NextResponse.next({ request: { headers: request.headers } })
           response.cookies.set({ 
             name, 
             value, 
             ...options,
             domain: '.truesoulpartners.vercel.app',
             secure: true,
-            sameSite: 'lax'
+            sameSite: 'lax',
+            path: '/'
           })
         },
         remove(name: string, options: any) {
@@ -33,7 +40,8 @@ export async function middleware(request: NextRequest) {
             name, 
             value: '', 
             ...options,
-            maxAge: 0 
+            maxAge: 0,
+            path: '/'
           })
         },
       },
@@ -42,9 +50,8 @@ export async function middleware(request: NextRequest) {
 
   const { data: { session } } = await supabase.auth.getSession()
 
-  // Auth routes that don't require a session
-  const publicPaths = ['/login', '/auth/callback']
-  if (publicPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
+  // Allow public paths and API routes
+  if (isPublicPath(request.nextUrl.pathname) || request.nextUrl.pathname.startsWith('/api/')) {
     return response
   }
 
@@ -52,10 +59,3 @@ export async function middleware(request: NextRequest) {
   if (!session) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
-
-  return response
-}
-
-export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
-}
