@@ -293,9 +293,25 @@ const Eli5EngineControlViewInner: React.FC = () => {
         .from('engine_control')
         .select('*')
         .limit(1)
-        .single();
+        .single()
+        .throwOnError();
 
-      if (error) throw error;
+      if (!data) {
+        // If no data exists, initialize the table
+        const { error: initError } = await supabase
+          .from('engine_control')
+          .insert([{ is_running: false }]);
+        
+        if (initError) throw initError;
+        
+        setEngineStatus({
+          isRunning: false,
+          currentCampaign: undefined,
+          lastStarted: undefined,
+          lastStopped: undefined
+        });
+        return;
+      }
 
       setEngineStatus({
         isRunning: data?.is_running || false,
@@ -305,16 +321,6 @@ const Eli5EngineControlViewInner: React.FC = () => {
       });
     } catch (err) {
       console.error('Error fetching engine status:', handleError(err));
-      if ((err as any).code === 'PGRST116') {
-        const { error: insertError } = await supabase
-          .from('engine_control')
-          .insert([{ is_running: false }])
-          .select()
-          .single();
-        
-        if (insertError) throw insertError;
-        await fetchEngineStatus();
-      }
     }
   }, []);
 
