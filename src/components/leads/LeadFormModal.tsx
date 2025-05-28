@@ -1,11 +1,7 @@
 import 'daisyui/dist/full.css';
 // External dependencies
-import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
-import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
-import { toast } from 'react-hot-toast';
 import { MapPin, X } from 'lucide-react';
-import React, { ChangeEvent, FormEvent, useCallback, useEffect, useState } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
 
 import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader';
 import { Database } from '@/types/db_types';
@@ -148,7 +144,10 @@ const LeadFormModal = ({
   return (
     <div className="modal modal-open">
       <div className="modal-box w-11/12 max-w-4xl">
-        <button onClick={onClose} className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">
+        <button 
+          className="btn btn-sm btn-circle absolute right-2 top-2"
+          onClick={onClose}
+        >
           <X size={18} />
         </button>
         <h3 className="font-bold text-lg mb-4">{formData.property_address || (lead ? 'Edit Lead' : 'Add New Lead')}</h3>
@@ -403,8 +402,17 @@ const LeadFormModal = ({
           )}
 
           <div className="modal-action">
-            <button type="button" className="btn" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary">
+            <button 
+              type="button" 
+              className="btn btn-ghost"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button 
+              type="submit" 
+              className="btn btn-primary"
+            >
               {lead ? 'Update Lead' : 'Add Lead'}
             </button>
           </div>
