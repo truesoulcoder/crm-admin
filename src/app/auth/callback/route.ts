@@ -25,7 +25,8 @@ export async function GET(request: Request) {
               ...options,
               domain: '.truesoulpartners.vercel.app',
               secure: true,
-              sameSite: 'lax'
+              sameSite: 'lax',
+              path: '/'
             })
           },
           remove(name: string, options: CookieOptions) {
