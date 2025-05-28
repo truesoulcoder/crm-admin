@@ -1,18 +1,21 @@
-// src/app/layout.tsx
+'use client';
+
 import './globals.css';
 import { Inter } from 'next/font/google';
-import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ReactNode } from 'react';
+
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { UserProvider } from '@/contexts/UserContext';
 import { EngineProvider } from '@/contexts/EngineContext';
+import { UserProvider } from '@/contexts/UserContext';
+import { createClient } from '@/lib/supabase/server';
+
 import ClientLayout from './layout-client';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
   children: ReactNode;
