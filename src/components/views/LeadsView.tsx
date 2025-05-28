@@ -1,11 +1,7 @@
 'use client';
 // External dependencies
-import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
-import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
-import { toast } from 'react-hot-toast';
 import { AlertTriangle, CheckCircle, Info, XCircle } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react'; 
 
 import LeadUploader from '@/components/leads/LeadUploader';
 
@@ -23,41 +19,24 @@ interface AppMessage {
 const LeadsView: React.FC = () => {
   const [messages, setMessages] = useState<AppMessage[]>([]);
   const [isProcessingLeads, setIsProcessingLeads] = useState<boolean>(false);
-  // TODO: Add state for leads data: const [leads, setLeads] = useState<NormalizedLead[]>([]);
-
-  // TODO: Implement fetchLeads function to get leads data
-  // useEffect(() => {
-  //   fetchLeads();
-  // }, []);
 
   const handleAddMessage = (type: AppMessage['type'], text: string) => {
     const newMessage: AppMessage = { id: Date.now().toString(), type, text };
     setMessages(prevMessages => {
-      // Keep only the last 5 messages to prevent clutter
       const updatedMessages = [...prevMessages, newMessage];
       return updatedMessages.slice(-5);
     });
-
-    // Optional: auto-clear specific message after a delay, or manage through UI
-    // setTimeout(() => {
-    //   setMessages(prev => prev.filter(m => m.id !== newMessage.id));
-    // }, 7000); // Clear after 7 seconds
   };
 
   const handleUploadSuccess = (filename: string, count?: number) => {
     handleAddMessage('success', `Successfully uploaded ${filename}.${count ? ` ${count} leads processed.` : ''}`);
-    setIsProcessingLeads(true); // Indicate that LeadsView might be doing something (e.g., fetching new data)
+    setIsProcessingLeads(true); 
     
-    // TODO: Implement logic to refresh the leads list
-    // For example: fetchLeads();
     console.log(`LeadsView: Need to refresh leads data after uploading ${filename}`);
     
-    // Simulate some processing time or wait for actual data refresh
-    // This timeout is a placeholder. In a real app, setIsProcessingLeads(false) would be called
-    // after the data fetching and processing is complete.
     setTimeout(() => {
       setIsProcessingLeads(false);
-      handleAddMessage('info', 'Lead data refresh simulated.'); // Placeholder message
+      handleAddMessage('info', 'Lead data refresh simulated.'); 
     }, 2000);
   };
 
@@ -110,21 +89,6 @@ const LeadsView: React.FC = () => {
           ))}
         </div>
       )}
-
-      {/* Placeholder for Leads Table/Display Area */}
-      <div className="mt-8">
-        <h2 className="text-xl font-semibold mb-4">Current Leads</h2>
-        {isProcessingLeads && (
-            <div className="flex items-center justify-center p-4">
-                <span className="loading loading-lg loading-spinner text-primary"></span>
-                <span className="ml-3">Processing leads data...</span>
-            </div>
-        )}
-        {/* TODO: Implement leads display table here. Example: <LeadsTable leads={leads} /> */}
-        <div className="p-4 border border-dashed border-base-300 rounded-md bg-base-100 text-center">
-          <p className="text-gray-500">Leads display area. Implement table or list view here.</p>
-        </div>
-      </div>
     </div>
   );
 };

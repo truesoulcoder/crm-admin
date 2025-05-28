@@ -1,14 +1,19 @@
 // src/components/views/Eli5EngineControlView.tsx
+
+// External libraries
 import { createBrowserClient } from '@supabase/ssr';
 import { useState, useEffect, useRef, FC, useCallback } from 'react';
-import { Badge, Card, Button, Select, Table, Toggle, Range, Alert } from 'react-daisyui';
-import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
-import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
+import { Badge, Card, Button, Select, Table, Range, Alert } from 'react-daisyui';
 import { toast } from 'react-hot-toast';
+
+// Components
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+// Hooks
 import { useEngineControl } from '@/hooks/useEngineControl';
 import { useMarketRegions } from '@/hooks/useMarketRegions';
+// Utilities
+import { getErrorMessage } from '@/lib/utils';
+// Types
 import { Database } from '@/types/db_types';
 
 // Define types for our data
@@ -62,12 +67,6 @@ type MetricsPayload = {
   eventType: 'INSERT' | 'UPDATE' | 'DELETE';
   new: EmailMetrics;
   old?: EmailMetrics | null;
-};
-
-const handleError = (err: unknown): string => {
-  if (err instanceof Error) return err.message;
-  if (typeof err === 'string') return err;
-  return 'An unknown error occurred';
 };
 
 const supabase = createBrowserClient<Database>(
@@ -127,7 +126,7 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
       if (error) throw error;
       setAvailableSenders(data || []);
     } catch (err) {
-      console.error('Error fetching senders:', handleError(err));
+      console.error('Error fetching senders:', getErrorMessage(err));
     } finally {
       setMetricsLoading(false);
     }
@@ -141,19 +140,12 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
         return;
       }
 
-      await startEngine({
-        marketRegion: selectedMarketRegion,
-        isDryRun,
-        limitPerRun: senderQuota, // Using senderQuota as limitPerRun for backward compatibility
-        minIntervalSeconds,
-        maxIntervalSeconds,
-        selectedSenderIds: selectedSenderIds.length ? selectedSenderIds : undefined
-      });
+      await startEngine();
       setError(null);
     } catch (err) {
-      console.error('Failed to start engine:', handleError(err));
+      console.error('Failed to start engine:', getErrorMessage(err));
     }
-  }, [selectedMarketRegion, isDryRun, senderQuota, minIntervalSeconds, maxIntervalSeconds, selectedSenderIds, startEngine]);
+  }, [selectedMarketRegion, startEngine]);
 
   // Handle stop engine
   const handleStopEngine = useCallback(async () => {
@@ -166,7 +158,7 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
       await stopEngine();
       setError(null);
     } catch (err) {
-      console.error('Failed to stop engine:', handleError(err));
+      console.error('Failed to stop engine:', getErrorMessage(err));
     }
   }, [selectedMarketRegion, stopEngine]);
 
@@ -189,13 +181,13 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
         .order('sent', { ascending: false });
 
       if (error) {
-        console.error('Failed to fetch email metrics:', error);
+        console.error('Failed to fetch email metrics:', getErrorMessage(error));
         setEmailMetrics([]);
         return;
       }
       setEmailMetrics(data || []);
     } catch (err) {
-      console.error('Error fetching email metrics:', handleError(err));
+      console.error('Error fetching email metrics:', getErrorMessage(err));
     } finally {
       setMetricsLoading(false);
     }
@@ -207,7 +199,7 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
       try {
         await fetchEmailMetrics();
       } catch (err) {
-        console.error('Failed to fetch email metrics:', err);
+        console.error('Failed to fetch email metrics:', getErrorMessage(err));
       }
     };
     
@@ -220,7 +212,7 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
         { event: '*', schema: 'public', table: 'email_metrics_by_sender' },
         () => {
           void fetchEmailMetrics().catch(err => 
-            console.error('Failed to refresh metrics:', handleError(err))
+            console.error('Failed to refresh metrics:', getErrorMessage(err))
           );
         }
       );
@@ -240,7 +232,7 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
   // Effect to handle engine errors
   useEffect(() => {
     if (engineError) {
-      setError(handleError(engineError));
+      setError(getErrorMessage(engineError));
     }
   }, [engineError]);
 
@@ -334,7 +326,7 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
         lastStopped: data?.last_stopped_at || undefined
       });
     } catch (err) {
-      console.error('Error fetching engine status:', handleError(err));
+      console.error('Error fetching engine status:', getErrorMessage(err));
     }
   }, []);
 
@@ -355,7 +347,7 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
       if (error) throw error;
       await fetchEngineStatus();
     } catch (err) {
-      console.error('Error starting engine:', err);
+      console.error('Error starting engine:', getErrorMessage(err));
     }
   };
 
@@ -372,7 +364,7 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
       if (error) throw error;
       await fetchEngineStatus();
     } catch (err) {
-      console.error('Error stopping engine:', err);
+      console.error('Error stopping engine:', getErrorMessage(err));
     }
   };
 
@@ -685,7 +677,7 @@ export default function Eli5EngineControlView() {
           Engine control failed to load. Please try refreshing the page.
         </div>
       }
-      onError={(error) => console.error('Engine control error:', error)}
+      onError={(error) => console.error('Engine control error:', getErrorMessage(error))}
     >
       <Eli5EngineControlViewInner />
     </ErrorBoundary>

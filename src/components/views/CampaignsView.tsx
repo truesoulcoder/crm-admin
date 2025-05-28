@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react';
-import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
-import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
-import { toast } from 'react-hot-toast';
+import { Badge } from 'react-daisyui';
+import toast from 'react-hot-toast';
 import { FiPlay, FiStopCircle, FiRefreshCw } from 'react-icons/fi';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/lib/supabase/client';
-import { Database } from '@/types/db_types';
 
 interface Campaign {
   id: string;
@@ -57,7 +55,13 @@ export default function CampaignsView() {
         setSelectedCampaign(data[0]);
       }
     } catch (err) {
-      setError('Failed to load campaigns');
+      if (err instanceof Error) {
+        setError(err.message);
+        toast.error(err.message);
+      } else {
+        setError('Unknown error occurred');
+        toast.error('Unknown error occurred');
+      }
       console.error('Error fetching campaigns:', err);
     } finally {
       setIsLoading(false);
@@ -78,7 +82,13 @@ export default function CampaignsView() {
       if (error) throw error;
       setJobs(data || []);
     } catch (err) {
-      setError('Failed to load jobs');
+      if (err instanceof Error) {
+        setError(err.message);
+        toast.error(err.message);
+      } else {
+        setError('Unknown error occurred');
+        toast.error('Unknown error occurred');
+      }
       console.error('Error fetching jobs:', err);
     }
   };
@@ -90,15 +100,26 @@ export default function CampaignsView() {
     setSuccess(null);
     
     try {
-      const { data, error } = await supabase
+      await supabase
         .rpc('start_eli5_engine', {
           p_dry_run: false,
           p_limit_per_run: 10,
           p_market_region: selectedCampaign?.market_region || null
+        })
+        .then(({ error }) => {
+          if (error) throw error;
+        })
+        .catch((error: unknown) => {
+          console.error('Campaign creation error:', error);
+          if (error instanceof Error) {
+            setError(error.message);
+            toast.error(error.message);
+          } else {
+            setError('Unknown error occurred');
+            toast.error('Unknown error occurred');
+          }
         });
 
-      if (error) throw error;
-      
       setSuccess('Campaign started successfully!');
       // Refresh data
       await fetchCampaigns();
@@ -106,8 +127,13 @@ export default function CampaignsView() {
         await fetchJobs(selectedCampaign.id);
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to start campaign';
-      setError(errorMessage);
+      if (err instanceof Error) {
+        setError(err.message);
+        toast.error(err.message);
+      } else {
+        setError('Unknown error occurred');
+        toast.error('Unknown error occurred');
+      }
       console.error('Error starting campaign:', err);
     } finally {
       setIsStarting(false);
@@ -133,11 +159,47 @@ export default function CampaignsView() {
       await fetchCampaigns();
       await fetchJobs(selectedCampaign.id);
     } catch (err) {
-      setError(err.message || 'Failed to stop campaign');
+      if (err instanceof Error) {
+        setError(err.message);
+        toast.error(err.message);
+      } else {
+        setError('Unknown error occurred');
+        toast.error('Unknown error occurred');
+      }
       console.error('Error stopping campaign:', err);
     } finally {
       setIsStopping(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    try {
+      await Promise.all([
+        fetchCampaigns(),
+        selectedCampaign?.id ? fetchJobs(selectedCampaign.id) : Promise.resolve()
+      ]);
+    } catch (error) {
+      handleError(error);
+    }
+  };
+
+  const handleStartCampaign = async () => {
+    try {
+      await startCampaign(selectedCampaign.id);
+    } catch (error) {
+      handleError(error);
+    }
+  };
+
+  const handleError = (error: unknown) => {
+    if (error instanceof Error) {
+      setError(error.message);
+      toast.error(error.message);
+    } else {
+      setError('Unknown error occurred');
+      toast.error('Unknown error occurred');
+    }
+    console.error('Error occurred:', error);
   };
 
   // Initial load
@@ -220,7 +282,7 @@ export default function CampaignsView() {
           <div className="card-body p-4">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold">Your Campaigns</h2>
-              <button className="btn btn-xs btn-ghost" onClick={fetchCampaigns}>
+              <button className="btn btn-xs btn-ghost" onClick={handleRefresh}>
                 <FiRefreshCw className="h-4 w-4" />
                 <span className="ml-1">Refresh</span>
               </button>
@@ -294,7 +356,7 @@ export default function CampaignsView() {
                     ) : (
                       <button
                         className="btn btn-sm btn-success"
-                        onClick={() => startCampaign(selectedCampaign.id)}
+                        onClick={handleStartCampaign}
                         disabled={isStarting}
                       >
                         {isStarting ? (
@@ -354,11 +416,7 @@ export default function CampaignsView() {
                   <h3 className="text-lg font-semibold">Email Jobs</h3>
                   <button 
                     className="btn btn-sm btn-ghost"
-                    onClick={() => {
-                      if (selectedCampaign) {
-                        fetchJobs(selectedCampaign.id).catch(console.error);
-                      }
-                    }}
+                    onClick={handleRefresh}
                   >
                     <FiRefreshCw className="h-4 w-4" />
                     <span className="ml-1">Refresh</span>
