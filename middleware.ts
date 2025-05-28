@@ -18,59 +18,49 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value
         },
         set(name: string, value: string, options: any) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          })
+          request.cookies.set({ name, value, ...options })
           response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
+            request: { headers: request.headers },
           })
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
+          response.cookies.set({ name, value, ...options })
         },
         remove(name: string, options: any) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
+          request.cookies.set({ name, value: '', ...options })
           response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
+            request: { headers: request.headers },
           })
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
+          response.cookies.set({ name, value: '', ...options })
         },
       },
     }
   )
 
-  // Refresh session if expired
   const { data: { session } } = await supabase.auth.getSession()
+  const { pathname } = request.nextUrl
 
-  // Auth redirects
-  if (!session) {
-    // If not authenticated and not on an auth page, redirect to login
-    if (!request.nextUrl.pathname.startsWith('/')) {
-      const redirectUrl = new URL('/login', request.url)
-      redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
-      return NextResponse.redirect(redirectUrl)
-    }
-  } else {
-    // If authenticated and trying to access auth pages, redirect to dashboard
-    if (request.nextUrl.pathname.startsWith('/')) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
+  // Public paths that don't require auth
+  const publicPaths = ['/login', '/auth/callback']
+  const isPublicPath = publicPaths.some(path => 
+    pathname === path || pathname.startsWith(`${path}/`)
+  )
+
+  // If no session and not on a public path, redirect to login
+  if (!session && !isPublicPath && pathname !== '/') {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  // If session exists and trying to access root, redirect based on role
+  if (session && pathname === '/') {
+    // Get user role (you might need to fetch this from your profiles table)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .single()
+
+    const role = profile?.role || 'guest'
+    const redirectTo = role === 'superadmin' ? '/dashboard' : '/crm'
+    return NextResponse.redirect(new URL(redirectTo, request.url))
   }
 
   return response
@@ -78,6 +68,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|auth/reset-password|_next/data).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|_next/data).*)',
   ],
 }
