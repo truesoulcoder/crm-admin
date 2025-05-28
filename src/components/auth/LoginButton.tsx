@@ -9,20 +9,19 @@ export function LoginButton() {
   const supabase = createClient()
 
   const handleGoogleLogin = async () => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: 'https://truesoulpartners.vercel.app/auth/callback',
         queryParams: {
           access_type: 'offline',
-          prompt: 'consent',
-          hd: 'truesoulpartners.com'
+          prompt: 'consent'
         }
       }
     })
 
     if (error) {
-      console.error('Login error:', error.message)
+      console.error('Login error:', error)
     }
   }
 
