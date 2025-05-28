@@ -9,62 +9,28 @@ import { useUser } from "@/contexts/UserContext";
 // Define public paths that don't require authentication
 const publicPaths = ['/'];
 
-// Define role-based redirects
-const getRedirectPath = (role: string | null, currentPath: string): string | null => {
-  // If user is a guest, only allow access to /crm path
-  if (role === 'guest') {
-    return currentPath === '/crm' ? null : '/crm';
-  }
-  
-  // If user is authenticated (has a role) and is on the login page, redirect to dashboard
-  if (role && role !== 'guest' && currentPath === '/') {
-    return '/dashboard';
-  }
-  
-  // If user has no role and is not on the login page, redirect to login
-  if (!role && currentPath !== '/') {
-    return '/';
-  }
-  
-  return null;
-};
+interface RequireAuthProps {
+  children: ReactNode;
+}
 
-export default function RequireAuth({ children }: { children: ReactNode }) {
-  const router = useRouter();
+const RequireAuth: React.FC<RequireAuthProps> = ({ children }) => {
+  const { user, loading, error: userContextError } = useUser();
   const pathname = usePathname();
-  const { user, role, isLoading, error: userContextError } = useUser();
-
-  // Track if we've already handled the redirect
-  const redirectHandledRef = useRef(false);
+  const router = useRouter();
 
   useEffect(() => {
-    if (isLoading || redirectHandledRef.current) return;
-    
-    // Handle redirection based on authentication status and role
-    if (!user) {
-      // If not logged in and not on a public path, redirect to login
-      if (pathname && !publicPaths.includes(pathname)) {
-        redirectHandledRef.current = true;
-        window.location.href = '/';
+    if (loading) return; // Wait for user context to load
+
+    if (user) {
+      // If logged in and on the root path, redirect to dashboard
+      if (pathname === '/') {
+        router.push('/dashboard');
       }
-    } else {
-      // If logged in, check role-based redirection
-      if (pathname) {
-        const redirectPath = getRedirectPath(role, pathname);
-        if (redirectPath) {
-          redirectHandledRef.current = true;
-          window.location.href = redirectPath;
-        }
-      }
+    } else if (pathname !== '/') {
+      // If not logged in and not on the login page, redirect to login
+      router.push('/');
     }
-    
-    // Reset the flag after a short delay to allow future redirects if needed
-    const timer = setTimeout(() => {
-      redirectHandledRef.current = false;
-    }, 1000);
-    
-    return () => clearTimeout(timer);
-  }, [user, role, isLoading, pathname]);
+  }, [user, isLoading, pathname, router]);
 
   if (isLoading) {
     return (

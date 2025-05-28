@@ -1,15 +1,13 @@
 'use client';
 
-import clsx from 'clsx';
-import { LayoutDashboard, Users, FileText, Send, UserCog, Settings, Briefcase, Contact } from 'lucide-react';
+import { useState } from 'react';
+import { LayoutDashboard, Users, FileText, Settings, Contact, ChevronLeft } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 // External dependencies
-import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
-import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
-import { toast } from 'react-hot-toast';
+import { useState } from 'react';
+ 
 import { AnimatedDealpig } from '@/components/ui/AnimatedDealpig';
 import { useUser } from '@/contexts/UserContext'; 
 import { LetterFx } from '@/once-ui/components';
@@ -35,6 +33,12 @@ const menuItems: MenuItem[] = [
 ];
 
 const Sidebar: React.FC = () => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  
+  const toggleSidebar = () => {
+    setIsCollapsed(!isCollapsed);
+  };
+
   const { role, isLoading: userLoading, user } = useUser(); // Get role and loading state
   // TODO: Replace this with actual logic to fetch/get companyLogoUrl from settings
   const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null);
@@ -47,115 +51,85 @@ const Sidebar: React.FC = () => {
   //     // Replace with your actual settings fetching logic
   //     // const settings = await getAppSettings(); 
   //     // if (settings && settings.logoUrl) {
-  //     //   setCompanyLogoUrl(settings.logoUrl);
-  //     // }
-  //   };
-  //   fetchSettings();
-  // }, []);
   const pathname = usePathname();
 
-  // Map CrmView to route paths
-  const viewToPath: ViewPath = {
-    dashboard: '/dashboard',
-    leads: '/leads',
-    campaigns: '/campaigns',
-    templates: '/templates',
-    analytics: '/analytics',
-    senders: '/senders',
-    crm: '/crm',
-    settings: '/settings'
-  };
-
-  const getFilteredMenuItems = () => {
-    if (!role) return []; // Or a default minimal menu for guests if sidebar is shown before full auth
-
-    if (role === 'superadmin') { // Changed to lowercase
-      return menuItems; // superadmin sees all items
-    }
-    if (role === 'crmuser') { // Changed to lowercase
-      return menuItems.filter(item => item.view === 'crm'); // crmuser only sees 'CRM'
-      // To add 'Settings' for crmuser as well:
-      // return menuItems.filter(item => item.view === 'crm' || item.view === 'settings'); 
-    }
-    return []; // Default to no items if role is unrecognized or guest within an authenticated shell
-  };
-
-  const visibleMenuItems = getFilteredMenuItems();
-
-  if (userLoading) {
-    // Optional: Render a loading state or null while user role is being determined
+  if (isLoading) {
     return (
-      <aside className="bg-base-200 text-base-content w-64 min-h-screen p-4 flex flex-col items-center justify-center">
-        <span className="loading loading-dots loading-lg"></span>
-      </aside>
-    );
-  }
-
-  // If no user (e.g. logout initiated, session cleared but component still briefly rendered)
-  // or if no visible menu items for the role (e.g. 'guest' role somehow gets here)
-  if (!user || visibleMenuItems.length === 0) {
-    // This case should ideally not be hit if RequireAuth and UserProvider work correctly.
-    // It's a fallback. Consider if a minimal sidebar (e.g. just logo and logout) is better.
-    return (
-        <aside className="bg-base-200 text-base-content w-64 min-h-screen p-4 flex flex-col">
-            <div className="flex items-center justify-center mb-8">
-                <Image 
-                    src={companyLogoUrl || 'https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media//logo.png'} 
-                    alt="Company Logo" 
-                    width={180} 
-                    height={45} 
-                    className="object-contain" 
-                />
-            </div>
-            <div className="mt-auto">
-                <p className="text-xs text-center text-base-content/70">
-                &copy; {new Date().getFullYear()} {companyName || 'True Soul Partners'}
-                </p>
-            </div>
+      <aside className="bg-base-200 text-base-content w-16 min-h-screen p-4 flex flex-col items-center justify-center">
+        <span className="loading loading-spinner loading-md"></span>
       </aside>
     );
   }
 
   return (
-    <aside className="bg-base-200 text-base-content w-64 min-h-screen p-4 flex flex-col">
-      <div className="flex items-center justify-center mb-8">
-        <Image 
-          src={companyLogoUrl || 'https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media//logo.png'} 
-          alt="Company Logo" 
-          width={180} 
-          height={45} 
-          className="object-contain" 
-        />
+    <aside className={cn(
+      'bg-base-200 text-base-content transition-all duration-300 ease-in-out',
+      isCollapsed ? 'w-16' : 'w-64',
+      'flex flex-col h-screen sticky top-0'
+    )}>
+      <div className="p-4 flex items-center justify-between">
+        {!isCollapsed && (
+          <div className="font-bold text-xl">CRM Admin</div>
+        )}
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="btn btn-ghost btn-sm"
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+        </button>
       </div>
-      <ul className="menu space-y-2 flex-1">
-        {visibleMenuItems.map((item) => (
-          <li key={item.view}>
-            <Link
-              href={viewToPath[item.view]}
-              className={clsx(
-                'flex items-center p-2 rounded-lg hover:bg-primary hover:text-primary-content transition-colors duration-200 w-full',
-                pathname === viewToPath[item.view] ? 'bg-primary text-primary-content font-semibold' : 'text-base-content'
-              )}
-            >
-              {item.icon}
-              <LetterFx trigger="hover" speed="fast" className="ml-3">
-                {item.label}
-              </LetterFx>
-            </Link>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-auto">
-        {/* Animated Pig */}
-        <div className="mb-2">
-          <AnimatedDealpig />
+      
+      <nav className="flex-1 overflow-y-auto">
+        <ul className="menu p-2">
+          {menuItems.map((item) => {
+            const isActive = pathname?.startsWith(item.href);
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    'flex items-center p-2 rounded-lg',
+                    isActive
+                      ? 'bg-primary text-primary-content'
+                      : 'hover:bg-base-300'
+                  )}
+                >
+                  <item.icon className="w-5 h-5" />
+                  {!isCollapsed && <span className="ml-3">{item.name}</span>}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+      
+      <button 
+        onClick={toggleSidebar}
+        className="absolute -right-3 top-4 bg-base-200 rounded-full p-1 shadow-md hover:bg-base-300 transition-colors"
+      >
+        <ChevronLeft className={`w-4 h-4 transition-transform ${isCollapsed ? 'rotate-180' : ''}`} />
+      </button>
+      
+      {!isCollapsed && user && (
+        <div className="p-4 border-t border-base-300">
+          <div className="flex items-center">
+            <div className="avatar placeholder">
+              <div className="bg-neutral text-neutral-content rounded-full w-8">
+                <span>{user.email?.charAt(0).toUpperCase() || 'U'}</span>
+              </div>
+            </div>
+            <div className="ml-3">
+              <div className="font-medium">
+                {user.email?.split('@')[0] || 'User'}
+              </div>
+              <div className="text-xs opacity-70 truncate">
+                {user.email}
+              </div>
+            </div>
+          </div>
         </div>
-        <p className="text-xs text-center text-base-content/70">
-          &copy; {new Date().getFullYear()} {companyName || 'True Soul Partners'}
-        </p>
-      </div>
+      )}
     </aside>
   );
 };
-
-export default Sidebar;

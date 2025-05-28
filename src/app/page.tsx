@@ -6,18 +6,17 @@ import { useUser } from '@/contexts/UserContext';
 import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
-  const { user, role, isLoading, error: userContextError } = useUser();
+  const { user, isLoading, error: userContextError } = useUser();
   const router = useRouter();
   const [loginError, setLoginError] = useState<string | null>(null);
   const supabase = createClient();
 
-  // Redirect authenticated users based on role
+  // Redirect authenticated users to dashboard
   useEffect(() => {
-    if (!isLoading && user && role) {
-      const redirectPath = role === 'superadmin' ? '/dashboard' : '/crm';
-      router.push(redirectPath);
+    if (!isLoading && user) {
+      router.push('/dashboard');
     }
-  }, [user, role, isLoading, router]);
+  }, [user, isLoading, router]);
 
   const handleGoogleLogin = async () => {
     setLoginError(null);
