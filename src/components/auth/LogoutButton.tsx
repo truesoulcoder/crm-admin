@@ -13,7 +13,7 @@ export function LogoutButton() {
     if (error) {
       console.error('Logout error:', error.message)
     } else {
-      router.push('/login')
+      router.push('/')
       router.refresh()
     }
   }

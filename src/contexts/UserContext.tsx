@@ -27,49 +27,106 @@ export function UserProvider({
   children,
   initialSession = null,
 }: UserProviderProps) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(initialSession?.user ?? null);
   const [session, setSession] = useState<Session | null>(initialSession);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const supabase = createClient();
 
-  useEffect(() => {
+  // Fetch role from profiles table
+  const fetchUserRole = async (userId: string) => {
     try {
-      setUser(session?.user ?? null);
-      setRole(session?.user?.user_metadata?.role as string | null ?? null);
-      setLoading(false);
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        try {
+      if (error) {
+        console.error('Error fetching profile:', error);
+        return 'guest';
+      }
+
+      return profile?.role || 'guest';
+    } catch (err) {
+      console.error('Error fetching role:', err);
+      return 'guest';
+    }
+  };
+
+  useEffect(() => {
+    const initializeAuth = async () => {
+      try {
+        // Get initial session if not provided
+        if (!initialSession) {
+          const { data: { session }, error } = await supabase.auth.getSession();
+          if (error) throw error;
           setSession(session);
           setUser(session?.user ?? null);
-          setRole(session?.user?.user_metadata?.role as string | null ?? null);
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Unknown error occurred');
         }
-      });
 
-      return () => {
-        subscription.unsubscribe();
-      };
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error occurred');
-      setLoading(false);
-    }
-  }, [session, supabase.auth]);
+        // Fetch role if user exists
+        if (session?.user || initialSession?.user) {
+          const userId = (session?.user?.id || initialSession?.user?.id)!;
+          const userRole = await fetchUserRole(userId);
+          setRole(userRole);
+        }
+
+        setLoading(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error occurred');
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
+
+    // Set up auth state change listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      try {
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (session?.user) {
+          const userRole = await fetchUserRole(session.user.id);
+          setRole(userRole);
+        } else {
+          setRole(null);
+        }
+        
+        setLoading(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error occurred');
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [initialSession, supabase.auth]);
 
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
+      setRole(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred');
     }
   };
 
   return (
-    <UserContext.Provider value={{ user, session, loading, isLoading: loading, signOut, role, error }}>
-      {!loading && children}
+    <UserContext.Provider value={{ 
+      user, 
+      session, 
+      loading, 
+      isLoading: loading, 
+      signOut, 
+      role, 
+      error 
+    }}>
+      {children}
     </UserContext.Provider>
   );
 }

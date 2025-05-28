@@ -3,28 +3,41 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useUser } from '@/contexts/UserContext';
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
   const { user, role, isLoading, error: userContextError } = useUser();
   const router = useRouter();
   const [loginError, setLoginError] = useState<string | null>(null);
+  const supabase = createClient();
+
+  // Redirect authenticated users based on role
+  useEffect(() => {
+    if (!isLoading && user && role) {
+      const redirectPath = role === 'superadmin' ? '/dashboard' : '/crm';
+      router.push(redirectPath);
+    }
+  }, [user, role, isLoading, router]);
 
   const handleGoogleLogin = async () => {
     setLoginError(null);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent'
+        }
       },
     });
+    
     if (error) {
       console.error('Error logging in with Google:', error);
       setLoginError(`Login failed: ${error.message}`);
     }
   };
 
-  // Show loading state
   if (isLoading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-base-100">
@@ -34,7 +47,16 @@ export default function LoginPage() {
     );
   }
 
-  // Show login UI
+  // Don't render login form if user is authenticated (prevents flash)
+  if (user) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-base-100">
+        <span className="loading loading-spinner loading-lg text-primary"></span>
+        <p className="mt-4 text-lg">Redirecting...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="hero min-h-screen bg-base-200">
       <div className="hero-content text-center">
@@ -44,7 +66,9 @@ export default function LoginPage() {
             Please log in with your Google account to access the dashboard.
           </p>
           {userContextError && (
-            <p className="text-error mb-4">Error: {userContextError instanceof Error ? userContextError.message : String(userContextError)}</p>
+            <p className="text-error mb-4">
+              Error: {userContextError instanceof Error ? userContextError.message : String(userContextError)}
+            </p>
           )}
           <button
             onClick={handleGoogleLogin}
