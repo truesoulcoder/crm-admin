@@ -1,8 +1,12 @@
+// Node.js built-in modules
 import { createHmac } from 'crypto';
+
+// Third-party dependencies
 import { NextApiRequest, NextApiResponse, NextApiHandler } from 'next';
 
-// In a production environment, store this in an environment variable
-const API_SECRET = process.env.API_SECRET || 'your-secret-key';
+// Environment variables
+const SEND_EMAIL_API_KEY = process.env.SEND_EMAIL_API_KEY || '';
+const API_SECRET = process.env.SEND_EMAIL_API_SECRET || '';
 
 // Type for API key parts
 interface ApiKeyParts {
@@ -49,6 +53,12 @@ function parseApiKey(apiKey: string): ApiKeyParts | null {
 
 // Validate an API key
 export function validateApiKey(apiKey: string | undefined | null): boolean {
+  // First, check if the provided key matches the exact SEND_EMAIL_API_KEY
+  if (apiKey === SEND_EMAIL_API_KEY) {
+    return true;
+  }
+  
+  // For backward compatibility, also check the HMAC validation
   if (!apiKey) return false;
   
   try {
@@ -58,7 +68,7 @@ export function validateApiKey(apiKey: string | undefined | null): boolean {
     const { prefix, timestamp, hmac, random } = keyParts;
     if (prefix !== 'el5') return false;
     
-    // Optional: Check if the key is expired (e.g., 24 hours)
+    // Check if the key is expired (e.g., 24 hours)
     const keyAge = Date.now() - timestamp;
     const maxAge = 24 * 60 * 60 * 1000; // 24 hours
     if (keyAge > maxAge) return false;
@@ -80,17 +90,32 @@ export function withApiKey<T = any>(
   handler: NextApiHandler<ApiResponse<T>>
 ): NextApiHandler<ApiResponse<T>> {
   return async (req: NextApiRequest, res: NextApiResponse<ApiResponse<T>>) => {
+    // Check for API key in headers (preferred) or query parameters
     const apiKey = typeof req.headers['x-api-key'] === 'string' 
       ? req.headers['x-api-key'] 
       : req.query.apiKey as string | undefined;
     
-    if (!validateApiKey(apiKey)) {
+    // If no API key is provided in the request, check the environment
+    if (!apiKey) {
+      console.error('No API key provided in request');
       return res.status(401).json({ 
         success: false, 
-        error: 'Invalid or missing API key' 
+        error: 'API key is required' 
       });
     }
     
+    // Validate the API key
+    const isValid = validateApiKey(apiKey);
+    
+    if (!isValid) {
+      console.error('Invalid API key provided');
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid API key' 
+      });
+    }
+    
+    // If we get here, the API key is valid
     return handler(req, res);
   };
 }
