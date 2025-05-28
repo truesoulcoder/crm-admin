@@ -1,21 +1,16 @@
-'use client';
-
-import './globals.css';
+// app/layout.tsx (Server Component - no 'use client')
 import { Inter } from 'next/font/google';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ReactNode } from 'react';
 
-import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { EngineProvider } from '@/contexts/EngineContext';
-import { UserProvider } from '@/contexts/UserContext';
 import { createClient } from '@/lib/supabase/server';
 
-import ClientLayout from './layout-client';
+import ClientLayoutWrapper from './layout-client';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: ReactNode;
@@ -23,7 +18,7 @@ export default function RootLayout({
   const cookieStore = cookies();
   const supabase = createClient(cookieStore);
   const { data: { session } } = await supabase.auth.getSession();
-  const pathname = '/'; // Use actual pathname from next/navigation in client components
+  const pathname = '/'; // This should come from headers in a real implementation
 
   // If no session and not on login page, redirect to login
   if (!session && pathname !== '/login') {
@@ -45,15 +40,9 @@ export default function RootLayout({
   return (
     <html lang="en" data-theme="custom_crm_theme" suppressHydrationWarning>
       <body className={inter.className}>
-        <ErrorBoundary>
-          <UserProvider initialSession={session}>
-            <EngineProvider>
-              <ClientLayout>
-                {children}
-              </ClientLayout>
-            </EngineProvider>
-          </UserProvider>
-        </ErrorBoundary>
+        <ClientLayoutWrapper session={session}>
+          {children}
+        </ClientLayoutWrapper>
       </body>
     </html>
   );
