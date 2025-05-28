@@ -3,7 +3,7 @@ import type { Config } from 'tailwindcss';
 
 const config: Config = {
   content: [
-    './src/**/*.{js,ts,jsx,tsx}',
+    './src/**/*.{js,ts,jsx,tsx,mdx}',
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
@@ -13,11 +13,13 @@ const config: Config = {
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
       },
+      // Add any custom theme extensions here
     },
   },
   plugins: [
     require('@tailwindcss/forms'),
     require('@tailwindcss/typography'),
+    require('@tailwindcss/container-queries'),
     require('daisyui'),
   ],
   daisyui: {
@@ -54,24 +56,14 @@ const config: Config = {
       'dim',
       'nord',
       'sunset',
-      {
-        custom_crm_theme: {
-          primary: '#661AE6',
-          secondary: '#D926AA',
-          accent: '#1FB2A5',
-          neutral: '#191D24',
-          'base-100': '#2A303C',
-          info: '#3ABFF8',
-          success: '#36D399',
-          warning: '#FBBD23',
-          error: '#F87272',
-        },
-      },
+      'sunset',
     ],
-    darkTheme: 'dark',
-    base: true,
-    styled: true,
-    utils: true,
+    darkTheme: 'dark', // Default dark theme
+    base: true, // Applies background and text colors to root element by default
+    styled: true, // Include DaisyUI colors and design decisions
+    utils: true, // Add responsive and modifier utility classes
+    prefix: '', // Prefix for DaisyUI class names (empty for no prefix)
+    logs: true, // Show info about daisyUI version and used config in the console
   },
 };
 

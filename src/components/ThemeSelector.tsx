@@ -38,8 +38,8 @@ const ThemeGroup = ({
             className="w-3 h-3 rounded-full mr-2"
             style={{
               background: `linear-gradient(135deg, 
-                hsl(var(--${themeName === 'light' || themeName === 'dark' ? 'base' : themeName}-primary) / 0.8) 0%, 
-                hsl(var(--${themeName === 'light' || themeName === 'dark' ? 'base' : themeName}-secondary) / 0.8) 100%)`
+                hsl(var(--p) / 0.8) 0%, 
+                hsl(var(--s) / 0.8) 100%)`
             }}
           />
           {themeName.replace(/-/g, ' ')}

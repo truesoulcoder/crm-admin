@@ -2,9 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-/* DaisyUI base styles */
+/* Import OnceUI styles */
+@import 'once-ui/dist/style.css';
+
+/* Base styles for all themes */
 @layer base {
   :root {
+    /* Theme variables */
     --rounded-box: 1rem;
     --rounded-btn: 0.5rem;
     --rounded-badge: 1.9rem;
@@ -18,29 +22,23 @@
   }
 }
 
-/* Theme variables */
+/* Apply base styles */
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    /* other CSS variables */
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    /* dark mode variables */
+  body {
+    @apply bg-base-100 text-base-content min-h-screen;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
   }
 }
 
-/* Base styles */
-body {
-  @apply bg-base-100 text-base-content min-h-screen;
+/* OnceUI components customization - ensure they work with DaisyUI themes */
+.once-button {
+  @apply rounded-btn;
 }
 
-/* Scrollbar styling */
+/* Custom scrollbar that adapts to theme */
 ::-webkit-scrollbar {
-  @apply w-2;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -48,7 +46,48 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-base-300 rounded-full;
+  @apply bg-neutral rounded-full hover:bg-neutral-focus;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
-/* Other global styles */
+/* Ensure OnceUI components respect theme colors */
+.once-card {
+  @apply bg-base-100 text-base-content border border-base-300 rounded-box;
+}
+
+.once-input,
+.once-select,
+.once-textarea {
+  @apply bg-base-100 border-base-300 focus:border-primary focus:ring-2 focus:ring-primary/20;
+}
+
+/* Fix for dropdowns in dark mode */
+[data-theme*="dark"] .once-dropdown {
+  @apply bg-base-200 border-base-300;
+}
+
+/* Ensure tooltips are visible in all themes */
+.once-tooltip {
+  @apply bg-neutral text-neutral-content;
+}
+
+/* Modal backdrop */
+.once-modal-backdrop {
+  @apply bg-black/50;
+}
+
+/* Ensure form elements are styled consistently */
+.once-form-label {
+  @apply text-base-content/80;
+}
+
+/* Fix for active states */
+.once-button:active {
+  transform: scale(var(--btn-focus-scale, 0.95));
+}
+
+/* Ensure transitions are smooth */
+* {
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
+}
