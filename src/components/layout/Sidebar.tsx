@@ -5,8 +5,11 @@ import { LayoutDashboard, Users, FileText, Send, UserCog, Settings, Briefcase, C
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
-
+// External dependencies
+import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
+import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
+import { toast } from 'react-hot-toast';
 import { AnimatedDealpig } from '@/components/ui/AnimatedDealpig';
 import { useUser } from '@/contexts/UserContext'; 
 import { LetterFx } from '@/once-ui/components';

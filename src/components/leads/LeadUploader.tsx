@@ -1,7 +1,11 @@
 'use client';
 
 import { useState, useTransition, useRef, useEffect } from 'react';
-
+// External dependencies
+import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
+import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
+import { toast } from 'react-hot-toast';
 import { supabase } from '@/lib/supabase/client';
 
 // Define the expected response structure from the upload API

@@ -1,5 +1,9 @@
 import 'daisyui/dist/full.css';
-
+// External dependencies
+import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
+import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
+import { toast } from 'react-hot-toast';
 import { MapPin, X } from 'lucide-react';
 import React, { ChangeEvent, FormEvent, useCallback, useEffect, useState } from 'react';
 

@@ -2,7 +2,10 @@
 import { createBrowserClient } from '@supabase/ssr';
 import { useState, useEffect, useRef, FC, useCallback } from 'react';
 import { Badge, Card, Button, Select, Table, Toggle, Range, Alert } from 'react-daisyui';
-
+import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
+import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
+import { toast } from 'react-hot-toast';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useEngineControl } from '@/hooks/useEngineControl';
 import { useMarketRegions } from '@/hooks/useMarketRegions';

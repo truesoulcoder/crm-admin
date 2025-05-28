@@ -1,9 +1,12 @@
 'use client';
 
 import { Menu, Search } from 'lucide-react';
+// External dependencies
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-
+import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
+import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
+import { toast } from 'react-hot-toast';
 import ThemeSelector from '@/components/ThemeSelector';
 import { useUser } from '@/contexts/UserContext';
 

@@ -1,5 +1,5 @@
 'use client';
-
+// External dependencies
 import { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { createClient } from '@/lib/supabase/client';
