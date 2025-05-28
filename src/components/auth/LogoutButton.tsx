@@ -1,34 +1,29 @@
-// src/components/auth/LoginButton.tsx
+// src/components/auth/LogoutButton.tsx
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
-export function LoginButton() {
+export function LogoutButton() {
   const router = useRouter()
   const supabase = createClient()
 
-// src/components/auth/LoginButton.tsx
-const handleGoogleLogin = async () => {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: 'https://truesoulpartners.vercel.app/auth/callback',
-      queryParams: {
-        access_type: 'offline',
-        prompt: 'consent'
-      }
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      console.error('Logout error:', error.message)
+    } else {
+      router.push('/login')
+      router.refresh()
     }
-  })
-  if (error) console.error('Login error:', error.message)
-}
+  }
 
   return (
     <button 
-      onClick={handleGoogleLogin} 
-      className="btn btn-primary"
+      onClick={handleLogout} 
+      className="btn btn-ghost"
     >
-      Sign in with Google
+      Sign Out
     </button>
   )
 }
