@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { Badge } from 'react-daisyui';
 import toast from 'react-hot-toast';
 import { FiPlay, FiStopCircle, FiRefreshCw } from 'react-icons/fi';
-import LoadingSpinner from '@/components/LoadingSpinner';
 
 import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/lib/supabase/client';
+
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface Campaign {
   id: string;
@@ -38,6 +39,7 @@ export default function CampaignsView() {
   const [isStopping, setIsStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   // Fetch campaigns
   const fetchCampaigns = async () => {
@@ -98,6 +100,7 @@ export default function CampaignsView() {
     setIsStarting(true);
     setError(null);
     setSuccess(null);
+    setSubmissionError(null);
     
     try {
       await supabase
@@ -112,11 +115,9 @@ export default function CampaignsView() {
         .catch((error: unknown) => {
           console.error('Campaign creation error:', error);
           if (error instanceof Error) {
-            setError(error.message);
-            toast.error(error.message);
+            setSubmissionError(error.message);
           } else {
-            setError('Unknown error occurred');
-            toast.error('Unknown error occurred');
+            setSubmissionError('Failed to create campaign');
           }
         });
 
@@ -148,28 +149,23 @@ export default function CampaignsView() {
     setError(null);
     setSuccess(null);
     
-    try {
-      const { data, error } = await supabase
-        .rpc('stop_eli5_engine');
-
-      if (error) throw error;
-      
-      setSuccess('Campaign stopped successfully!');
-      // Refresh data
-      await fetchCampaigns();
-      await fetchJobs(selectedCampaign.id);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-        toast.error(err.message);
-      } else {
-        setError('Unknown error occurred');
-        toast.error('Unknown error occurred');
-      }
-      console.error('Error stopping campaign:', err);
-    } finally {
-      setIsStopping(false);
-    }
+    supabase
+      .rpc('stop_eli5_engine')
+      .then(() => {
+        setSuccess('Campaign stopped successfully!');
+        // Refresh data
+        fetchCampaigns();
+        fetchJobs(selectedCampaign.id);
+      })
+      .catch((error: unknown) => {
+        console.error('Campaign operation failed:', error);
+        const message = error instanceof Error ? error.message : 'Unknown error occurred';
+        setError(message);
+        toast.error(`Operation failed: ${message}`);
+      })
+      .finally(() => {
+        setIsStopping(false);
+      });
   };
 
   const handleRefresh = async () => {
@@ -183,12 +179,12 @@ export default function CampaignsView() {
     }
   };
 
-  const handleStartCampaign = async () => {
-    try {
-      await startCampaign(selectedCampaign.id);
-    } catch (error) {
-      handleError(error);
-    }
+  const handleStartCampaign = () => {
+    startCampaign(selectedCampaign.id).catch((error: unknown) => {
+      console.error('Campaign start failed:', error);
+      setError(error instanceof Error ? error.message : String(error));
+      toast.error(error instanceof Error ? error.message : 'Failed to start campaign');
+    });
   };
 
   const handleError = (error: unknown) => {
@@ -273,6 +269,15 @@ export default function CampaignsView() {
         <div className="alert alert-success mb-4">
           <div>{success}</div>
           <button className="btn btn-sm btn-ghost" onClick={() => setSuccess(null)}>×</button>
+        </div>
+      )}
+      
+      {submissionError && (
+        <div className="alert alert-error mb-4">
+          <div>
+            <span className="font-medium">Error:</span> {submissionError}
+          </div>
+          <button className="btn btn-sm btn-ghost" onClick={() => setSubmissionError(null)}>×</button>
         </div>
       )}
       
