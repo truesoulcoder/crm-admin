@@ -70,9 +70,21 @@ export async function GET(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) { return cookieStore.get(name)?.value },
-        set(name: string, value: string, options: CookieOptions) { cookieStore.set({ name, value, ...options }) },
-        remove(name: string, options: CookieOptions) { cookieStore.set({ name, value: '', ...options }) },
+        getAll() {
+          return cookieStore.getAll().map(cookie => ({
+            name: cookie.name,
+            value: cookie.value
+          }));
+        },
+        setAll(cookies: Array<{ name: string; value: string; options?: CookieOptions }>) {
+          cookies.forEach(({ name, value, options }) => {
+            try {
+              cookieStore.set({ name, value, ...options });
+            } catch (error) {
+              console.error('Error setting cookie:', error);
+            }
+          });
+        },
       },
     }
   );
