@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import CampaignSchedulerUI from './CampaignSchedulerUI';
 import CrondonkeyConsoleDashboard from './CrondonkeyConsoleDashboard';
-import { Card } from '@/components/ui/card';
 import { createServerClient } from '@/lib/supabase/client';
 
 export default function CrondonkeyTabsDashboard() {
@@ -56,18 +54,28 @@ export default function CrondonkeyTabsDashboard() {
   }, [supabase]);
 
   return (
-    <Card className="max-w-5xl mx-auto mt-8 p-4">
-      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-        <TabsList className="w-full justify-around">
-          <TabsTrigger value="schedule">📅 Schedule Campaign</TabsTrigger>
-          <TabsTrigger value="console">🧠 Crondonkey Console</TabsTrigger>
-        </TabsList>
+    <div className="max-w-5xl mx-auto mt-8 p-4 bg-base-100 rounded-box shadow">
+      <div role="tablist" className="tabs tabs-boxed w-full justify-around">
+        <button
+          role="tab"
+          className={`tab ${tab === 'schedule' ? 'tab-active' : ''}`}
+          onClick={() => setTab('schedule')}
+        >
+          📅 Schedule Campaign
+        </button>
+        <button
+          role="tab"
+          className={`tab ${tab === 'console' ? 'tab-active' : ''}`}
+          onClick={() => setTab('console')}
+        >
+          🧠 Crondonkey Console
+        </button>
+      </div>
 
-        <TabsContent value="schedule">
-          <CampaignSchedulerUI />
-        </TabsContent>
+      <div className="mt-6">
+        {tab === 'schedule' && <CampaignSchedulerUI />}
 
-        <TabsContent value="console">
+        {tab === 'console' && (
           <div className="space-y-4">
             <div className="flex justify-end gap-4">
               <button className="btn btn-outline" onClick={toggleCrondonkey}>
@@ -106,8 +114,8 @@ export default function CrondonkeyTabsDashboard() {
               </div>
             )}
           </div>
-        </TabsContent>
-      </Tabs>
-    </Card>
+        )}
+      </div>
+    </div>
   );
 }

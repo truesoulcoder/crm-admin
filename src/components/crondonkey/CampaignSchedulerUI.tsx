@@ -1,14 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Select, SelectItem } from '@/components/ui/select';
 import { format } from 'date-fns';
-import { Calendar } from '@/components/ui/calendar';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
+import { createServerClient } from '@/lib/supabase/client';
 
 export default function CampaignSchedulerUI() {
-  const supabase = useSupabaseClient();
+  const supabase = createServerClient();
   const [campaigns, setCampaigns] = useState([]);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [startTime, setStartTime] = useState(new Date());
@@ -48,23 +43,43 @@ export default function CampaignSchedulerUI() {
   };
 
   return (
-    <Card className="p-4 space-y-4 max-w-xl mx-auto mt-6">
+    <div className="p-4 space-y-4 max-w-xl mx-auto mt-6 bg-base-100 rounded-box shadow">
       <h2 className="text-xl font-semibold text-center">📅 Campaign Scheduler</h2>
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Select Campaign</label>
-        <Select value={selectedCampaign} onValueChange={setSelectedCampaign}>
+        <select
+          className="select select-bordered w-full"
+          value={selectedCampaign || ''}
+          onChange={(e) => setSelectedCampaign(e.target.value)}
+        >
+          <option disabled value="">
+            -- Choose a Campaign --
+          </option>
           {campaigns.map((c) => (
-            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            <option key={c.id} value={c.id}>{c.name}</option>
           ))}
-        </Select>
+        </select>
       </div>
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Start Date & Time</label>
-        <Calendar mode="single" selected={startTime} onSelect={setStartTime} className="rounded-md border" />
-        <Input
+        <input
+          type="date"
+          className="input input-bordered w-full"
+          value={format(startTime, 'yyyy-MM-dd')}
+          onChange={(e) => {
+            const [year, month, day] = e.target.value.split('-');
+            const updated = new Date(startTime);
+            updated.setFullYear(+year);
+            updated.setMonth(+month - 1);
+            updated.setDate(+day);
+            setStartTime(updated);
+          }}
+        />
+        <input
           type="time"
+          className="input input-bordered w-full"
           value={format(startTime, 'HH:mm')}
           onChange={(e) => {
             const [hours, minutes] = e.target.value.split(':');
@@ -76,15 +91,19 @@ export default function CampaignSchedulerUI() {
         />
       </div>
 
-      <Button disabled={loading || !selectedCampaign} onClick={scheduleCampaign}>
+      <button
+        className="btn btn-primary w-full"
+        disabled={loading || !selectedCampaign}
+        onClick={scheduleCampaign}
+      >
         {loading ? 'Scheduling...' : 'Schedule Campaign'}
-      </Button>
+      </button>
 
-      <CardContent className="bg-gray-100 p-2 mt-4 text-xs h-40 overflow-y-auto">
+      <div className="bg-base-200 p-2 mt-4 text-xs h-40 overflow-y-auto rounded">
         {log.map((l, i) => (
           <div key={i}>{l}</div>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
