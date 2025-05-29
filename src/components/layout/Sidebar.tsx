@@ -23,8 +23,8 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   {
-    name: 'Dashboard',
-    href: '/dashboard',
+    name: 'Crondonkey',
+    href: '/Crondonkey',
     icon: <LayoutDashboard size={20} />,
   },
   {
@@ -33,8 +33,8 @@ const menuItems: MenuItem[] = [
     icon: <Users size={20} />,
   },
   {
-    name: 'Campaigns',
-    href: '/campaigns',
+    name: 'Senders',
+    href: '/Senders',
     icon: <Mail size={20} />,
   },
   {

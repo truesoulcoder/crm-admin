@@ -26,6 +26,7 @@
     "@supabase/supabase-js": "^2.49.8",
     "@tanstack/react-table": "^8.17.3",
     "@types/csv-parse": "^1.1.12",
+    "axios": "^1.9.0",
     "class-variance-authority": "^0.7.1",
     "classnames": "^2.5.1",
     "clsx": "^2.1.1",
