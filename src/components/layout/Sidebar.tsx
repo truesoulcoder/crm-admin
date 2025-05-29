@@ -33,7 +33,7 @@ const menuItems: MenuItem[] = [
   },
   {
     name: 'Senders',
-    href: '/Senders',
+    href: '/senders',
     icon: <Mail size={20} />,
   },
   {
@@ -43,7 +43,7 @@ const menuItems: MenuItem[] = [
   },
   {
     name: 'Crondonkey',
-    href: '/Crondonkey',
+    href: '/crondonkey',
     icon: <Settings size={20} />,
   }
 ];
@@ -105,14 +105,6 @@ export default function Sidebar({ onClose }: SidebarProps = {}) {
       >
         <ChevronLeft className={`w-4 h-4 transition-transform ${isCollapsed ? 'rotate-180' : ''}`} />
       </button>
-      
-      {!isCollapsed && (
-        <div className="p-4 border-t border-base-300">
-          <div className="mb-4">
-            <PigAnimation />
-          </div>
-        </div>
-      )}
     </aside>
   );
 }
