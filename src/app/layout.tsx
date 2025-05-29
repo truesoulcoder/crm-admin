@@ -8,6 +8,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import { useTheme } from '@/hooks/useTheme';
 
 import Providers from './providers';
+
 import './globals.css';
 
 export default function RootLayout({
