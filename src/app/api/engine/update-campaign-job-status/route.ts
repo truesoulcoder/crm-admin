@@ -1,47 +1,15 @@
-// External dependencies
-import { createClient } from '@supabase/supabase-js';
+// src/app/api/engine/update-campaign-job-status/route.ts
+import { createClient } from '@/lib/supabase/server';
 
-// Types
-import { Database } from '@/db_types';
+export async function updateCampaignJobStatus(jobId: string, status: string) {
+  const supabase = createClient();
 
-// Initialize Supabase client with service role
-const supabase = createClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
+  const { error } = await supabase
+    .from('campaign_jobs')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', jobId);
 
-export async function updateCampaignJobStatus(
-  logId: string, 
-  status: 'sent' | 'failed', 
-  error?: string
-): Promise<void> {
-  try {
-    const { error: updateError } = await supabase
-      .from('campaign_jobs')
-      .update({ 
-        status, 
-        error: error || null,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', logId);
-
-    if (updateError) {
-      console.error('Error updating campaign job status:', updateError);
-      throw updateError;
-    }
-  } catch (e: unknown) {
-    console.error(
-      'Error in updateCampaignJobStatus:', 
-      e instanceof Error ? e.message : 'Unknown error'
-    );
-    throw e; // Re-throw to allow callers to handle the error
+  if (error) {
+    throw new Error(`Failed to update job status: ${error.message}`);
   }
 }
-
-export default updateCampaignJobStatus;

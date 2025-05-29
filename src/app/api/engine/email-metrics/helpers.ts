@@ -60,3 +60,8 @@ export async function updateEmailLogStatus(
     );
   }
 }
+export const STATUS_KEY = {
+  ACTIVE: 'active',
+  PAUSED: 'paused',
+  COMPLETED: 'completed',
+} as const;
