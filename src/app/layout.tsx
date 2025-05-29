@@ -5,7 +5,6 @@ import { useState, useEffect } from 'react';
 
 import Navbar from '@/components/layout/Navbar';
 import Sidebar from '@/components/layout/Sidebar';
-import GoogleMapsLoader from '@/components/maps/GoogleMapsLoader';
 import { useTheme } from '@/hooks/useTheme';
 
 import Providers from './providers';
@@ -42,7 +41,6 @@ export default function RootLayout({
       </head>
       <body>
         <Providers>
-          <GoogleMapsLoader>
             <div className="drawer lg:drawer-open">
               <input 
                 id="sidebar-drawer-toggle" 
@@ -67,7 +65,6 @@ export default function RootLayout({
                 <Sidebar />
               </div>
             </div>
-          </GoogleMapsLoader>
         </Providers>
       </body>
     </html>
