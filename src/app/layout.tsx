@@ -18,12 +18,23 @@ export default function RootLayout({
 
   // Apply theme class to HTML element
   useEffect(() => {
-    const root = document.documentElement;
-    root.setAttribute('data-theme', resolvedTheme);
+    if (typeof window !== 'undefined') {
+      const root = window.document.documentElement;
+      // Remove any existing theme classes
+      root.className = '';
+      // Add the current theme class
+      root.classList.add(resolvedTheme || 'night');
+      // Also set data-theme attribute for DaisyUI
+      root.setAttribute('data-theme', resolvedTheme || 'night');
+    }
   }, [resolvedTheme]);
 
   return (
-    <html lang="en" data-theme={resolvedTheme} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Add this to force dark mode on the browser UI if needed */}
+        <meta name="color-scheme" content="dark light" />
+      </head>
       <body className={inter.className}>
         <Providers>
           <ClientLayoutWrapper>

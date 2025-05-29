@@ -1,13 +1,15 @@
 // src/hooks/useTheme.ts
+'use client';
+
 import { useEffect, useState } from 'react';
 
 export type ThemeName = 
-  | 'light' | 'dark' | 'cupcake' | 'bumblebee' | 'emerald' 
-  | 'corporate' | 'synthwave' | 'retro' | 'cyberpunk' | 'valentine' 
-  | 'halloween' | 'garden' | 'forest' | 'aqua' | 'lofi' 
-  | 'pastel' | 'fantasy' | 'wireframe' | 'black' | 'luxury' 
-  | 'dracula' | 'cmyk' | 'autumn' | 'business' | 'acid' 
-  | 'lemonade' | 'night' | 'coffee' | 'winter' | 'dim' | 'nord' | 'sunset';
+  | 'light' | 'dark' | 'night' | 'synthwave' | 'retro' 
+  | 'cyberpunk' | 'valentine' | 'halloween' | 'garden' 
+  | 'forest' | 'aqua' | 'lofi' | 'pastel' | 'fantasy' 
+  | 'wireframe' | 'black' | 'luxury' | 'dracula' | 'cmyk' 
+  | 'autumn' | 'business' | 'acid' | 'lemonade' | 'coffee' 
+  | 'winter' | 'dim' | 'nord' | 'sunset';
 
 export type Theme = ThemeName | 'system';
 
@@ -18,35 +20,41 @@ export const useTheme = () => {
 
   // Initialize theme from localStorage or use default
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     const savedTheme = localStorage.getItem('theme') as Theme | null;
-    if (savedTheme) {
-      setTheme(savedTheme);
-      if (savedTheme !== 'system') {
-        setResolvedTheme(savedTheme);
-      } else {
-        const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        setResolvedTheme(isDark ? 'night' : 'light');
-      }
+    const initialTheme = savedTheme || 'night';
+    
+    setTheme(initialTheme);
+    
+    if (initialTheme === 'system') {
+      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setResolvedTheme(isDark ? 'night' : 'light');
+    } else {
+      setResolvedTheme(initialTheme);
     }
+    
     setMounted(true);
   }, []);
 
   // Update theme when it changes
   const updateTheme = (newTheme: Theme) => {
+    if (typeof window === 'undefined') return;
+    
     setTheme(newTheme);
     localStorage.setItem('theme', newTheme);
     
-    if (newTheme !== 'system') {
-      setResolvedTheme(newTheme);
-    } else {
+    if (newTheme === 'system') {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       setResolvedTheme(isDark ? 'night' : 'light');
+    } else {
+      setResolvedTheme(newTheme);
     }
   };
 
   // Listen for system theme changes
   useEffect(() => {
-    if (theme !== 'system') return;
+    if (theme !== 'system' || typeof window === 'undefined') return;
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = () => {
@@ -60,7 +68,7 @@ export const useTheme = () => {
   return {
     theme,
     setTheme: updateTheme,
-    resolvedTheme,
+    resolvedTheme: mounted ? resolvedTheme : 'night',
     mounted,
   };
 };

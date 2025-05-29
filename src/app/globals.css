@@ -19,20 +19,27 @@
     --border-btn: 1px;
     --tab-border: 1px;
     --tab-radius: 0.5rem;
+    color-scheme: light dark;
   }
 }
 
 /* Apply base styles */
 @layer base {
+  html, body {
+    @apply h-full;
+  }
+  
   body {
     @apply bg-base-100 text-base-content min-h-screen;
     font-feature-settings: 'rlig' 1, 'calt' 1;
+    transition: background-color 200ms ease, color 200ms ease;
   }
 }
 
-/* OnceUI components customization - ensure they work with DaisyUI themes */
+/* OnceUI components customization */
 .once-button {
   @apply rounded-btn;
+  text-transform: var(--btn-text-case, uppercase);
 }
 
 /* Custom scrollbar that adapts to theme */
@@ -51,43 +58,67 @@
   background-clip: padding-box;
 }
 
-/* Ensure OnceUI components respect theme colors */
-.once-card {
-  @apply bg-base-100 text-base-content border border-base-300 rounded-box;
-}
-
+/* Form elements */
 .once-input,
 .once-select,
 .once-textarea {
-  @apply bg-base-100 border-base-300 focus:border-primary focus:ring-2 focus:ring-primary/20;
+  @apply bg-base-100 border border-base-300 rounded-btn;
+  @apply focus:ring-2 focus:ring-primary/50 focus:border-primary;
+  @apply transition-colors duration-200;
 }
 
-/* Fix for dropdowns in dark mode */
-[data-theme*="dark"] .once-dropdown {
-  @apply bg-base-200 border-base-300;
+/* Fix for dropdowns */
+.once-dropdown {
+  @apply bg-base-100 border border-base-300 rounded-box shadow-lg;
 }
 
-/* Ensure tooltips are visible in all themes */
+/* Tooltips */
 .once-tooltip {
-  @apply bg-neutral text-neutral-content;
+  @apply bg-neutral text-neutral-content rounded-btn px-3 py-1.5 text-sm;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
 }
 
-/* Modal backdrop */
+/* Modal */
+.once-modal {
+  @apply bg-base-100 border border-base-300 rounded-box p-6;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+}
+
 .once-modal-backdrop {
-  @apply bg-black/50;
+  @apply bg-black/50 backdrop-blur-sm;
 }
 
-/* Ensure form elements are styled consistently */
-.once-form-label {
-  @apply text-base-content/80;
+/* Cards */
+.once-card {
+  @apply bg-base-100 text-base-content border border-base-300 rounded-box;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
-/* Fix for active states */
-.once-button:active {
-  transform: scale(var(--btn-focus-scale, 0.95));
+/* Active states */
+button:active {
+  transform: scale(var(--btn-focus-scale, 0.98));
 }
 
-/* Ensure transitions are smooth */
-* {
-  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease;
+/* Smooth transitions for theme changes */
+*, *::before, *::after {
+  transition: 
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+/* Focus states */
+:focus-visible {
+  @apply outline-none ring-2 ring-primary/50 ring-offset-2 ring-offset-base-100;
+}
+
+/* Remove default button styles */
+button {
+  @apply focus:outline-none;
+}
+
+/* Ensure proper contrast for disabled buttons */
+button:disabled {
+  @apply opacity-50 cursor-not-allowed;
 }
