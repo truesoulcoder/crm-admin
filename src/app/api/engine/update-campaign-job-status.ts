@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Types
-import { Database } from '@/types/db_types';
+import { Database } from '@/db_types';
 
 // Initialize Supabase client with service role
 const supabase = createClient<Database>(

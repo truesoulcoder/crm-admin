@@ -33,21 +33,8 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  // Create a cookie store that matches the expected interface
-  const cookieStore = {
-    get: (name: string) => {
-      const value = req.cookies[name];
-      return value ? { value } : undefined;
-    },
-    set: (name: string, value: string, options: any) => {
-      res.setHeader('Set-Cookie', 
-        `${name}=${value}; Path=/; ${options?.httpOnly ? 'HttpOnly;' : ''} ${options?.secure ? 'Secure;' : ''} ${options?.maxAge ? `Max-Age=${options.maxAge};` : ''}`
-      );
-    }
-  };
-
   // Authenticate the request
-  const supabase = supabaseServerClient(cookieStore);
+  const supabase = supabaseServerClient;
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session) {

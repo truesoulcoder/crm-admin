@@ -1,10 +1,11 @@
 // pages/api/crondonkey/index.ts
+import { supabaseServerClient } from '@/lib/supabase/server';
+
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { supabaseServerClient as supabase } from '@/lib/supabase/server';
 
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const supabase = createServerClient();
+  const supabase = supabaseServerClient;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });

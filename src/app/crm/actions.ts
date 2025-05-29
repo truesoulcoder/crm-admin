@@ -2,8 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 
+import { Database } from '@/db_types';
 import { createClient } from '@/lib/supabase/server';
-import { Database } from '@/types/db_types';
 
 import type { CrmLead } from '@/types/crm';
 

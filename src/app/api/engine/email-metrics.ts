@@ -4,7 +4,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 
 import { supabaseServerClient } from '@/lib/supabase/server';
 
-import type { Database } from '@/types/db_types';
+import type { Database } from '@/db_types';
 
 type EmailStatus = 'sent' | 'delivered' | 'bounced';
 type TimeRange = '24h' | '7d' | '30d';
