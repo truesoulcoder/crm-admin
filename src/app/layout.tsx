@@ -1,70 +1,75 @@
-// src/app/layout.tsx
 'use client';
 
-import './main.css';
-import './globals.css';
-
-import { 
-  Users, 
-  Settings, 
-  Menu, 
-  LayoutDashboard,
-  Mailbox,
-  FileText,
-  Send
-} from 'lucide-react';
-import { Inter } from 'next/font/google';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ReactNode, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
-import AppLayout from '@/components/layout/AppLayout';
-import ThemeToggle from '@/components/ThemeToggle';
+import Navbar from '@/components/layout/Navbar';
+import Sidebar from '@/components/layout/Sidebar';
+import GoogleMapsLoader from '@/components/maps/GoogleMapsLoader';
 import { useTheme } from '@/hooks/useTheme';
 
-const inter = Inter({ subsets: ['latin'] });
+import Providers from './providers';
+import './globals.css';
 
-const navItems = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Leads', href: '/leads', icon: Users },
-  { name: 'CRM', href: '/crm', icon: Users },
-  { name: 'Campaigns', href: '/campaigns', icon: Send },
-  { name: 'Templates', href: '/templates', icon: FileText },
-  { name: 'Senders', href: '/senders', icon: Mailbox },
-  { name: 'Settings', href: '/settings', icon: Settings },
-];
-
-const RootLayout = ({
+export default function RootLayout({
   children,
 }: {
-  children: ReactNode;
-}) => {
+  children: React.ReactNode;
+}) {
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { resolvedTheme } = useTheme();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
 
   // Apply theme
   useEffect(() => {
     const root = document.documentElement;
-    if (resolvedTheme) {
-      root.setAttribute('data-theme', resolvedTheme);
-    } else {
-      // Fallback to night theme if resolvedTheme is not available yet
-      root.setAttribute('data-theme', 'night');
-    }
+    root.setAttribute('data-theme', resolvedTheme || 'night');
   }, [resolvedTheme]);
 
-  // Close sidebar when route changes
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [pathname]);
-
+  const toggleMobileSidebar = () => {
+    const drawerCheckbox = document.getElementById('sidebar-drawer-toggle') as HTMLInputElement | null;
+    if (drawerCheckbox) {
+      drawerCheckbox.checked = !drawerCheckbox.checked;
+      setIsMobileSidebarOpen(drawerCheckbox.checked);
+    }
+  };
 
   return (
-    <AppLayout>
-      {children}
-    </AppLayout>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <title>CRM Admin</title>
+        <meta name="description" content="CRM Admin Dashboard" />
+      </head>
+      <body>
+        <Providers>
+          <GoogleMapsLoader>
+            <div className="drawer lg:drawer-open">
+              <input 
+                id="sidebar-drawer-toggle" 
+                type="checkbox" 
+                className="drawer-toggle" 
+              />
+              <div className="drawer-content flex flex-col">
+                <Navbar 
+                  toggleSidebar={toggleMobileSidebar} 
+                  isSidebarOpen={isMobileSidebarOpen} 
+                />
+                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-base-100">
+                  {children}
+                </main>
+              </div>
+              <div className="drawer-side z-30">
+                <label 
+                  htmlFor="sidebar-drawer-toggle" 
+                  aria-label="close sidebar" 
+                  className="drawer-overlay"
+                ></label>
+                <Sidebar />
+              </div>
+            </div>
+          </GoogleMapsLoader>
+        </Providers>
+      </body>
+    </html>
   );
-};
-
-export default RootLayout;
+}

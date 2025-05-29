@@ -1,3 +1,4 @@
+// app/page.tsx (Server Component by default)
 import { redirect } from 'next/navigation';
 
 // This page needs to be dynamic to handle auth state

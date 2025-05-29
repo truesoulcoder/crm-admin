@@ -1,12 +1,9 @@
 'use client';
 
 // External dependencies
-import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
-import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
-import { toast } from 'react-hot-toast';
+import { useState } from 'react'; 
 
 import GoogleMapsLoader from '@/components/maps/GoogleMapsLoader'; // Import GoogleMapsLoader
-import RequireAuth from '@/components/RequireAuth'; // Assuming RequireAuth is in src/components
 
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
@@ -38,9 +35,7 @@ const MainAppShell: React.FC<MainAppShellProps> = ({ children }) => {
         <Navbar />
         {/* Main content area */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-base-100">
-          <RequireAuth>
             {children}
-          </RequireAuth>
         </main>
       </div>
       {/* Sidebar */}
