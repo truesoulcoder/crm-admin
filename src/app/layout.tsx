@@ -1,6 +1,9 @@
-// app/layout.tsx
+// src/app/layout.tsx
+'use client';
+
 import { Inter } from 'next/font/google';
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
+import { useTheme } from '@/hooks/useTheme';
 import Providers from './providers';
 import ClientLayoutWrapper from './client-layout-wrapper';
 
@@ -11,8 +14,17 @@ export default function RootLayout({
 }: {
   children: ReactNode;
 }) {
+  const { resolvedTheme } = useTheme();
+
+  // Apply theme class to HTML element
+  useEffect(() => {
+    const root = document.documentElement;
+    root.setAttribute('data-theme', resolvedTheme);
+    root.classList.add(resolvedTheme);
+  }, [resolvedTheme]);
+
   return (
-    <html lang="en" data-theme="custom_crm_theme" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <Providers>
           <ClientLayoutWrapper>
