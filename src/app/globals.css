@@ -3,9 +3,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Import OnceUI styles */
-@import 'once-ui/dist/style.css';
-
 /* Base styles */
 :root {
   --header-height: 4rem;
