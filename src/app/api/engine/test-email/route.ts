@@ -3,15 +3,16 @@ import path from 'path';
 
 import { configure, renderString } from 'nunjucks';
 
-import { generateLoiPdf } from './send-email/_pdfUtils';
+import type { NextApiRequest, NextApiResponse } from 'next';
+
+import { generateLoiPdf } from '@/app/api/engine/send-email/_pdfUtils.ts';
 import {
   getSupabaseClient,
   getGmailService,
   logToSupabase,
   isValidEmail,
-} from './send-email/_utils';
+} from '@/app/api/engine/send-email/_utils.ts';
 
-import type { NextApiRequest, NextApiResponse } from 'next';
 
 // Nunjucks environment setup (can be shared if multiple routes use Nunjucks)
 const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
@@ -435,8 +436,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (pdfFailed || !pdfBuffer) { 
       await logToSupabase({
-        contact_name: sharedData.contact_name,
-        contact_email: intendedRecipientEmail,
+        contact_name: sharedData.contact_name, // Use from sharedData
+        contact_email: intendedRecipientEmail, 
+        // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
         sender_name: activeSenderName,
         sender_email_used: activeSenderEmail,
         email_subject_sent: emailSubject,

@@ -1,6 +1,6 @@
-import { getSupabaseClient } from './send-email/_utils';
-
 import type { NextApiRequest, NextApiResponse } from 'next';
+
+import { getSupabaseClient } from '@/app/api/engine/send-email/_utils.ts';
 
 const STATUS_KEY = 'campaign_processing_enabled';
 
