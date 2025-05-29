@@ -1,7 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Stat, StatLabel, StatNumber } from '@/components/ui/stat';
 import { createServerClient } from '@/lib/supabase/client';
 
 export default function CrondonkeyConsoleDashboard({ isPaused }: { isPaused: boolean }) {
@@ -76,19 +73,19 @@ export default function CrondonkeyConsoleDashboard({ isPaused }: { isPaused: boo
   }, [supabase]);
 
   return (
-    <Card className="p-4 space-y-4 max-w-5xl mx-auto mt-6">
+    <div className="p-4 space-y-4 max-w-5xl mx-auto mt-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">🤖 Crondonkey Command Console</h2>
         <span className="text-sm text-muted">{isPaused ? '⏸️ Paused' : isRunning ? '🟢 Running' : '🔴 Idle'}</span>
       </div>
 
       <div className="flex gap-4">
-        <Button variant="outline" onClick={toggleCrondonkey}>
+        <button className="btn btn-outline" onClick={toggleCrondonkey}>
           {isRunning ? 'Stop Crondonkey' : 'Start Crondonkey'}
-        </Button>
-        <Button variant="ghost" onClick={togglePause}>
+        </button>
+        <button className="btn btn-ghost" onClick={togglePause}>
           {isPaused ? 'Resume' : 'Pause'}
-        </Button>
+        </button>
       </div>
 
       {totalJobs > 0 && (
@@ -112,18 +109,18 @@ export default function CrondonkeyConsoleDashboard({ isPaused }: { isPaused: boo
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {Object.entries(metrics).map(([label, value]) => (
-          <Stat key={label}>
-            <StatLabel className="capitalize">{label}</StatLabel>
-            <StatNumber>{value}</StatNumber>
-          </Stat>
+          <div key={label} className="stat bg-base-200 rounded-box p-4">
+            <div className="stat-title capitalize">{label}</div>
+            <div className="stat-value">{value}</div>
+          </div>
         ))}
       </div>
 
-      <CardContent className="bg-gray-900 text-green-300 font-mono p-2 h-60 overflow-y-auto text-sm rounded-md">
+      <div className="bg-gray-900 text-green-300 font-mono p-2 h-60 overflow-y-auto text-sm rounded-md">
         {logs.map((l, i) => (
           <div key={i}>{l}</div>
         ))}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
