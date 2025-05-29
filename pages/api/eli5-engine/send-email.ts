@@ -3,9 +3,6 @@ import path from 'path';
 
 import { configure, renderString } from 'nunjucks';
 
-// Local imports
-import { withApiKey } from '@/lib/apiAuth';
-
 import { generateLoiPdf } from './_pdfUtils';
 import {
   getSupabaseClient,
@@ -524,4 +521,4 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   }
 };
 
-export default withApiKey(handler);
+export default (handler);
