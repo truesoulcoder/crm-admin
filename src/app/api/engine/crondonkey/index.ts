@@ -1,6 +1,7 @@
 // pages/api/crondonkey/index.ts
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { createServerClient } from '@/lib/supabase/server';
+import { supabaseServerClient as supabase } from '@/lib/supabase/server';
+
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const supabase = createServerClient();
