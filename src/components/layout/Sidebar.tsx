@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 
-import { useUser } from '@/contexts/UserContext';
 import { cn } from '@/lib/utils';
 
 // Dynamically import PigAnimation with no SSR to avoid window is not defined errors
@@ -54,17 +53,8 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ onClose }: SidebarProps = {}) {
-  const { user, loading } = useUser();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
-
-  if (loading) {
-    return (
-      <aside className="bg-base-200 text-base-content w-16 min-h-screen p-4 flex flex-col items-center justify-center">
-        <span className="loading loading-spinner loading-md"></span>
-      </aside>
-    );
-  }
 
   return (
     <aside className={cn(
@@ -120,26 +110,6 @@ export default function Sidebar({ onClose }: SidebarProps = {}) {
         <div className="p-4 border-t border-base-300">
           <div className="mb-4">
             <PigAnimation />
-          </div>
-        </div>
-      )}
-      
-      {!isCollapsed && user && (
-        <div className="p-4 border-t border-base-300">
-          <div className="flex items-center">
-            <div className="avatar placeholder">
-              <div className="bg-neutral text-neutral-content rounded-full w-8">
-                <span>{user.email?.charAt(0).toUpperCase() || 'U'}</span>
-              </div>
-            </div>
-            <div className="ml-3">
-              <div className="font-medium">
-                {user.email?.split('@')[0] || 'User'}
-              </div>
-              <div className="text-xs opacity-70 truncate">
-                {user.email}
-              </div>
-            </div>
           </div>
         </div>
       )}

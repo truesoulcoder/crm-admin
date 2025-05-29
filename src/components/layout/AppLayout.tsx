@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { useState } from 'react';
+
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 
@@ -41,7 +42,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
       {/* Main content */}
       <div className="flex flex-1 flex-col lg:pl-72">
-        <Navbar onMenuClick={() => setSidebarOpen(true)} />
+        <Navbar />
         <main className="flex-1 overflow-y-auto bg-base-100 p-4 md:p-6">
           {children}
         </main>
