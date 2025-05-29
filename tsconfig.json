@@ -39,7 +39,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts"
-, "database.types", "src/services/campaignEngine.old", "tailwind.config.ts.old"  ],
+, "database.types", "src/services/campaignEngine.old", "tailwind.config.ts.old", "src/app/dashboard/extrastylingsfornoreason.old"  ],
   "exclude": [
     "node_modules"
   ]
