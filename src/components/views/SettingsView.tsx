@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { Shield, Key, Palette, BarChart2, Building2, Mail, Phone, Image as ImageIcon } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 
@@ -495,14 +496,15 @@ const SettingsView = () => {
                     <div className="avatar">
                       <div className="w-16 h-16 rounded-lg bg-base-300 flex items-center justify-center">
                         {branding.companyLogo ? (
-                          <img 
+                          <Image 
                             src={branding.companyLogo} 
                             alt="Company Logo" 
-                            className="w-full h-full object-contain p-1" 
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.src = '/default-company-logo.png';
-                            }}
+                            width={128}
+                            height={128}
+                            className="object-contain p-1" // Adjusted className
+                            // onError is not directly supported like in <img>.
+                            // Fallback strategies can be implemented with custom loaders or by handling broken images upstream.
+                            // For now, removing onError as per task focus.
                           />
                         ) : (
                           <ImageIcon className="w-8 h-8 text-gray-400" />

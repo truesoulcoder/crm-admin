@@ -180,9 +180,11 @@ export function DropdownHeader({ children }: { children: ReactNode }) {
 }
 
 // Re-export all components
-export default {
-  Dropdown,
+const DropdownNamespace = {
+  Root: Dropdown, // Renaming Dropdown to DropdownNamespace.Root to avoid naming conflict
   Item: DropdownItem,
   Divider: DropdownDivider,
   Header: DropdownHeader,
 };
+
+export default DropdownNamespace;

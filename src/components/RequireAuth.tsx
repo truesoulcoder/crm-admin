@@ -30,9 +30,9 @@ const RequireAuth: React.FC<RequireAuthProps> = ({ children }) => {
       // If not logged in and not on the login page, redirect to login
       router.push('/');
     }
-  }, [user, isLoading, pathname, router]);
+  }, [user, loading, pathname, router]);
 
-  if (isLoading) {
+  if (loading) {
     return (
       <>
         <Head>

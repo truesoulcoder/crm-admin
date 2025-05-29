@@ -202,7 +202,7 @@ export default function CampaignsView() {
   // Initial load
   useEffect(() => {
     fetchCampaigns();
-  }, []);
+  }, [fetchCampaigns]);
 
   // Fetch jobs when selected campaign changes
   useEffect(() => {
