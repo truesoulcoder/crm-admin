@@ -7,7 +7,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 
 // Internal dependencies
-import { STATUS_KEY } from '@/app/api/engine/email-metrics/route';
+import { STATUS_KEY } from '@/app/api/engine/email-metrics/email-metrics-bloated.old';
 import { logCampaignJob } from '@/app/api/engine/log-campaign-job/route';
 // Email sending is handled via API endpoint
 import { updateCampaignJobStatus } from '@/app/api/engine/update-campaign-job-status/route';
