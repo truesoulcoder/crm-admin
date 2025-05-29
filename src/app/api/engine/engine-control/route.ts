@@ -1,85 +1,73 @@
-// pages/api/eli5-engine/engine-control.ts
+// src/app/api/engine/engine-control/route.ts
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
 
 import type { PostgrestError } from '@supabase/supabase-js';
-import type { NextApiRequest, NextApiResponse } from 'next';
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  // Create authenticated Supabase client
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll().map(cookie => ({
-            name: cookie.name,
-            value: cookie.value
-          }));
-        },
-        setAll(cookies) {
-          cookies.forEach(({ name, value, ...options }) => {
-            try {
-              cookieStore.set({ name, value, ...options });
-            } catch (error) {
-              // Handle the error if needed
-              console.error('Error setting cookie:', error);
-            }
-          });
-        },
-      },
-    }
-  );
+export const dynamic = 'force-dynamic';
 
-  // Check auth
-  const { data: { session } } = await supabase.auth.getSession();
-  
-  // Handle unauthenticated users
-  if (!session) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  // Check for superadmin role
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', session.user.id)
-    .single();
-
-  if (profile?.role !== 'superadmin') {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
+export async function GET(req: NextRequest) {
   try {
-    // Handle GET requests for engine status
-    if (req.method === 'GET') {
-      const { data, error } = await supabase
-        .from('engine_control')
-        .select('*')
-        .limit(1)
-        .single();
+    // Create authenticated Supabase client
+    const cookieStore = cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options: any) {
+            cookieStore.set({ name, value, ...options });
+          },
+          remove(name: string, options: any) {
+            cookieStore.set({ name, value: '', ...options, maxAge: 0 });
+          },
+        },
+      }
+    );
 
-      if (error) throw new Error(error.message);
-      
-      return res.status(200).json(data || { 
-        is_running: false,
-        last_started_at: null,
-        last_stopped_at: null
-      });
+    // Check auth
+    const { data: { session } } = await supabase.auth.getSession();
+
+    // Handle unauthenticated users
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    return res.status(405).json({ error: 'Method not allowed' });
+    // Check for superadmin role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .single();
+
+    if (profile?.role !== 'superadmin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Handle GET requests for engine status
+    const { data, error } = await supabase
+      .from('engine_control')
+      .select('*')
+      .limit(1)
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    return NextResponse.json(data || {
+      is_running: false,
+      last_started_at: null,
+      last_stopped_at: null
+    });
 
   } catch (err: unknown) {
     const error = err instanceof Error ? err : new Error('Unknown error occurred');
-    return res.status(500).json({ 
+    return NextResponse.json({
       error: 'Failed to fetch engine status',
-      details: error.message 
-    });
+      details: error.message
+    }, { status: 500 });
   }
 }

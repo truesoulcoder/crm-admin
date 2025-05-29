@@ -1,6 +1,6 @@
 //#region Interfaces
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { NextApiRequest, NextApiResponse } from 'next';
+import { NextRequest, NextResponse } from 'next/server';
 
 import { supabaseServerClient } from '@/lib/supabase/server';
 
@@ -64,7 +64,7 @@ export type EmailLogStatusUpdate = Database['public']['Tables']['eli5_email_log'
 }
 
 export type EmailSendStatus = 'SENT' | 'DELIVERED' | 'BOUNCED';
-  //#endregion
+//#endregion
 //#region Utilities
 /**
  * Gets date range for metrics query
@@ -99,30 +99,28 @@ const serialize = <T>(data: T): string => {
 };
 //#endregion
 //#region API Handler
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<ApiResponse>
-) {
+export async function GET(request: NextRequest) {
   // Initialize variables at function scope
   let metrics: EmailMetric[] = [];
   let timeSeries: any = null;
   let supabaseClient;
 
   try {
-    // Validate HTTP method
-    if (req.method !== 'GET') {
-      res.setHeader('Allow', ['GET']);
-      return res.status(405).json({ 
-        success: false, 
-        error: `Method ${req.method} Not Allowed` 
-      });
-    }
-
     // Parse query parameters
-    const { timeRange = '7d' } = req.query as { timeRange?: TimeRange };
+    const { searchParams } = new URL(request.url);
+    const timeRange = searchParams.get('timeRange') as TimeRange || '7d';
+    const senderId = searchParams.get('senderId');
+    
     const daysBack = timeRange === '24h' ? 1 : timeRange === '7d' ? 7 : 30;
     const dateRange = getDateRange(daysBack);
     
+    if (!senderId) {
+      return NextResponse.json(
+        { success: false, error: 'Missing sender ID' }, 
+        { status: 400 }
+      );
+    }
+
     // Configure Supabase client with proper type definitions
     type SupabaseQueryBuilder = {
       from: (table: string) => {
@@ -156,26 +154,18 @@ export default async function handler(
         end_date: dateRange.end.toISOString(),
         interval_days: daysBack === 1 ? 1 : daysBack === 7 ? 1 : 7
       })
-      ]);
+    ]);
 
-      if (metricsResponse.error) {
-        throw new Error(`Error fetching metrics: ${metricsResponse.error.message}`);
-      }
-      if (timeSeriesResponse.error) {
-        throw new Error(`Error fetching time series: ${timeSeriesResponse.error.message}`);
-      }
-
-      metrics = metricsResponse.data || [];
-      timeSeries = timeSeriesResponse.data || [];
-
-//#endregion
-
-//#region Sender Metrics
-    const senderId = req.query.senderId as string;
-    if (!senderId) {
-      return res.status(400).json({ success: false, error: 'Missing sender ID' });
+    if (metricsResponse.error) {
+      throw new Error(`Error fetching metrics: ${metricsResponse.error.message}`);
     }
-    
+    if (timeSeriesResponse.error) {
+      throw new Error(`Error fetching time series: ${timeSeriesResponse.error.message}`);
+    }
+
+    metrics = metricsResponse.data || [];
+    timeSeries = timeSeriesResponse.data || [];
+
     // Process metrics and calculate totals
     const bySender = processSenderMetrics(metrics);
     if (!bySender || !bySender.length) {
@@ -197,69 +187,30 @@ export default async function handler(
       // Continue execution even if update fails
     }
 
-    // Fetch sender details and time series data
-    const [senderResponse, senderTimeSeriesResponse] = await Promise.all([
-      supabaseClient
-        .from('senders')
-        .select('*')
-        .eq('id', senderId)
-        .single(),
-      
-      supabaseClient.rpc('get_email_metrics_time_series', { 
-        start_date: dateRange.start.toISOString().split('T')[0],
-        end_date: dateRange.end.toISOString().split('T')[0],
-        interval_days: daysBack === 1 ? 1 : 7
-      })
-    ]);
-
-    // Handle sender response
-    if (senderResponse.error) {
-      throw new EmailMetricsError(`Failed to fetch sender: ${senderResponse.error.message}`);
-    }
-    const senderData = senderResponse.data;
-
-    // Handle time series response
-    let timeSeriesData = [];
-    if (senderTimeSeriesResponse.error) {
-      console.warn('Time series data not available:', senderTimeSeriesResponse.error.message);
-    } else {
-      timeSeriesData = senderTimeSeriesResponse.data || [];
-    }
-
-    // Process time series data
-    const processTimeSeriesData = (data: any[]): any[] => {
-      if (!data || !Array.isArray(data)) return [];
-      return data.map(item => ({
-        date: item.date_group,
-        sent: item.sent || 0,
-        delivered: item.delivered || 0,
-        bounced: item.bounced || 0,
-        opened: item.opened || 0,
-        clicked: item.clicked || 0,
-        replied: item.replied || 0
-      }));
-    };
-
-    const processedTimeSeries = processTimeSeriesData(timeSeriesData);
-
-    return res.status(200).json({
+    // Return the successful response
+    return NextResponse.json({
       success: true,
       data: {
+        metrics: bySender,
         totals,
-        timeSeries: timeSeriesData || []
+        timeSeries
       }
     });
-  } catch (error: unknown) {
-    const message = error instanceof Error 
-      ? error.message
-      : 'Failed to process email metrics';
-    console.error('Email metrics error:', message);
-    return res.status(500).json({
-      success: false,
-      error: message
-    });
+
+  } catch (error) {
+    console.error('Error in email metrics API:', error);
+    const status = error instanceof EmailMetricsError ? error.status : 500;
+    const message = error instanceof Error ? error.message : 'An unknown error occurred';
+    
+    return NextResponse.json(
+      { success: false, error: message },
+      { status }
+    );
   }
 }
+
+// Export other HTTP methods as needed
+export const dynamic = 'force-dynamic';
 //#endregion
 //#region Email Metrics
 export const updateEmailLogStatus = async (

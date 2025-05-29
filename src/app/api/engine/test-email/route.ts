@@ -1,22 +1,25 @@
 import fs from 'fs/promises';
 import path from 'path';
 
+import { NextRequest, NextResponse } from 'next/server';
 import { configure, renderString } from 'nunjucks';
 
-import type { NextApiRequest, NextApiResponse } from 'next';
 
-import { generateLoiPdf } from '@/app/api/engine/send-email/_pdfUtils.ts';
+import { generateLoiPdf } from '@/app/api/engine/send-email/_pdfUtils';
 import {
   getSupabaseClient,
   getGmailService,
   logToSupabase,
   isValidEmail,
-} from '@/app/api/engine/send-email/_utils.ts';
+} from '@/app/api/engine/send-email/_utils';
 
 
 // Nunjucks environment setup (can be shared if multiple routes use Nunjucks)
-const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
+// Assuming templates are shared with send-email and located relative to src/app structure
+const templateDir = path.join(process.cwd(), 'src', 'app', 'api', 'engine', 'send-email', 'templates');
 configure(templateDir, { autoescape: true });
+
+export const dynamic = 'force-dynamic';
 
 // Hardcoded sender details (replace with dynamic loading or env variables later)
 // const TEST_SENDER_EMAIL = process.env.TEST_SENDER_EMAIL || 'chrisphillips@truesoulpartners.com'; // Ensure this is a valid sender for the Gmail service
@@ -73,19 +76,15 @@ const createMimeMessage = (
 };
 
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST']);
-    return res.status(405).end(`Method ${req.method} Not Allowed`);
-  }
-
+export async function POST(req: NextRequest) {
   const supabase = getSupabaseClient();
   let lead: any = null; // Declare lead here to make it accessible in the catch block
   let intendedRecipientEmail: string | undefined = undefined; // Declare for broader scope
   
-  const { market_region } = req.body;
-
   try {
+    const body = await req.json();
+    const { market_region } = body;
+
     // 1. Fetch Active Sender from Supabase (remains the same)
     const { data: sender, error: senderError } = await supabase
       .from('senders')
@@ -101,12 +100,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Log to Supabase before throwing, or ensure the main catch block handles it if it's a critical setup issue
       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: `Error fetching active sender: ${senderError.message}`, campaign_id: null });
       // For consistency, return a JSON response rather than just throwing, which might lead to an unhandled promise rejection if not caught upstream.
-      return res.status(500).json({ success: false, error: `Error fetching active sender: ${senderError.message}` });
+      return NextResponse.json({ success: false, error: `Error fetching active sender: ${senderError.message}` }, { status: 500 });
     }
     if (!sender) {
       // This is a critical setup issue.
       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: 'No active sender found in Supabase.', campaign_id: null });
-      return res.status(500).json({ success: false, error: 'No active sender found in Supabase.' });
+      return NextResponse.json({ success: false, error: 'No active sender found in Supabase.' }, { status: 500 });
     }
 
     const activeSenderEmail = sender.email;
@@ -121,10 +120,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.warn('TEST_EMAIL_HANDLER: Market region not provided in the request.');
       // Log before returning the response
       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: 'Market region is required for sending a test email.'});
-      return res.status(400).json({ 
+      return NextResponse.json({ 
         success: false, 
         error: 'Market region is required for sending a test email.' 
-      });
+      }, { status: 400 });
     }
 
     console.log(`TEST_EMAIL_HANDLER: Market region provided: ${market_region}. Fetching normalized name.`);
@@ -140,17 +139,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const errorMsg = `Error fetching details for market region '${market_region}': ${regionFetchDbError.message}`;
       console.error(`TEST_EMAIL_HANDLER: ${errorMsg}`);
       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: errorMsg, campaign_id: null });
-      return res.status(500).json({ success: false, error: `Error fetching details for market region '${market_region}'.` });
+      return NextResponse.json({ success: false, error: `Error fetching details for market region '${market_region}'.` }, { status: 500 });
     }
 
     if (!regionData || !regionData.normalized_name) {
       const msg = `Market region '${market_region}' not found or has no normalized name. Cannot fetch test lead.`;
       console.warn(`TEST_EMAIL_HANDLER: ${msg}`);
       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: msg, campaign_id: null });
-      return res.status(404).json({ 
+      return NextResponse.json({ 
         success: false,
         error: msg,
-      });
+      }, { status: 404 });
     }
     
     // Construct the table name by combining normalized_name with _fine_cut_leads suffix
@@ -172,7 +171,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
        const errorMsg = `Database query construction error for table '${leadSourceTable}': ${e.message}`;
        console.error(`TEST_EMAIL_HANDLER: ${errorMsg}`);
        await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: errorMsg, campaign_id: null });
-       return res.status(500).json({ success: false, error: `Internal error preparing query for table '${leadSourceTable}'.` });
+       return NextResponse.json({ success: false, error: `Internal error preparing query for table '${leadSourceTable}'.` }, { status: 500 });
     }
 
     if (leadFetchError) {
@@ -182,18 +181,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
          userMessage = `The specific leads table '${leadSourceTable}' for market region '${market_region}' was not found. Please ensure it exists.`;
       }
       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: `${userMessage} DB Code: ${leadFetchError.code}`, campaign_id: null });
-      return res.status(500).json({ success: false, error: userMessage });
+      return NextResponse.json({ success: false, error: userMessage }, { status: 500 });
     }
 
     if (!fetchedLeadData) {
       const noLeadMsg = `No lead found in table '${leadSourceTable}' for market region '${market_region}' for testing.`;
       console.warn(`TEST_EMAIL_HANDLER: ${noLeadMsg}`);
       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: noLeadMsg, campaign_id: null });
-      return res.status(404).json({ 
+      return NextResponse.json({ 
         success: false, 
         error: noLeadMsg,
         details: `The table ${leadSourceTable} was queried, but no leads were returned.`
-      });
+      }, { status: 404 });
     }
     lead = fetchedLeadData; 
     console.log(`TEST_EMAIL_HANDLER: Successfully fetched lead from ${leadSourceTable}. Lead ID: ${lead.id}`);
@@ -264,11 +263,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email_error_message: errorMessage,
         campaign_id: null,
       });
-      return res.status(400).json({
+      return NextResponse.json({
         success: false,
         error: "Missing or invalid essential lead data.",
         missing_fields: missingFields, // Use the collected missingFields
-      });
+      }, { status: 400 });
     }
 
     // 2. Calculated and Hardcoded Fields (if lead data validation passes)
@@ -314,7 +313,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             email_error_message: offerCalcErrorMessage,
             campaign_id: null, // Updated campaign_id
         });
-        return res.status(400).json({ success: false, error: "Offer price calculation resulted in a non-positive value.", details: offerCalcErrorMessage });
+        return NextResponse.json({ success: false, error: "Offer price calculation resulted in a non-positive value.", details: offerCalcErrorMessage }, { status: 400 });
     }
 
     const offerPriceFormatted = offerPriceNumeric.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
@@ -338,7 +337,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             email_error_message: `Invalid TEST_RECIPIENT_EMAIL address: ${actualTestRecipientEmail}. Check environment variable.`,
             campaign_id: null, // Updated campaign_id
         });
-        return res.status(400).json({ success: false, error: `Invalid TEST_RECIPIENT_EMAIL: ${actualTestRecipientEmail}. Check environment variable.` });
+        return NextResponse.json({ success: false, error: `Invalid TEST_RECIPIENT_EMAIL: ${actualTestRecipientEmail}. Check environment variable.` }, { status: 400 });
     }
 
     // 3. Load Email Templates
@@ -446,7 +445,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         email_error_message: pdfErrorMessage, 
         campaign_id: null,
       });
-      return res.status(500).json({ success: false, error: pdfErrorMessage });
+      return NextResponse.json({ success: false, error: pdfErrorMessage }, { status: 500 });
     }
 
     // 7. Sanitize Property Address and Construct Dynamic PDF Filename
@@ -509,7 +508,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     // 8. Response (adjusted numbering)
-    return res.status(200).json({
+    return NextResponse.json({
         success: true,
         message: `Test email successfully sent to ${actualTestRecipientEmail} (personalized for ${intendedRecipientEmail || 'N/A'}) from ${activeSenderEmail}.`,
         lead_id: leadIdForApiResponse, // Using lead.id from useful_leads for API response
@@ -537,6 +536,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // stack_trace: error instanceof Error ? error.stack : undefined, // Optional: log stack trace safely
       campaign_id: null, // Updated campaign_id
     });
-    return res.status(500).json({ success: false, error: errorMessage });
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   }
 }

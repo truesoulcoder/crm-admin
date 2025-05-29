@@ -1,19 +1,33 @@
-import { createClient } from '@supabase/supabase-js';
-import { NextApiRequest, NextApiResponse } from 'next';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 
-import { supabaseServerClient } from '@/lib/supabase/server';
+import { supabaseAdmin } from '@/utils/supabase-admin';
 
-// Initialize Supabase admin client with service role
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
+// Create a server client for authentication
+function createClient() {
+  const cookieStore = cookies();
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookies) {
+          cookies.forEach(({ name, value, ...options }) => {
+            try {
+              cookieStore.set({ name, value, ...options });
+            } catch (error) {
+              // Handle error if needed
+            }
+          });
+        },
+      },
     }
-  }
-);
+  );
+}
 
 // Type definitions for campaign steps
 interface CampaignStep {
@@ -29,62 +43,28 @@ interface CampaignStep {
   updated_at?: string;
 }
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
+// GET - Get all steps for a campaign or a specific step
+export async function GET(
+  request: Request,
+  { params }: { params: { campaignId: string[] } }
 ) {
-  // Authenticate the request
-  const supabase = supabaseServerClient;
-  const { data: { session } } = await supabase.auth.getSession();
-
-  if (!session) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const { method, query, body } = req;
-  const campaignId = query.campaignId as string;
-  const stepId = query.stepId as string | undefined;
-
-  // Validate campaign ID
-  if (!campaignId) {
-    return res.status(400).json({ error: 'Campaign ID is required' });
-  }
-
   try {
-    switch (method) {
-      case 'GET':
-        return handleGetSteps(campaignId, stepId, res);
-      case 'POST':
-        return handleCreateStep(campaignId, body, res);
-      case 'PUT':
-        if (!stepId) {
-          return res.status(400).json({ error: 'Step ID is required for update' });
-        }
-        return handleUpdateStep(campaignId, stepId, body, res);
-      case 'DELETE':
-        if (!stepId) {
-          return res.status(400).json({ error: 'Step ID is required for deletion' });
-        }
-        return handleDeleteStep(campaignId, stepId, res);
-      default:
-        res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE']);
-        return res.status(405).json({ error: `Method ${method} not allowed` });
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-  } catch (error: any) {
-    console.error('Campaign steps API error:', error);
-    return res.status(500).json({ 
-      error: error.message || 'Internal server error' 
-    });
-  }
-}
 
-// Get all steps for a campaign or a specific step if stepId is provided
-async function handleGetSteps(
-  campaignId: string,
-  stepId: string | undefined,
-  res: NextApiResponse
-) {
-  try {
+    const [campaignId, stepId] = params.campaignId || [];
+    
+    if (!campaignId) {
+      return NextResponse.json(
+        { error: 'Campaign ID is required' },
+        { status: 400 }
+      );
+    }
+
     if (stepId) {
       // Get a specific step
       const { data, error } = await supabaseAdmin
@@ -95,9 +75,14 @@ async function handleGetSteps(
         .single();
 
       if (error) throw error;
-      if (!data) return res.status(404).json({ error: 'Step not found' });
+      if (!data) {
+        return NextResponse.json(
+          { error: 'Step not found' },
+          { status: 404 }
+        );
+      }
 
-      return res.status(200).json(data);
+      return NextResponse.json(data);
     } else {
       // Get all steps for the campaign
       const { data, error } = await supabaseAdmin
@@ -107,23 +92,47 @@ async function handleGetSteps(
         .order('step_number');
 
       if (error) throw error;
-      return res.status(200).json(data || []);
+      return NextResponse.json(data || []);
     }
   } catch (error: any) {
-    throw new Error(`Failed to get steps: ${error.message}`);
+    console.error('GET Campaign Steps Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to get steps' },
+      { status: 500 }
+    );
   }
 }
 
-// Create a new step for a campaign
-async function handleCreateStep(
-  campaignId: string,
-  stepData: Partial<CampaignStep>,
-  res: NextApiResponse
+// POST - Create a new step for a campaign
+export async function POST(
+  request: Request,
+  { params }: { params: { campaignId: string[] } }
 ) {
   try {
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const [campaignId] = params.campaignId || [];
+    
+    if (!campaignId) {
+      return NextResponse.json(
+        { error: 'Campaign ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const stepData = await request.json() as Partial<CampaignStep>;
+
     // Validate required fields
     if (!stepData.action_type) {
-      return res.status(400).json({ error: 'Action type is required' });
+      return NextResponse.json(
+        { error: 'Action type is required' },
+        { status: 400 }
+      );
     }
 
     // Get the next step number
@@ -145,20 +154,41 @@ async function handleCreateStep(
       .single();
 
     if (error) throw error;
-    return res.status(201).json(data);
+    return NextResponse.json(data, { status: 201 });
+
   } catch (error: any) {
-    throw new Error(`Failed to create step: ${error.message}`);
+    console.error('Create Step Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to create step' },
+      { status: 500 }
+    );
   }
 }
 
-// Update an existing step
-async function handleUpdateStep(
-  campaignId: string,
-  stepId: string,
-  updates: Partial<CampaignStep>,
-  res: NextApiResponse
+// PUT - Update an existing step
+export async function PUT(
+  request: Request,
+  { params }: { params: { campaignId: string[] } }
 ) {
   try {
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const [campaignId, stepId] = params.campaignId || [];
+    
+    if (!campaignId || !stepId) {
+      return NextResponse.json(
+        { error: 'Campaign ID and Step ID are required' },
+        { status: 400 }
+      );
+    }
+
+    const updates = await request.json() as Partial<CampaignStep>;
+
     // Verify the step exists and belongs to the campaign
     const { data: existingStep, error: fetchError } = await supabaseAdmin
       .from('campaign_steps')
@@ -168,7 +198,10 @@ async function handleUpdateStep(
       .single();
 
     if (fetchError || !existingStep) {
-      return res.status(404).json({ error: 'Step not found' });
+      return NextResponse.json(
+        { error: 'Step not found' },
+        { status: 404 }
+      );
     }
 
     // Don't allow updating campaign_id or id
@@ -185,19 +218,39 @@ async function handleUpdateStep(
       .single();
 
     if (error) throw error;
-    return res.status(200).json(data);
+    return NextResponse.json(data);
+
   } catch (error: any) {
-    throw new Error(`Failed to update step: ${error.message}`);
+    console.error('Update Step Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to update step' },
+      { status: 500 }
+    );
   }
 }
 
-// Delete a step
-async function handleDeleteStep(
-  campaignId: string,
-  stepId: string,
-  res: NextApiResponse
+// DELETE - Delete a step
+export async function DELETE(
+  request: Request,
+  { params }: { params: { campaignId: string[] } }
 ) {
   try {
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const [campaignId, stepId] = params.campaignId || [];
+    
+    if (!campaignId || !stepId) {
+      return NextResponse.json(
+        { error: 'Campaign ID and Step ID are required' },
+        { status: 400 }
+      );
+    }
+
     // Verify the step exists and belongs to the campaign
     const { data: existingStep, error: fetchError } = await supabaseAdmin
       .from('campaign_steps')
@@ -207,7 +260,10 @@ async function handleDeleteStep(
       .single();
 
     if (fetchError || !existingStep) {
-      return res.status(404).json({ error: 'Step not found' });
+      return NextResponse.json(
+        { error: 'Step not found' },
+        { status: 404 }
+      );
     }
 
     // Delete the step
@@ -224,8 +280,13 @@ async function handleDeleteStep(
       p_deleted_step_number: existingStep.step_number
     });
 
-    return res.status(204).end();
+    return new Response(null, { status: 204 });
+
   } catch (error: any) {
-    throw new Error(`Failed to delete step: ${error.message}`);
+    console.error('Delete Step Error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to delete step' },
+      { status: 500 }
+    );
   }
 }
