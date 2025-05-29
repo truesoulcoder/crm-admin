@@ -3,7 +3,6 @@ import path from 'path';
 
 import { configure, renderString } from 'nunjucks';
 
-import { generateLoiPdf } from './_pdfUtils';
 import {
   getSupabaseClient,
   getGmailService,
@@ -13,16 +12,11 @@ import {
 
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+import { generateLoiPdf } from './_pdfUtils';
+
 // Nunjucks environment setup (can be shared if multiple routes use Nunjucks)
 const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
 configure(templateDir, { autoescape: true });
-
-// Hardcoded sender details (replace with dynamic loading or env variables later)
-// const TEST_SENDER_EMAIL = process.env.TEST_SENDER_EMAIL || 'chrisphillips@truesoulpartners.com'; // Ensure this is a valid sender for the Gmail service
-// const TEST_SENDER_NAME = process.env.TEST_SENDER_NAME || 'Chris Phillips';
-// Hardcoded recipient for testing (replace with dynamic or lead's email later)
-const TEST_RECIPIENT_EMAIL = process.env.TEST_RECIPIENT_EMAIL || 'chrisphillips@truesoulpartners.com';
-
 
 // Simplified MIME message creation function
 const createMimeMessage = (
@@ -71,8 +65,18 @@ const createMimeMessage = (
   return email;
 };
 
+export type EmailOptions = {
+  to: string;
+  subject: string;
+  body: string;
+  attachments?: Array<{ filename: string; content: string }>;
+};
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export async function sendConfiguredEmail(options: EmailOptions) {
+  // TO DO: implement sendConfiguredEmail function
+}
+
+const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
     return res.status(405).end(`Method ${req.method} Not Allowed`);
@@ -111,13 +115,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const activeSenderEmail = sender.email;
     const activeSenderName = sender.name;
 
-    // 2. Fetch Sample Lead (Dynamically)
+    // 2. Fetch Lead (Dynamically)
     let fetchedLeadData: any = null;
     let leadFetchError: any = null; 
     let leadSourceTable: string = '';
 
     if (!market_region) {
-      console.warn('TEST_EMAIL_HANDLER: Market region not provided in the request.');
+      console.warn('EMAIL_HANDLER: Market region not provided in the request.');
       // Log before returning the response
       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: 'Market region is required for sending a test email.'});
       return res.status(400).json({ 
@@ -126,7 +130,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    console.log(`TEST_EMAIL_HANDLER: Market region provided: ${market_region}. Fetching normalized name.`);
+    console.log(`EMAIL_HANDLER: Market region provided: ${market_region}. Fetching normalized name.`);
     
     // First, get the normalized name for the market region
     const { data: regionData, error: regionFetchDbError } = await supabase
@@ -137,14 +141,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (regionFetchDbError) {
       const errorMsg = `Error fetching details for market region '${market_region}': ${regionFetchDbError.message}`;
-      console.error(`TEST_EMAIL_HANDLER: ${errorMsg}`);
+      console.error(`EMAIL_HANDLER: ${errorMsg}`);
       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: errorMsg, campaign_id: null });
       return res.status(500).json({ success: false, error: `Error fetching details for market region '${market_region}'.` });
     }
 
     if (!regionData || !regionData.normalized_name) {
       const msg = `Market region '${market_region}' not found or has no normalized name. Cannot fetch test lead.`;
-      console.warn(`TEST_EMAIL_HANDLER: ${msg}`);
+      console.warn(`EMAIL_HANDLER: ${msg}`);
       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: msg, campaign_id: null });
       return res.status(404).json({ 
         success: false,
@@ -154,8 +158,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // Construct the table name by combining normalized_name with _fine_cut_leads suffix
     leadSourceTable = `${regionData.normalized_name}_fine_cut_leads`;
-    console.log(`TEST_EMAIL_HANDLER: Constructed lead source table name: ${leadSourceTable}`);
-    console.log(`TEST_EMAIL_HANDLER: Attempting to fetch lead from dynamic table: ${leadSourceTable}`);
+    console.log(`EMAIL_HANDLER: Constructed lead source table name: ${leadSourceTable}`);
+    console.log(`EMAIL_HANDLER: Attempting to fetch lead from dynamic table: ${leadSourceTable}`);
 
     try {
       const { data: dynamicLeadData, error: dynamicLeadQueryError } = await supabase
@@ -169,25 +173,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     } catch (e:any) { 
        const errorMsg = `Database query construction error for table '${leadSourceTable}': ${e.message}`;
-       console.error(`TEST_EMAIL_HANDLER: ${errorMsg}`);
-       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: errorMsg, campaign_id: null });
+       console.error(`EMAIL_HANDLER: ${errorMsg}`);
+       await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: errorMsg });
        return res.status(500).json({ success: false, error: `Internal error preparing query for table '${leadSourceTable}'.` });
     }
 
     if (leadFetchError) {
       let userMessage = `Error fetching lead from '${leadSourceTable}'.`;
-      console.error(`TEST_EMAIL_HANDLER: Supabase error fetching lead from '${leadSourceTable}':`, leadFetchError.message, leadFetchError);
+      console.error(`EMAIL_HANDLER: Supabase error fetching lead from '${leadSourceTable}':`, leadFetchError.message, leadFetchError);
       if (leadFetchError.code === '42P01') { 
          userMessage = `The specific leads table '${leadSourceTable}' for market region '${market_region}' was not found. Please ensure it exists.`;
       }
-      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: `${userMessage} DB Code: ${leadFetchError.code}`, campaign_id: null });
+      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: `${userMessage} DB Code: ${leadFetchError.code}` });
       return res.status(500).json({ success: false, error: userMessage });
     }
 
     if (!fetchedLeadData) {
       const noLeadMsg = `No lead found in table '${leadSourceTable}' for market region '${market_region}' for testing.`;
-      console.warn(`TEST_EMAIL_HANDLER: ${noLeadMsg}`);
-      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: noLeadMsg, campaign_id: null });
+      console.warn(`EMAIL_HANDLER: ${noLeadMsg}`);
+      await logToSupabase({ email_status: 'FAILED_PREPARATION', email_error_message: noLeadMsg });
       return res.status(404).json({ 
         success: false, 
         error: noLeadMsg,
@@ -195,7 +199,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
     lead = fetchedLeadData; 
-    console.log(`TEST_EMAIL_HANDLER: Successfully fetched lead from ${leadSourceTable}. Lead ID: ${lead.id}`);
+    console.log(`EMAIL_HANDLER: Successfully fetched lead from ${leadSourceTable}. Lead ID: ${lead.id}`);
 
     // ULTRA CRITICAL FIX: Ensure contact_name is a string immediately after fetch (remains important)
     console.log('DEBUG: contact_name BEFORE mutation on lead object:', JSON.stringify(lead.contact_name), typeof lead.contact_name);
@@ -249,25 +253,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     );
     
     if (!hasValidPostalCode) {
-      console.warn('WARNING: No valid postal code found in any field. Continuing anyway for test email.');
-      // Don't add to missingFields to prevent blocking the test email
+      console.warn('WARNING: No valid postal code found in any field. Continuing anyway for email.');
     }
 
     intendedRecipientEmail = lead.contact_email; // For personalization & logging
 
+    let failedLeadsCount = 0;
     if (missingFields.length > 0) {
-      const errorMessage = `Missing/invalid essential lead data: ${missingFields.join(', ')}`;
-      await logToSupabase({
-        contact_email: intendedRecipientEmail,
-        email_status: 'FAILED_PREPARATION',
-        email_error_message: errorMessage,
-        campaign_id: null,
+      console.warn(`Skipping lead ${leadIdForApiResponse} - Missing essential fields: ${missingFields.join(', ')}`);
+      failedLeadsCount++;
+      return res.status(400).json({ 
+        success: false, 
+        error: `Skipping lead ${leadIdForApiResponse} - Missing essential fields: ${missingFields.join(', ')}`,
       });
-      return res.status(400).json({
-        success: false,
-        error: "Missing or invalid essential lead data.",
-        missing_fields: missingFields, // Use the collected missingFields
-      });
+    }
+
+    if (!intendedRecipientEmail) throw new Error('Missing recipient email');
+    if (!isValidEmail(intendedRecipientEmail)) {
+        await logToSupabase({
+            contact_email: intendedRecipientEmail,
+            email_status: 'FAILED_TO_SEND',
+            email_error_message: `Invalid Email Address: ${intendedRecipientEmail}. Check table data.`,
+        });
+        return res.status(400).json({ success: false, error: `Invalid Email Address: ${intendedRecipientEmail}. Check table data.` });
     }
 
     // 2. Calculated and Hardcoded Fields (if lead data validation passes)
@@ -308,10 +316,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const offerCalcErrorMessage = `Calculated offer_price_numeric is not positive: ${offerPriceNumeric}`;
         await logToSupabase({
             contact_email: intendedRecipientEmail,
-            // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
             email_status: 'FAILED_PREPARATION',
             email_error_message: offerCalcErrorMessage,
-            campaign_id: null, // Updated campaign_id
         });
         return res.status(400).json({ success: false, error: "Offer price calculation resulted in a non-positive value.", details: offerCalcErrorMessage });
     }
@@ -323,22 +329,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Assign validated propertyZipCodeSource to propertyZipCode
     const propertyZipCode = (lead.property_postal_code || lead.zip_code || lead.property_zipcode) as string;
 
-
-    // If all essential fields are present, proceed with script logic
-    const actualTestRecipientEmail = process.env.TEST_RECIPIENT_EMAIL || 'test-recipient@example.com';
-    console.log('DEBUG: Initial process.env.TEST_RECIPIENT_EMAIL:', process.env.TEST_RECIPIENT_EMAIL);
-    console.log('DEBUG: Initial actualTestRecipientEmail value:', actualTestRecipientEmail);
-
-    if (!isValidEmail(actualTestRecipientEmail)) {
-        await logToSupabase({
-            contact_email: intendedRecipientEmail,
-            // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
-            email_status: 'FAILED_TO_SEND',
-            email_error_message: `Invalid TEST_RECIPIENT_EMAIL address: ${actualTestRecipientEmail}. Check environment variable.`,
-            campaign_id: null, // Updated campaign_id
-        });
-        return res.status(400).json({ success: false, error: `Invalid TEST_RECIPIENT_EMAIL: ${actualTestRecipientEmail}. Check environment variable.` });
-    }
 
     // 3. Load Email Templates
     const emailTemplatePath = path.join(templateDir, 'email_body_with_subject.html');
@@ -400,9 +390,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const emailBodyHtml = renderString(rawBodyTemplate, templateData) as string;
 
     // 6. Generate PDF
-    console.log('DEBUG_TESTEMAIL: Preparing to call generateLoiPdf.');
-    console.log('DEBUG_TESTEMAIL: pdfPersonalizationData.contact_name being passed:', JSON.stringify(pdfPersonalizationData?.contact_name), typeof pdfPersonalizationData?.contact_name);
-    console.log('DEBUG_TESTEMAIL: Full pdfPersonalizationData being passed:', JSON.stringify(pdfPersonalizationData));
+    console.log('DEBUG_EMAIL: Preparing to call generateLoiPdf.');
+    console.log('DEBUG_EMAIL: pdfPersonalizationData.contact_name being passed:', JSON.stringify(pdfPersonalizationData?.contact_name), typeof pdfPersonalizationData?.contact_name);
+    console.log('DEBUG_EMAIL: Full pdfPersonalizationData being passed:', JSON.stringify(pdfPersonalizationData));
     
     let pdfBuffer: Buffer | undefined | null = null;
     let pdfFailed = false;
@@ -410,26 +400,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     try {
       if (typeof generateLoiPdf === 'function') {
-        console.log('DEBUG_TESTEMAIL: generateLoiPdf is a function, calling it.');
-        pdfBuffer = await generateLoiPdf(pdfPersonalizationData, lead.id, intendedRecipientEmail || actualTestRecipientEmail);
+        console.log('DEBUG_EMAIL: generateLoiPdf is a function, calling it.');
+        pdfBuffer = await generateLoiPdf(pdfPersonalizationData, lead.id, intendedRecipientEmail);
         if (!pdfBuffer) {
             pdfFailed = true;
             pdfErrorMessage = 'PDF generation completed but returned no buffer. Check pdfPersonalizationData.';
-            console.warn('WARN_TESTEMAIL:', pdfErrorMessage);
+            console.warn('WARN_EMAIL:', pdfErrorMessage);
         }
       } else {
         pdfFailed = true;
         pdfErrorMessage = 'PDF generation service is not available (generateLoiPdf is not a function).';
-        console.error('CRITICAL_ERROR_TESTEMAIL:', pdfErrorMessage, 'Type:', typeof generateLoiPdf);
+        console.error('CRITICAL_ERROR_EMAIL:', pdfErrorMessage, 'Type:', typeof generateLoiPdf);
       }
     } catch (e: unknown) { // Catch 'unknown' for better type safety
       pdfFailed = true;
       if (e instanceof Error) {
         pdfErrorMessage = `PDF generation caught error: ${e.message}`;
-        console.error('ERROR_TESTEMAIL: Error during PDF generation call:', e);
+        console.error('ERROR_EMAIL: Error during PDF generation call:', e);
       } else {
         pdfErrorMessage = 'An unknown error occurred during PDF generation.';
-        console.error('ERROR_TESTEMAIL: Unknown error during PDF generation call:', e);
+        console.error('ERROR_EMAIL: Unknown error during PDF generation call:', e);
       }
     }
 
@@ -464,15 +454,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 8. Create MIME Message (adjusted numbering)
     console.log('DEBUG: Just before createMimeMessage - intendedRecipientEmail (for personalization):', intendedRecipientEmail);
-    console.log('DEBUG: Just before createMimeMessage - actualTestRecipientEmail (should be To):', actualTestRecipientEmail);
-    console.log('DEBUG: Just before createMimeMessage - direct process.env.TEST_RECIPIENT_EMAIL:', process.env.TEST_RECIPIENT_EMAIL);
-    
-    // Define this right before the createMimeMessage call to ensure the freshest .env read
-    const finalRecipientForSend = process.env.TEST_RECIPIENT_EMAIL || 'test-recipient@example.com'; 
+  
+    // Define this right before the createMimeMessage call to ensure the intendedRecipientEmail is used
+    const finalRecipientForSend = intendedRecipientEmail; 
     console.log('DEBUG: Final recipient being passed to createMimeMessage:', finalRecipientForSend);
 
     const rawEmail = createMimeMessage(
-      finalRecipientForSend, // Ensures the most direct .env var usage
+      finalRecipientForSend,
       activeSenderEmail,
       activeSenderName,
       emailSubject,
@@ -493,31 +481,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 10. Logging Success (adjusted numbering)
     await logToSupabase({
-      contact_name: sharedData.contact_name, // Use from sharedData
+      contact_name: sharedData.contact_name,
       contact_email: intendedRecipientEmail, 
-      // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed
       sender_name: activeSenderName,
       sender_email_used: activeSenderEmail,
       email_subject_sent: emailSubject,
-      email_body_preview_sent: emailBodyHtml.substring(0, 200), // Preview
+      email_body_preview_sent: emailBodyHtml.substring(0, 200),
       email_status: 'SENT',
       email_sent_at: new Date().toISOString(),
-      campaign_id: null, // Updated campaign_id
-      // campaign_run_id: 'test-run-id' // If applicable
     });
 
     // 8. Response (adjusted numbering)
     return res.status(200).json({
         success: true,
-        message: `Test email successfully sent to ${actualTestRecipientEmail} (personalized for ${intendedRecipientEmail || 'N/A'}) from ${activeSenderEmail}.`,
-        lead_id: leadIdForApiResponse, // Using lead.id from useful_leads for API response
+        message: `Email successfully sent to ${intendedRecipientEmail} (personalized for ${intendedRecipientEmail || 'N/A'}) from ${activeSenderEmail}.`,
+        lead_id: leadIdForApiResponse,
         subject: emailSubject,
     });
 
   } catch (error: any) {
-    console.error('Error in test-email handler:', error);
+    console.error('Error in email handler:', error);
     // Use lead?.id for error logging if lead object is available
-    const errorLeadIdForLogging = lead?.id || `test-lead-fetch-failed-${Date.now()}`;
+    const errorLeadIdForLogging = lead?.id || `lead-fetch-failed-${Date.now()}`;
     let errorMessage = 'An unknown error occurred.';
     if (error instanceof Error) {
       errorMessage = error.message;
@@ -528,13 +513,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     await logToSupabase({
-      contact_email: typeof intendedRecipientEmail !== 'undefined' ? intendedRecipientEmail : 'unknown_intended', // Log intended if available
-      // actual_recipient_email_sent_to: actualTestRecipientEmail, // Temporarily removed.
+      contact_email: typeof intendedRecipientEmail !== 'undefined' ? intendedRecipientEmail : 'unknown_intended',
       email_status: 'FAILED_TO_SEND',
-      email_error_message: `Test email failed: ${errorMessage}`,
-      // stack_trace: error instanceof Error ? error.stack : undefined, // Optional: log stack trace safely
-      campaign_id: null, // Updated campaign_id
+      email_error_message: `Email failed: ${errorMessage}`,
+      campaign_id: null,
     });
     return res.status(500).json({ success: false, error: errorMessage });
   }
-}
+};
+
+export default (handler);

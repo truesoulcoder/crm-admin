@@ -5,7 +5,7 @@ import fontkit from '@pdf-lib/fontkit'; // Added fontkit import
 import { PDFDocument, StandardFonts, rgb, PageSizes } from 'pdf-lib'; // Ensure imports at top
 
 // Define paths (ensure these are correct for your serverless environment)
-const templateDir = path.join(process.cwd(), 'pages', 'api', 'eli5-engine', 'templates');
+const templateDir = path.join(process.cwd(), 'src', 'app', 'api', 'engine', 'templates');
 const BLANK_LETTERHEAD_PDF_FILE = path.join(templateDir, 'blank-letterhead.pdf');
 const ALEX_BRUSH_FONT_FILE = path.join(templateDir, 'AlexBrush-Regular.ttf');
 
