@@ -1,13 +1,14 @@
+'use client';
+
 // src/components/views/Eli5EngineControlView.tsx
 
 // External libraries
 import { createBrowserClient } from '@supabase/ssr';
-import { useState, useEffect, useRef, FC, useCallback } from 'react';
+import { useState, useEffect, FC, useCallback, useRef } from 'react';
 import { Badge, Card, Button, Select, Table, Range, Alert } from 'react-daisyui';
 import { toast } from 'react-hot-toast';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { LoadingSpinner } from '@/components/LoadingSpinner';
 // Components
 // Hooks
 import { useEngineControl } from '@/hooks/useEngineControl';

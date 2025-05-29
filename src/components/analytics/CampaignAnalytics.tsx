@@ -1,7 +1,8 @@
 'use client';
 // External dependencies
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+
 import { createClient } from '@/lib/supabase/client';
 
 interface CampaignJob {
@@ -36,7 +37,7 @@ export default function CampaignAnalytics() {
   const supabase = createClient();
 
   // Format date based on selected time range
-  const formatDate = (date: Date): string => {
+  const formatDate = useCallback((date: Date): string => {
     const d = new Date(date);
     if (timeRange === 'hour') {
       return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -46,14 +47,14 @@ export default function CampaignAnalytics() {
       // day
       return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
-  };
+  }, [timeRange]);
 
   // Group jobs by time
   const groupJobsByTime = useMemo(() => {
     if (!jobs.length) return [];
     
     const now = new Date();
-    let timeMap = new Map<string, TimeData>();
+    const timeMap = new Map<string, TimeData>();
     
     // Initialize time slots
     const timeSlots: Date[] = [];
@@ -96,7 +97,7 @@ export default function CampaignAnalytics() {
     });
     
     return Array.from(timeMap.values());
-  }, [jobs, senders, timeRange]);
+  }, [jobs, senders, timeRange, formatDate]);
 
   // Get unique senders for the chart
   const uniqueSenders = useMemo(() => {

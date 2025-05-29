@@ -1,12 +1,13 @@
+'use client';
+
 import { useState, useEffect } from 'react';
 import { Badge } from 'react-daisyui';
 import toast from 'react-hot-toast';
 import { FiPlay, FiStopCircle, FiRefreshCw } from 'react-icons/fi';
 
+import LoadingSpinner from '@/components/LoadingSpinner';
 import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/lib/supabase/client';
-
-import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface Campaign {
   id: string;
