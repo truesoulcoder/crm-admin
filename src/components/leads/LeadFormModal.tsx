@@ -1,7 +1,7 @@
 import 'daisyui/dist/full.css';
 // External dependencies
 import { MapPin, X } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
+import { useState, useEffect, useCallback, ChangeEvent } from 'react'; 
 
 import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader';
 import { Database } from '@/db_types';
