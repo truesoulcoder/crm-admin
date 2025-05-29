@@ -8,7 +8,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import { useTheme } from '@/hooks/useTheme';
 
 import Providers from './providers';
-
+import './main.css';
 import './globals.css';
 
 export default function RootLayout({
@@ -40,32 +40,20 @@ export default function RootLayout({
         <title>CRM Admin</title>
         <meta name="description" content="CRM Admin Dashboard" />
       </head>
-      <body>
+      <body className="min-h-screen">
         <Providers>
-            <div className="drawer lg:drawer-open">
-              <input 
-                id="sidebar-drawer-toggle" 
-                type="checkbox" 
-                className="drawer-toggle" 
+          <div className="flex h-screen overflow-hidden">
+            <Sidebar />
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <Navbar 
+                toggleSidebar={toggleMobileSidebar} 
+                isSidebarOpen={isMobileSidebarOpen} 
               />
-              <div className="drawer-content flex flex-col">
-                <Navbar 
-                  toggleSidebar={toggleMobileSidebar} 
-                  isSidebarOpen={isMobileSidebarOpen} 
-                />
-                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-base-100">
-                  {children}
-                </main>
-              </div>
-              <div className="drawer-side z-30">
-                <label 
-                  htmlFor="sidebar-drawer-toggle" 
-                  aria-label="close sidebar" 
-                  className="drawer-overlay"
-                ></label>
-                <Sidebar />
-              </div>
+              <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 bg-base-100">
+                {children}
+              </main>
             </div>
+          </div>
         </Providers>
       </body>
     </html>
