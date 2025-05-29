@@ -7,7 +7,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import AppLayout from '@/components/layout/AppLayout';
 import { EngineProvider } from '@/contexts/EngineContext';
-import { UserProvider } from '@/contexts/UserContext';
 import { createClient } from '@/lib/supabase/client';
 
 import type { Session } from '@supabase/supabase-js';
@@ -73,13 +72,11 @@ export default function ClientLayoutWrapper({
   // Wrap everything in AppLayout for consistent UI
   const content = (
     <ErrorBoundary>
-      <UserProvider>
-        <EngineProvider>
+      <EngineProvider>
           <AppLayout>
             {children}
           </AppLayout>
         </EngineProvider>
-      </UserProvider>
     </ErrorBoundary>
   );
 
