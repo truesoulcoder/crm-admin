@@ -6,8 +6,9 @@ import { useState, useEffect, useRef, FC, useCallback } from 'react';
 import { Badge, Card, Button, Select, Table, Range, Alert } from 'react-daisyui';
 import { toast } from 'react-hot-toast';
 
-// Components
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { LoadingSpinner } from '@/components/LoadingSpinner';
+// Components
 // Hooks
 import { useEngineControl } from '@/hooks/useEngineControl';
 import { useMarketRegions } from '@/hooks/useMarketRegions';
@@ -85,19 +86,18 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
   const consoleEndRef = useRef<HTMLDivElement>(null);
   const [consoleLogs] = useState<LogEntry[]>([]);
   const [isDryRun, setIsDryRun] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [senderQuota, setSenderQuota] = useState<number>(10);
   const [minIntervalSeconds, setMinIntervalSeconds] = useState<number>(100);
   const [maxIntervalSeconds, setMaxIntervalSeconds] = useState<number>(1000);
   const [selectedSenderIds, setSelectedSenderIds] = useState<string[]>([]);
   const [availableSenders, setAvailableSenders] = useState<Array<{id: string, name: string, email: string}>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [engineError, setEngineError] = useState<Error | null>(null);
 
   // Use the custom hooks
   const {
-    engineStatus: engineControlStatus,
-    engineState,
-    error: engineError,
-    isLoading,
+    status: engineControlStatus,
     startEngine,
     stopEngine,
   } = useEngineControl();
@@ -135,30 +135,44 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
   // Handle start engine
   const handleStartEngine = useCallback(async () => {
     try {
+      setEngineError(null);
+      setError(null);
+      
       if (!selectedMarketRegion) {
-        setError('Please select a market region');
+        const error = new Error('Please select a market region');
+        setEngineError(error);
+        setError(error.message);
         return;
       }
 
       await startEngine();
-      setError(null);
     } catch (err) {
-      console.error('Failed to start engine:', getErrorMessage(err));
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Failed to start engine:', error.message);
+      setEngineError(error);
+      setError(error.message);
     }
   }, [selectedMarketRegion, startEngine]);
 
   // Handle stop engine
   const handleStopEngine = useCallback(async () => {
     try {
+      setEngineError(null);
+      setError(null);
+      
       if (!selectedMarketRegion) {
-        setError('Please select a market region');
+        const error = new Error('Please select a market region');
+        setEngineError(error);
+        setError(error.message);
         return;
       }
 
       await stopEngine();
-      setError(null);
     } catch (err) {
-      console.error('Failed to stop engine:', getErrorMessage(err));
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error('Failed to stop engine:', error.message);
+      setEngineError(error);
+      setError(error.message);
     }
   }, [selectedMarketRegion, stopEngine]);
 
@@ -242,11 +256,12 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
   }, [consoleLogs]);
 
   // Get status badge based on engine status
-  const getStatusBadge = (status: string) => {
-    const statusText = status.charAt(0).toUpperCase() + status.slice(1);
+  const getStatusBadge = (status: string | undefined) => {
+    const displayStatus = status || 'idle';
+    const statusText = displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1);
     let color: 'success' | 'warning' | 'error' | 'info' | 'neutral' = 'neutral';
     
-    switch (status) {
+    switch (displayStatus) {
       case 'running':
         color = 'success';
         break;
@@ -411,7 +426,7 @@ const Eli5EngineControlViewInner: FC<EngineControlProps> = ({ className, childre
                 id="marketRegion"
                 value={selectedMarketRegion || ''}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedMarketRegion(e.target.value || null)}
-                disabled={isLoading || regionsLoading}
+                disabled={metricsLoading || regionsLoading}
               >
                 {marketRegions.map(region => (
                   <option key={region.id} value={region.id}>
