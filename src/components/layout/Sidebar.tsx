@@ -1,12 +1,19 @@
 'use client';
 
 import { LayoutDashboard, Users, Mail, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 
 import { useUser } from '@/contexts/UserContext';
 import { cn } from '@/lib/utils';
+
+// Dynamically import PigAnimation with no SSR to avoid window is not defined errors
+const PigAnimation = dynamic(() => import('@/styles/PigAnimation').then(mod => mod.default), {
+  ssr: false,
+  loading: () => <div className="w-full h-32 flex items-center justify-center">Loading animation...</div>
+});
 
 interface MenuItem {
   name: string;
@@ -103,6 +110,14 @@ export default function Sidebar({ onClose }: SidebarProps = {}) {
       >
         <ChevronLeft className={`w-4 h-4 transition-transform ${isCollapsed ? 'rotate-180' : ''}`} />
       </button>
+      
+      {!isCollapsed && (
+        <div className="p-4 border-t border-base-300">
+          <div className="mb-4">
+            <PigAnimation />
+          </div>
+        </div>
+      )}
       
       {!isCollapsed && user && (
         <div className="p-4 border-t border-base-300">
