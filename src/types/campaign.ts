@@ -13,12 +13,12 @@ export interface Campaign {
 export interface CampaignJob {
   id: string;
   status: JobStatus;
-  contact_name: string;
-  email_address: string;
-  assigned_sender_id: string;
-  next_processing_time: string;
-  error_message?: string;
-  processed_at?: string;
-  campaign_id?: string;
-  market_region?: string;
+  contact_name: string | null;  // Allow null
+  email_address: string | null; // Allow null
+  assigned_sender_id: string | null; // This one too based on your error
+  next_processing_time: string | null; // And this
+  error_message?: string | null;
+  processed_at?: string | null;
+  campaign_id?: string | null;
+  market_region?: string | null;
 }

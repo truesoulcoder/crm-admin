@@ -1,8 +1,8 @@
 // src/hooks/useMarketRegions.ts
 import { useState, useEffect, useCallback } from 'react';
 
+import { Database } from '@/db_types';
 import { supabase } from '@/lib/supabase/client';
-import { Database } from '@/types/db_types';
 
 type MarketRegion = Database['public']['Tables']['market_regions']['Row'];
 
@@ -41,7 +41,7 @@ export function useMarketRegions(): {
   }, [selectedMarketRegion]);
 
   useEffect(() => {
-    fetchMarketRegions();
+    void fetchMarketRegions();
   }, [fetchMarketRegions]);
 
   return {

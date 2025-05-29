@@ -13,9 +13,15 @@ type UserContextType = {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
-export const UserProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+export const UserProvider = ({ 
+  children,
+  initialSession = null 
+}: { 
+  children: ReactNode;
+  initialSession?: Session | null;
+}) => {
+  const [user, setUser] = useState<User | null>(initialSession?.user ?? null);
+  const [session, setSession] = useState<Session | null>(initialSession);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

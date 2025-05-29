@@ -1,14 +1,21 @@
-import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { useState, useEffect } from 'react';
+
 import { createServerClient } from '@/lib/supabase/client';
+
+interface Campaign {
+  id: string;
+  name: string;
+  created_at?: string;
+}
 
 export default function CampaignSchedulerUI() {
   const supabase = createServerClient();
-  const [campaigns, setCampaigns] = useState([]);
-  const [selectedCampaign, setSelectedCampaign] = useState(null);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
   const [startTime, setStartTime] = useState(new Date());
   const [loading, setLoading] = useState(false);
-  const [log, setLog] = useState([]);
+  const [log, setLog] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchCampaigns = async () => {
@@ -18,13 +25,13 @@ export default function CampaignSchedulerUI() {
         .order('created_at', { ascending: false });
       if (data) setCampaigns(data);
     };
-    fetchCampaigns();
+    void fetchCampaigns();
   }, [supabase]);
 
   const scheduleCampaign = async () => {
     if (!selectedCampaign) return;
     setLoading(true);
-    setLog(log => [...log, `Scheduling campaign ${selectedCampaign}...`]);
+    setLog((log: string[]) => [...log, `Scheduling campaign ${selectedCampaign}...`]);
     const now = new Date();
     const offsetMs = startTime.getTime() - now.getTime();
     const offsetSec = Math.max(Math.floor(offsetMs / 1000), 0);
@@ -35,9 +42,9 @@ export default function CampaignSchedulerUI() {
     });
 
     if (error) {
-      setLog(log => [...log, `❌ Error: ${error.message}`]);
+      setLog((log: string[]) => [...log, `❌ Error: ${error.message}`]);
     } else {
-      setLog(log => [...log, `✅ Scheduled successfully!`]);
+      setLog((log: string[]) => [...log, `✅ Scheduled successfully!`]);
     }
     setLoading(false);
   };
@@ -94,7 +101,9 @@ export default function CampaignSchedulerUI() {
       <button
         className="btn btn-primary w-full"
         disabled={loading || !selectedCampaign}
-        onClick={scheduleCampaign}
+        onClick={() => {
+          void scheduleCampaign();
+        }}
       >
         {loading ? 'Scheduling...' : 'Schedule Campaign'}
       </button>

@@ -5,7 +5,7 @@ import { useState } from 'react';
 
 import LeadUploader from '@/components/leads/LeadUploader';
 
-import type { Database } from '@/types/db_types';
+import type { Database } from '@/db_types';
 
 // Define NormalizedLead based on the Database schema
 export type NormalizedLead = Database['public']['Tables']['normalized_leads']['Row'];

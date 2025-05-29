@@ -58,17 +58,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         .select('id, next_processing_time')
         .eq('status', 'paused');
 
-      if (!pausedJobs || pausedJobs.length === 0) {
-        return res.status(200).json({ message: 'No paused jobs to resume.' });
-      }
-
-      for (const job of pausedJobs) {
-        const adjustedTime = new Date(new Date(job.next_processing_time).getTime() + pauseDeltaMs);
-
-        await supabase
-          .from('campaign_jobs')
-          .update({
-            status: 'pending',
+        if (!pausedJobs || pausedJobs.length === 0) {
+          return res.status(200).json({ message: 'No paused jobs to resume.' });
+        }
+        
+        for (const job of pausedJobs) {
+          // Skip if next_processing_time is null
+          if (job.next_processing_time === null) {
+            console.warn(`Job ${job.id} has null next_processing_time, skipping`);
+            continue;
+          }
+          
+          const adjustedTime = new Date(new Date(job.next_processing_time).getTime() + pauseDeltaMs);
+        
+          await supabase
+            .from('campaign_jobs')
+            .update({
+              status: 'pending',
             next_processing_time: adjustedTime.toISOString(),
             updated_at: now.toISOString(),
           })

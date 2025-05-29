@@ -4,7 +4,7 @@ import { MapPin, X } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
 
 import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader';
-import { Database } from '@/types/db_types';
+import { Database } from '@/db_types';
 
 interface LeadFormModalProps {
   lead?: Partial<Database['public']['Tables']['crm_leads']['Row']>;
@@ -19,7 +19,13 @@ interface LeadFormModalProps {
   }) => void;
   isOpen: boolean;
   isLoaded: boolean;
-  initialPanoramaPosition?: { lat: number; lng: number } | null;
+  isEditMode?: boolean;
+  modalTitleAddress?: string;
+  panoramaPosition?: { lat: number; lng: number } | null;
+  lat?: number;
+  lng?: number;
+  onInputChange?: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  onGeocode?: () => void;
 }
 
 interface LeadFormData {
@@ -43,15 +49,14 @@ interface LeadFormData {
 
 const LeadFormModal = ({ 
   lead = {}, 
-  onClose, 
-  onSubmit, 
-  isOpen, 
+  onClose,
+  onSubmit,
+  isOpen,
   isLoaded,
-  initialPanoramaPosition = null
 }: LeadFormModalProps) => {
   const { isLoaded: mapsLoaded, loadError } = useGoogleMapsApi();
   const [streetViewLoaded, setStreetViewLoaded] = useState(false);
-  const [panoramaPosition, setPanoramaPosition] = useState<{ lat: number; lng: number } | null>(initialPanoramaPosition);
+  const [panoramaPosition, setPanoramaPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [formData, setFormData] = useState<LeadFormData>({
     contact_name: lead.contact_name ?? '',
     contact_email: lead.contact_email ?? '',

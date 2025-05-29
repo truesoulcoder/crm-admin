@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 
 import { supabase } from '@/lib/supabase/client';
-import { Campaign, CampaignJob } from '@/types/campaign';
-import { Database } from '@/types/db_types';
+import { Campaign, CampaignJob, JobStatus } from '@/types/campaign';
+
+function isJobStatus(status: string): status is JobStatus {
+  return ['pending', 'processing', 'completed', 'failed'].includes(status);
+}
 
 export function useCampaigns() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -32,29 +35,40 @@ export function useCampaigns() {
     }
   }, []);
 
-  const fetchJobs = useCallback(async (campaignId: string): Promise<CampaignJob[]> => {
-    if (!campaignId) return [];
+// In your useCampaigns.ts file, modify the fetchJobs function like this:
+
+const fetchJobs = useCallback(async (campaignId: string) => {
+  if (!campaignId) return [];
+  
+  setIsLoading(true);
+  try {
+    const { data, error } = await supabase
+      .from('campaign_jobs')
+      .select('*')
+      .eq('campaign_id', campaignId)
+      .order('next_processing_time', { ascending: true });
+
+    if (error) throw error;
     
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('campaign_jobs')
-        .select('*')
-        .eq('campaign_id', campaignId)
-        .order('next_processing_time', { ascending: true });
-
-      if (error) throw error;
-      setJobs(data || []);
-      return (data || []) as CampaignJob[];
-    } catch (err) {
-      setError('Failed to load jobs');
-      console.error('Error fetching jobs:', err);
-      return [] as CampaignJob[];
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
+    // Use the type guard to validate status
+    const typedData = (data || []).map(job => {
+      if (!isJobStatus(job.status)) {
+        console.warn(`Invalid job status: ${job.status}, defaulting to 'pending'`);
+        return { ...job, status: 'pending' as const };
+      }
+      return { ...job, status: job.status };
+    });
+    
+    setJobs(typedData);
+    return typedData;
+  } catch (err) {
+    setError('Failed to load jobs');
+    console.error('Error fetching jobs:', err);
+    return [] as CampaignJob[];
+  } finally {
+    setIsLoading(false);
+  }
+}, []);
   // Add other shared methods like startCampaign, stopCampaign, etc.
 
   return {

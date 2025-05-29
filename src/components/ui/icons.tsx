@@ -1,7 +1,24 @@
-import { Loader2, Github, Google } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import * as SimpleIcons from 'simple-icons';
 
 export const Icons = {
   spinner: Loader2,
-  google: Google,
-  github: Github,
+  google: () => (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      style={{ width: '1em', height: '1em' }}
+      dangerouslySetInnerHTML={{ __html: SimpleIcons.siGoogle.path }}
+    />
+  ),
+  github: () => (
+    <svg
+      role="img"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      style={{ width: '1em', height: '1em' }}
+      dangerouslySetInnerHTML={{ __html: SimpleIcons.siGithub.path }}
+    />
+  ),
 };

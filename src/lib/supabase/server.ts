@@ -2,7 +2,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-import type { Database } from '@/types/db_types';
+import type { Database } from '@/db_types';
 
 // Helper function to create a Supabase server client with the latest cookie methods
 function createSupabaseServerClient() {

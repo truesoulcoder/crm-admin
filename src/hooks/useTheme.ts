@@ -9,7 +9,8 @@ export type ThemeName =
   | 'forest' | 'aqua' | 'lofi' | 'pastel' | 'fantasy' 
   | 'wireframe' | 'black' | 'luxury' | 'dracula' | 'cmyk' 
   | 'autumn' | 'business' | 'acid' | 'lemonade' | 'coffee' 
-  | 'winter' | 'dim' | 'nord' | 'sunset';
+  | 'winter' | 'dim' | 'nord' | 'sunset'
+  | 'cupcake' | 'bumblebee' | 'emerald' | 'corporate';
 
 export type Theme = ThemeName | 'system';
 

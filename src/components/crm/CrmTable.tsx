@@ -1,11 +1,11 @@
 // src/components/crm/CrmTable.tsx
 'use client';
 // External dependencies
+import { Table, flexRender } from '@tanstack/react-table';
 import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
-import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
+import { Button, Card, Modal, Alert, Badge } from 'react-daisyui';
 import { toast } from 'react-hot-toast';
-import { Table, flexRender } from '@tanstack/react-table';
 
 // Re-export Lead and StatusOption if they are defined here and used by CrmView
 // Otherwise, CrmView should import them from their original source (e.g., a types file)

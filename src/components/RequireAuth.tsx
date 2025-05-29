@@ -14,7 +14,7 @@ interface RequireAuthProps {
 }
 
 const RequireAuth: React.FC<RequireAuthProps> = ({ children }) => {
-  const { user, loading, error: userContextError } = useUser();
+  const { user, loading } = useUser();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -46,7 +46,7 @@ const RequireAuth: React.FC<RequireAuthProps> = ({ children }) => {
     );
   }
 
-  if (userContextError) {
+  if (!user) {
     return (
       <>
         <Head>
@@ -55,7 +55,7 @@ const RequireAuth: React.FC<RequireAuthProps> = ({ children }) => {
         <div className="flex flex-col items-center justify-center h-screen text-center p-4">
           <p className="text-lg text-red-600">Authentication Error</p>
           <p className="text-sm text-gray-700 mt-2">
-            There was an issue loading your user information: {userContextError}
+            There was an issue loading your user information.
           </p>
           <p className="text-sm text-gray-500 mt-1">
             Please try refreshing the page or contact support if the problem persists.
@@ -83,3 +83,4 @@ const RequireAuth: React.FC<RequireAuthProps> = ({ children }) => {
   // If user is authenticated, or if it's the login page itself (even if !user), render children.
   return <>{children}</>;
 }
+export default RequireAuth;

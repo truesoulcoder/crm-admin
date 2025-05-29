@@ -15,6 +15,7 @@ import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader';
 // Utilities and types
 import { supabase } from '@/lib/supabase/client';
 
+import type { Database } from '@/db_types';
 import type { CrmLead } from '@/types/crm';
 
 // Actions
@@ -44,11 +45,11 @@ export interface CrmFormData {
   property_state?: string | null;
   property_postal_code?: string | null;
   property_type?: string | null;
-  beds?: string | null;
-  baths?: string | null;
-  year_built?: string | null;
-  square_footage?: string | null;
-  lot_size_sqft?: string | null;
+  beds?: number | null;
+  baths?: number | null;
+  year_built?: number | null;
+  square_footage?: number | null;
+  lot_size_sqft?: number | null;
   
   // Financial and AVM details
   wholesale_value?: number | null;
@@ -124,6 +125,11 @@ const CrmViewInner: React.FC = () => {
   const [marketFilter, setMarketFilter] = useState<string>('');
   const [availableMarkets, setAvailableMarkets] = useState<string[]>([]);
 
+const convertNumericFieldsToStrings = (data: Record<string, any>): Record<string, any> => {
+  // Don't convert to strings, just return the data as is
+  return { ...data };
+};
+
   // Fetch market regions from Supabase on mount
   useEffect(() => {
     const fetchMarketRegions = async () => {
@@ -174,9 +180,9 @@ const CrmViewInner: React.FC = () => {
     property_state: '',
     property_postal_code: '',
     property_type: '',
-    beds: '', // Initialize as empty string
-    baths: '', // Initialize as empty string
-    year_built: '',
+    beds: null, // Initialize as empty string
+    baths: null, // Initialize as empty string
+    year_built: null,
     square_footage: undefined,
     assessed_total: undefined,
     lot_size_sqft: undefined,
@@ -208,11 +214,11 @@ const CrmViewInner: React.FC = () => {
         property_state: lead.property_state || '',
         property_postal_code: lead.property_postal_code || '',
         property_type: lead.property_type || '',
-        beds: lead.beds === null ? '' : String(lead.beds), // Convert to string for form
-        baths: lead.baths === null ? '' : String(lead.baths), // Convert to string for form
-        year_built: lead.year_built || '',
-        square_footage: lead.square_footage === null ? '' : String(lead.square_footage), // Convert to string for form
-        lot_size_sqft: lead.lot_size_sqft === null ? '' : String(lead.lot_size_sqft), // Convert to string for form
+        beds: lead.beds === null ? null : Number(lead.beds), // Convert to string for form
+        baths: lead.baths === null ? null : Number(lead.baths), // Convert to string for form
+        year_built: lead.year_built === null ? null : Number(lead.year_built), // Convert to string for form
+        square_footage: lead.square_footage === null ? null : Number(lead.square_footage), // Convert to string for form
+        lot_size_sqft: lead.lot_size_sqft === null ? null : Number(lead.lot_size_sqft), // Convert to string for form
         assessed_total: lead.assessed_total === null ? undefined : lead.assessed_total,
         mls_curr_status: lead.mls_curr_status || '',
         mls_curr_days_on_market: lead.mls_curr_days_on_market || '',
@@ -286,41 +292,48 @@ const CrmViewInner: React.FC = () => {
     autocompleteRef.current = null; 
   };
 
-  const handleSaveLead = async () => {
+  const handleSaveLead = async (leadData: CrmFormData) => {
     setIsSaving(true);
     setError(null);
-
-    // Create a new object with the correct types for the database
-    const leadToSave: Record<string, any> = {
-      ...editFormData,
-      // Convert string values to numbers where needed
-      beds: editFormData.beds ? String(editFormData.beds) : null,
-      baths: editFormData.baths ? String(editFormData.baths) : null,
-      square_footage: editFormData.square_footage || null,
-      assessed_total: editFormData.assessed_total || null,
-      avm_value: editFormData.avm_value || null,
-      wholesale_value: editFormData.wholesale_value || null,
-      price_per_sq_ft: editFormData.price_per_sq_ft || null,
-      lot_size_sqft: editFormData.lot_size_sqft || null,
-      year_built: editFormData.year_built || null,
-      mls_curr_days_on_market: editFormData.mls_curr_days_on_market || null,
-      status: editFormData.status || 'New',
-      converted: editFormData.converted || false
-    };
-
-    const result = editFormData.id
-      ? await updateCrmLeadAction(editFormData.id, leadToSave)
-      : await createCrmLeadAction(leadToSave);
-
-    if (result.success) {
-      toast.success('Lead saved successfully!');
-      handleCloseModal();
-      await fetchLeads();
-    } else {
-      setError(result.error || 'Failed to save lead.');
-      toast.error(`Failed to save lead: ${result.error}`);
+  
+    try {
+      // Create a new object with the correct types for the database
+      const leadToSave: Record<string, any> = {
+        ...leadData,  // Use the leadData from the form
+        // Convert string values to numbers where needed
+        beds: leadData.beds ? String(leadData.beds) : null,
+        baths: leadData.baths ? String(leadData.baths) : null,
+        square_footage: leadData.square_footage || null,
+        assessed_total: leadData.assessed_total || null,
+        avm_value: leadData.avm_value || null,
+        wholesale_value: leadData.wholesale_value || null,
+        price_per_sq_ft: leadData.price_per_sq_ft || null,
+        lot_size_sqft: leadData.lot_size_sqft || null,
+        year_built: leadData.year_built || null,
+        mls_curr_days_on_market: leadData.mls_curr_days_on_market || null,
+        status: leadData.status || 'New',
+        converted: leadData.converted || false
+      };
+  
+      const result = leadData.id
+        ? await updateCrmLeadAction(leadData.id, leadToSave)
+        : await createCrmLeadAction(leadToSave);
+  
+      if (result.success) {
+        toast.success('Lead saved successfully!');
+        handleCloseModal();
+        await fetchLeads();
+      } else {
+        setError(result.error || 'Failed to save lead.');
+        toast.error(`Failed to save lead: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error saving lead:', error);
+      setError('An unexpected error occurred while saving the lead.');
+      toast.error('Failed to save lead. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   const handleDeleteLead = async (id: number) => {
@@ -334,65 +347,6 @@ const CrmViewInner: React.FC = () => {
         toast.error(`Failed to delete lead: ${result.error}`);
       }
       setIsLoading(false);
-    }
-  };
-
-  const handleFormSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    setIsSaving(true);
-    setError(null);
-
-    try {
-      // Prepare the object to be saved
-      const leadDataToSave = { ...editFormData };
-
-      if (!leadDataToSave.id) {
-        delete leadDataToSave.id;
-      }
-
-      // Ensure all fields have the correct types before saving
-      const finalDataForAction: Record<string, any> = {
-        ...leadDataToSave,
-        // Convert values to appropriate types for the database
-        beds: leadDataToSave.beds || null,
-        baths: leadDataToSave.baths || null,
-        square_footage: leadDataToSave.square_footage || null,
-        assessed_total: leadDataToSave.assessed_total || null,
-        lot_size_sqft: leadDataToSave.lot_size_sqft || null,
-        year_built: leadDataToSave.year_built || null,
-        mls_curr_days_on_market: leadDataToSave.mls_curr_days_on_market || null,
-        status: leadDataToSave.status || 'New',
-        converted: leadDataToSave.converted || false
-      };
-
-      if (editFormData.id) {
-        const result = await updateCrmLeadAction(editFormData.id, finalDataForAction);
-        if (result.error) throw new Error(result.error);
-        await fetchLeads();
-      } else {
-        // For new leads, ensure id is not sent
-        const { id, ...createData } = finalDataForAction;
-        const result = await createCrmLeadAction(createData as Partial<Omit<CrmLead, 'id' | 'created_at' | 'updated_at'>>);
-        if (result.error) throw new Error(result.error);
-        await fetchLeads();
-      }
-
-      toast.success(editFormData.id ? 'Lead updated successfully!' : 'Lead created successfully!');
-      handleCloseModal();
-    } catch (e: unknown) {
-      console.error('Error saving lead:', e);
-      if (e instanceof Error) {
-        setError(`Failed to save lead: ${e.message}`);
-      } else {
-        setError('An unknown error occurred while saving the lead.');
-      }
-      // Re-throw the error to be handled by the form's error boundary if needed
-      if (e instanceof Error) {
-        throw e;
-      }
-      throw new Error('An unknown error occurred');
-    } finally {
-      setIsSaving(false);
     }
   };
   
@@ -699,36 +653,17 @@ const CrmViewInner: React.FC = () => {
       <LeadFormModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
-        onSubmit={async (e: FormEvent<HTMLFormElement>): Promise<void> => {
-          e.preventDefault();
-          try {
-            await handleFormSubmit(e);
-          } catch (error) {
+        onSubmit={(leadData) => {
+          handleSaveLead(leadData).catch((error) => {
             console.error('Error submitting form:', error);
-            throw error; // Re-throw to be handled by the form's error boundary if needed
-          }
+          });
         }}
-        formData={editFormData}
-        onInputChange={handleModalInputChange}
-        onGeocode={() => {
-          if (
-            editFormData.property_address &&
-            isLoaded &&
-            typeof window !== 'undefined' &&
-            window.google?.maps?.Geocoder
-          ) {
-            const geocoder = new window.google.maps.Geocoder();
-            void geocoder.geocode({ address: editFormData.property_address }, (results, status) => {
-              handleGeocodeResult(results, status);
-            });
-          }
-        }}
-        modalTitleAddress={modalTitleAddress}
-        isEditMode={!!editFormData.id}
+        lead={convertNumericFieldsToStrings(editFormData)}
         isLoaded={isLoaded}
+        isEditMode={!!editFormData.id}
+        modalTitleAddress={modalTitleAddress}
         panoramaPosition={panoramaPosition}
-        lat={panoramaPosition?.lat || 0}
-        lng={panoramaPosition?.lng || 0}
+        lat={panoramaPosition?.lat}
       />
     </div>
   );

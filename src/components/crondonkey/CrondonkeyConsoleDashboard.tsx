@@ -1,16 +1,37 @@
+'use client';
+
+import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { useEffect, useState } from 'react';
-import { createServerClient } from '@/lib/supabase/client';
+
+type EmailMetric = {
+  status: 'sent' | 'delivered' | 'bounced' | 'opened' | 'clicked' | 'failed';
+  job_id: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type Metrics = {
+  sent: number;
+  delivered: number;
+  bounced: number;
+  opened: number;
+  clicked: number;
+  failed: number;
+  [key: string]: number; // For dynamic access
+};
 
 export default function CrondonkeyConsoleDashboard({ isPaused }: { isPaused: boolean }) {
-  const supabase = createServerClient();
+  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   const [isRunning, setIsRunning] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
-  const [metrics, setMetrics] = useState({
+  const [metrics, setMetrics] = useState<Metrics>({
     sent: 0,
     delivered: 0,
     bounced: 0,
-    failed: 0,
-    replied: 0
+    opened: 0,
+    clicked: 0,
+    failed: 0
   });
   const [totalJobs, setTotalJobs] = useState(0);
 
@@ -35,29 +56,33 @@ export default function CrondonkeyConsoleDashboard({ isPaused }: { isPaused: boo
     });
   };
 
-  useEffect(() => {
-    const channel = supabase
-      .channel('realtime:email_metrics')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'email_metrics' },
-        payload => {
-          setMetrics(prev => ({
-            ...prev,
-            [payload.new.status]: (prev[payload.new.status] || 0) + 1
-          }));
-          setLogs(logs => [
-            ...logs,
-            `📬 ${payload.new.status.toUpperCase()} — job ${payload.new.job_id}`
-          ]);
-        }
-      )
-      .subscribe();
+useEffect(() => {
+  const channel = supabase
+    .channel('email_metrics')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'email_metrics',
+      },
+      (payload) => {
+        setMetrics(prev => ({
+          ...prev,
+          [payload.new.status]: (prev[payload.new.status] || 0) + 1
+        }));
+      }
+    )
+    .subscribe((status, err) => {
+      if (err) {
+        console.error('Error subscribing to email metrics:', err.message);
+      }
+    });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase]);
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [supabase]);
 
   useEffect(() => {
     const fetchTotalJobs = async () => {

@@ -11,12 +11,12 @@ import { toast } from 'react-hot-toast';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 // Components
 // Hooks
+import { Database } from '@/db_types';
 import { useEngineControl } from '@/hooks/useEngineControl';
 import { useMarketRegions } from '@/hooks/useMarketRegions';
 // Utilities
 import { getErrorMessage } from '@/lib/utils';
 // Types
-import { Database } from '@/types/db_types';
 
 // Define types for our data
 interface Sender {

@@ -23,8 +23,8 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   {
-    name: 'Crondonkey',
-    href: '/Crondonkey',
+    name: 'Dashboard',
+    href: '/dashboard',
     icon: <LayoutDashboard size={20} />,
   },
   {
@@ -42,6 +42,11 @@ const menuItems: MenuItem[] = [
     href: '/settings',
     icon: <Settings size={20} />,
   },
+  {
+    name: 'Crondonkey',
+    href: '/Crondonkey',
+    icon: <Settings size={20} />,
+  }
 ];
 
 interface SidebarProps {
