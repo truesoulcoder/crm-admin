@@ -54,7 +54,7 @@ async function attemptJob(jobId: string, retryCount = 0): Promise<void> {
 
     const delay = Math.pow(2, retryCount) * 1000; // exponential delay
     console.log(`[CronDonkey] ⏳ Retrying job ${jobId} in ${delay / 1000}s`);
-    setTimeout(() => attemptJob(jobId, retryCount + 1), delay);
+    setTimeout(() => void attemptJob(jobId, retryCount + 1), delay);
   }
 }
 
@@ -72,7 +72,7 @@ async function scheduleJob(job: any) {
 
   setTimeout(() => {
     console.log(`[CronDonkey] 🚀 Executing job ${job.id} at`, new Date().toISOString());
-    attemptJob(job.id);
+    void attemptJob(job.id);
   }, delay);
 }
 
@@ -86,7 +86,7 @@ async function run() {
   }
 
   for (const job of jobs) {
-    scheduleJob(job);
+    void scheduleJob(job);
   }
 
   console.log(`[CronDonkey] 🎯 All jobs scheduled.`);
