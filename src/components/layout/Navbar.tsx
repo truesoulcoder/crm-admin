@@ -6,7 +6,7 @@ import { Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
  
-import ThemeSelector from '@/components/ThemeSelector';
+import ThemeToggle from '@/components/ThemeToggle';
 import { useUser } from '@/contexts/UserContext';
 
 // Helper function to generate initials from a name
@@ -68,7 +68,7 @@ const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
         </div>
       </div>
       <div className="navbar-end gap-1">
-        <ThemeSelector />
+        <ThemeToggle />
         {/* Avatar dropdown */}
         <div className="dropdown dropdown-end ml-2">
           <div className="flex items-center gap-2">

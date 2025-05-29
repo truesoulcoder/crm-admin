@@ -20,11 +20,10 @@ export default function RootLayout({
   useEffect(() => {
     const root = document.documentElement;
     root.setAttribute('data-theme', resolvedTheme);
-    root.classList.add(resolvedTheme);
   }, [resolvedTheme]);
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-theme={resolvedTheme} suppressHydrationWarning>
       <body className={inter.className}>
         <Providers>
           <ClientLayoutWrapper>
