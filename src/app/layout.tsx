@@ -1,6 +1,7 @@
 // src/app/layout.tsx
 'use client';
 
+import './main.css';
 import './globals.css';
 
 import { 
