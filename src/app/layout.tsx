@@ -1,13 +1,12 @@
 // src/app/layout.tsx
 'use client';
 
+import './globals.css';
+
 import { 
-  Home, 
   Users, 
-  Mail, 
   Settings, 
   Menu, 
-  X, 
   LayoutDashboard,
   Mailbox,
   FileText,
@@ -47,10 +46,12 @@ const RootLayout = ({
 
   // Apply theme
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const root = document.documentElement;
-      root.className = resolvedTheme || 'night';
-      root.setAttribute('data-theme', resolvedTheme || 'night');
+    const root = document.documentElement;
+    if (resolvedTheme) {
+      root.setAttribute('data-theme', resolvedTheme);
+    } else {
+      // Fallback to night theme if resolvedTheme is not available yet
+      root.setAttribute('data-theme', 'night');
     }
   }, [resolvedTheme]);
 
