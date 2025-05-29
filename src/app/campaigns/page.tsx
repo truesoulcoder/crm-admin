@@ -1,8 +1,7 @@
+// src/app/campaigns/page.tsx
 'use client';
-
 import dynamic from 'next/dynamic';
 
-// Dynamically import the CampaignsView component with SSR disabled
 const CampaignsView = dynamic(
   () => import('@/components/views/CampaignsView'),
   { ssr: false }
@@ -10,8 +9,13 @@ const CampaignsView = dynamic(
 
 export default function CampaignsPage() {
   return (
-    <div className="container mx-auto px-4 py-8">
-      <CampaignsView />
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Campaigns</h1>
+      </div>
+      <div className="space-y-4">
+        <CampaignsView />
+      </div>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+/* src/app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,120 +6,104 @@
 /* Import OnceUI styles */
 @import 'once-ui/dist/style.css';
 
-/* Base styles for all themes */
-@layer base {
-  :root {
-    /* Theme variables */
-    --rounded-box: 1rem;
-    --rounded-btn: 0.5rem;
-    --rounded-badge: 1.9rem;
-    --animation-btn: 0.25s;
-    --animation-input: 0.2s;
-    --btn-text-case: uppercase;
-    --btn-focus-scale: 0.95;
-    --border-btn: 1px;
-    --tab-border: 1px;
-    --tab-radius: 0.5rem;
-    color-scheme: light dark;
-  }
+/* Layout */
+:root {
+  --sidebar-width: 16rem;
+  --header-height: 4rem;
 }
 
-/* Apply base styles */
-@layer base {
-  html, body {
-    @apply h-full;
+html, body, #__next {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  @apply bg-base-200 text-base-content;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* App layout */
+.app-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  @apply bg-base-100 border-r border-base-300;
+  width: var(--sidebar-width);
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+/* Main content */
+.main-content {
+  flex: 1;
+  margin-left: var(--sidebar-width);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.header {
+  @apply bg-base-100 border-b border-base-300;
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+}
+
+/* Content area */
+.content {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+/* Navigation */
+.nav-menu {
+  @apply space-y-1 mt-4;
+}
+
+.nav-link {
+  @apply flex items-center px-3 py-2 rounded-lg text-base-content/80 hover:bg-base-200;
+}
+
+.nav-link.active {
+  @apply bg-primary/10 text-primary font-medium;
+}
+
+.nav-link svg {
+  @apply mr-3 h-5 w-5;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
   }
   
-  body {
-    @apply bg-base-100 text-base-content min-h-screen;
-    font-feature-settings: 'rlig' 1, 'calt' 1;
-    transition: background-color 200ms ease, color 200ms ease;
+  .sidebar.open {
+    transform: translateX(0);
   }
-}
-
-/* OnceUI components customization */
-.once-button {
-  @apply rounded-btn;
-  text-transform: var(--btn-text-case, uppercase);
-}
-
-/* Custom scrollbar that adapts to theme */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  @apply bg-base-200;
-}
-
-::-webkit-scrollbar-thumb {
-  @apply bg-neutral rounded-full hover:bg-neutral-focus;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-/* Form elements */
-.once-input,
-.once-select,
-.once-textarea {
-  @apply bg-base-100 border border-base-300 rounded-btn;
-  @apply focus:ring-2 focus:ring-primary/50 focus:border-primary;
-  @apply transition-colors duration-200;
-}
-
-/* Fix for dropdowns */
-.once-dropdown {
-  @apply bg-base-100 border border-base-300 rounded-box shadow-lg;
-}
-
-/* Tooltips */
-.once-tooltip {
-  @apply bg-neutral text-neutral-content rounded-btn px-3 py-1.5 text-sm;
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-}
-
-/* Modal */
-.once-modal {
-  @apply bg-base-100 border border-base-300 rounded-box p-6;
-  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
-}
-
-.once-modal-backdrop {
-  @apply bg-black/50 backdrop-blur-sm;
-}
-
-/* Cards */
-.once-card {
-  @apply bg-base-100 text-base-content border border-base-300 rounded-box;
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-}
-
-/* Active states */
-button:active {
-  transform: scale(var(--btn-focus-scale, 0.98));
-}
-
-/* Smooth transitions for theme changes */
-*, *::before, *::after {
-  transition: 
-    background-color 200ms ease,
-    border-color 200ms ease,
-    color 200ms ease,
-    box-shadow 200ms ease;
-}
-
-/* Focus states */
-:focus-visible {
-  @apply outline-none ring-2 ring-primary/50 ring-offset-2 ring-offset-base-100;
-}
-
-/* Remove default button styles */
-button {
-  @apply focus:outline-none;
-}
-
-/* Ensure proper contrast for disabled buttons */
-button:disabled {
-  @apply opacity-50 cursor-not-allowed;
+  
+  .main-content {
+    margin-left: 0;
+  }
+  
+  .sidebar-overlay {
+    @apply fixed inset-0 bg-black/50 z-10;
+    display: none;
+  }
+  
+  .sidebar-overlay.open {
+    display: block;
+  }
 }

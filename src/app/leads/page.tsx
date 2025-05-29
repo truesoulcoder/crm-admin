@@ -1,11 +1,16 @@
+// src/app/leads/page.tsx
 'use client';
-
-import React from 'react';
-
 import LeadsView from '@/components/views/LeadsView';
 
-const LeadsPage = () => {
-  return <LeadsView />;
-};
-
-export default LeadsPage;
+export default function LeadsPage() {
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Leads Management</h1>
+      </div>
+      <div className="space-y-4">
+        <LeadsView />
+      </div>
+    </div>
+  );
+}
