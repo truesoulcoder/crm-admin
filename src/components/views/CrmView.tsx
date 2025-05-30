@@ -2,20 +2,17 @@
 'use client';
 
 // External dependencies
-import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, AlertTriangle } from 'lucide-react';
-import { useState, useEffect, useRef, useCallback, useMemo, ChangeEvent, FormEvent } from 'react'; 
-import { Button, Card, Table, Modal, Alert, Badge } from 'react-daisyui';
+import { ChevronUp, ChevronDown, PlusCircle, Search } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'; 
 import { toast } from 'react-hot-toast';
 
 // Internal components
 import { createCrmLeadAction, updateCrmLeadAction, deleteCrmLeadAction } from '@/app/crm/actions';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { LeadFormModal } from '@/components/leads/LeadFormModal';
 import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader';
 // Utilities and types
 import { supabase } from '@/lib/supabase/client';
 
-import type { Database } from '@/db_types';
 import type { CrmLead } from '@/types/crm';
 
 // Actions
@@ -635,14 +632,14 @@ const convertNumericFieldsToStrings = (data: Record<string, any>): Record<string
                 disabled={currentPage === 1 || isLoading}
                 className="join-item btn btn-sm btn-outline"
               >
-                « Prev
+                Prev
               </button>
               <button
                 onClick={() => handlePageChange(currentPage + 1)}
                 disabled={leads.length < rowsPerPage || isLoading}
                 className="join-item btn btn-sm btn-outline"
               >
-                Next »
+                Next
               </button>
             </div>
           </div>
@@ -671,15 +668,6 @@ const convertNumericFieldsToStrings = (data: Record<string, any>): Record<string
 
 export default function CrmView() {
   return (
-    <ErrorBoundary 
-      fallback={
-        <div className="alert alert-error">
-          CRM view failed to load. Please try refreshing the page.
-        </div>
-      }
-      onError={(error) => console.error('CRM view error:', error)}
-    >
       <CrmViewInner />
-    </ErrorBoundary>
   );
 }
