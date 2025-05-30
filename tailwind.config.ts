@@ -1,9 +1,13 @@
 // tailwind.config.ts
+import containerQueries from '@tailwindcss/container-queries';
+import forms from '@tailwindcss/forms';
+import typography from '@tailwindcss/typography';
+import daisyui from 'daisyui';
+
 import type { Config } from 'tailwindcss';
 
 const config: Config = {
   content: [
-    './src/**/*.{js,ts,jsx,tsx,mdx}',
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
@@ -16,10 +20,10 @@ const config: Config = {
     },
   },
   plugins: [
-    require('@tailwindcss/forms'),
-    require('@tailwindcss/typography'),
-    require('@tailwindcss/container-queries'),
-    require('daisyui'),
+    forms,
+    typography,
+    containerQueries,
+    daisyui,
   ],
   daisyui: {
     themes: [
@@ -61,7 +65,6 @@ const config: Config = {
     styled: true,
     utils: true,
     prefix: '',
-    logs: true,
   },
 };
 

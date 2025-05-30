@@ -8,7 +8,6 @@ import Sidebar from '@/components/layout/Sidebar';
 import { useTheme } from '@/hooks/useTheme';
 
 import Providers from './providers';
-import './main.css';
 import './globals.css';
 
 export default function RootLayout({
@@ -35,24 +34,18 @@ export default function RootLayout({
   };
 
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <title>CRM Admin</title>
-        <meta name="description" content="CRM Admin Dashboard" />
-      </head>
-      <body className="min-h-screen">
+    <html lang="en" data-theme={resolvedTheme}>
+      <body className="min-h-screen bg-base-100">
         <Providers>
-          <div className="flex h-screen overflow-hidden">
-            <Sidebar />
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <Navbar 
-                toggleSidebar={toggleMobileSidebar} 
-                isSidebarOpen={isMobileSidebarOpen} 
-              />
-              <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 bg-base-100">
+          <div className="drawer lg:drawer-open">
+            <input id="sidebar-drawer-toggle" type="checkbox" className="drawer-toggle" />
+            <div className="drawer-content flex flex-col">
+              <Navbar onMenuClick={toggleMobileSidebar} />
+              <main className="flex-1 overflow-y-auto p-4 md:p-6">
                 {children}
               </main>
             </div>
+            <Sidebar />
           </div>
         </Providers>
       </body>
