@@ -74,7 +74,7 @@ export interface Eli5EmailLogEntry {
   property_address?: string | null;
   property_city?: string | null;
   property_state?: string | null;
-  property_postal_code?: string | null;
+  property_postal_code?: number | null;
   property_type?: string | null;
   baths?: number | null;
   beds?: number | null;
