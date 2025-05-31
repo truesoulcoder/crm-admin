@@ -102,7 +102,7 @@ const CrmLeads: React.FC = () => {
   const [streetViewPosition, setStreetViewPosition] = useState<{ lat: number; lng: number } | null>(null);
   // Add a ref for the geocoder instance
   const geocoderRef = useRef<google.maps.Geocoder | null>(null);
-
+  const streetViewServiceRef = useRef<google.maps.StreetViewService | null>(null);
 
   // Define columns for the table
   const columns: ColumnConfig[] = [
@@ -205,6 +205,9 @@ const CrmLeads: React.FC = () => {
             });
             setAutocomplete(autoCompInstance);
           }
+          if (!geocoderRef.current) {
+            geocoderRef.current = new google.maps.Geocoder();
+          }
         }
       } catch (error) {
         console.error('Error initializing Google Maps:', error);
@@ -258,18 +261,24 @@ const CrmLeads: React.FC = () => {
         assessed_total: lead.assessed_total ?? null,
       });
       if (isGoogleMapsLoaded && geocoderRef.current && lead.property_address && lead.property_city && lead.property_state) {
-        geocoderRef.current.geocode({ address: `${lead.property_address}, ${lead.property_city}, ${lead.property_state}` }, (results, status) => {
-          if (status === google.maps.GeocoderStatus.OK && results && results[0]?.geometry?.location) {
-            setStreetViewPosition({ lat: results[0].geometry.location.lat(), lng: results[0].geometry.location.lng() });
-          } else {
-            setStreetViewPosition(null);
-            console.warn('Geocode was not successful for the following reason: ' + status);
+        geocoderRef.current.geocode(
+          { address: `${lead.property_address}, ${lead.property_city}, ${lead.property_state}` },
+          (results: google.maps.GeocoderResult[] | null, status: google.maps.GeocoderStatus) => {
+            if (status === google.maps.GeocoderStatus.OK && results?.[0]?.geometry?.location) {
+              setStreetViewPosition({
+                lat: results[0].geometry.location.lat(),
+                lng: results[0].geometry.location.lng()
+              });
+            } else {
+              setStreetViewPosition(null);
+              console.warn(`Geocoding failed with status: ${status}`);
+            }
           }
-        });
+        );
       } else {
         setStreetViewPosition(null);
         if (!isGoogleMapsLoaded && lead.property_address) { // Check if API not loaded was the reason for not geocoding
-            console.warn("Maps API not loaded, cannot geocode address for Street View.");
+            console.warn("Maps API not loaded, cannot geocode address");
         }
       }
     } else {
@@ -679,7 +688,14 @@ const CrmLeads: React.FC = () => {
                     <StreetViewPanorama
                       position={streetViewPosition}
                       visible={true}
-                      options={{ addressControl: false, linksControl: false, panControl: true, zoomControl: true, enableCloseButton: false, fullscreenControl: false }}
+                      options={{
+                        addressControl: false,
+                        linksControl: false,
+                        panControl: true,
+                        zoomControl: true,
+                        enableCloseButton: false,
+                        fullscreenControl: false
+                      }}
                     />
                   </div>
                 )}
