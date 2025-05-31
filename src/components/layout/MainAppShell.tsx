@@ -2,9 +2,6 @@
 
 import React, { useState } from 'react';
 
-import GoogleMapsLoader from '@/components/maps/GoogleMapsLoader'; // Import GoogleMapsLoader
-import RequireAuth from '@/components/RequireAuth'; // Assuming RequireAuth is in src/components
-
 import Navbar from './Navbar';
 import Sidebar from './Sidebar';
 
@@ -26,19 +23,18 @@ const MainAppShell: React.FC<MainAppShellProps> = ({ children }) => {
     }
   };
 
-  return (
-    <GoogleMapsLoader>
-      <RequireAuth>
-        <input id="sidebar-drawer-toggle" type="checkbox" className="drawer-toggle" />
-        <Navbar onMenuClick={toggleMobileSidebar} />
-          <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-base-100">
-              {children}
-          </main>
-        <label htmlFor="sidebar-drawer-toggle" aria-label="close sidebar" className="drawer-overlay"></label>
-        <Sidebar />
-      </RequireAuth>
-    </GoogleMapsLoader>
-  );
+return (
+  <div className="drawer">
+    <input id="sidebar-drawer-toggle" type="checkbox" className="drawer-toggle" />
+    <div className="drawer-content">
+      <Navbar onMenuClick={toggleMobileSidebar} />
+      <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-base-100">
+        {children}
+      </main>
+    </div>
+    <Sidebar />
+    <label htmlFor="sidebar-drawer-toggle" aria-label="close sidebar" className="drawer-overlay"></label>
+  </div>
+);
 };
-
 export default MainAppShell;
