@@ -6,78 +6,54 @@ import React, { useState, useEffect, useCallback, ChangeEvent, FormEvent, useRef
 import { supabase } from '@/lib/supabase/client';
 
 interface ColumnConfig {
-  key: keyof NormalizedLead | string; // Allow string for keys not directly in NormalizedLead if needed, but prefer keyof for type safety
+  key: keyof CrmLead; 
   label: string;
   sortable?: boolean;
 }
 
-export interface NormalizedLead {
+export interface CrmLead {
   id: string;
   market_region?: string | null;
   contact_name?: string | null;
   contact_email?: string | null;
-  mls_curr_list_agent_name?: string | null;
-  mls_curr_list_agent_email?: string | null;
   property_address?: string | null;
   property_city?: string | null;
   property_state?: string | null;
-  property_postal_code?: string | null;
+  property_postal_code?: number | null;
   property_type?: string | null;
-  beds?: string | null; // Assuming text, adjust if numeric
-  baths?: string | null; // Assuming text, adjust if numeric
-  year_built?: string | null; // Assuming text, adjust if numeric
-  square_footage?: string | null; // Assuming text, adjust if numeric (schema has it as 'text')
-  lot_size_sqft?: string | null; // Assuming text, adjust if numeric
-  wholesale_value?: number | null; // numeric
+  beds?: number | null; // Assuming text, adjust if numeric
+  baths?: number | null; // Assuming text, adjust if numeric
+  year_built?: number | null; // Assuming text, adjust if numeric
+  square_footage?:  number | null; // Assuming text, adjust if numeric (schema has it as 'text')
+  lot_size_sqft?: number | null; // Assuming text, adjust if numeric
   assessed_total?: number | null; // numeric
-  avm_value?: number | null; // numeric
-  price_per_sq_ft?: number | null; // numeric
   mls_curr_status?: string | null;
-  mls_curr_days_on_market?: string | null;
+  mls_curr_days_on_market?: number | null;
   converted: boolean; // not null default false
-  status?: string | null; // This is lead_status in table view, aligning with 'status' field in schema
-  source?: string | null; // This is lead_source in table view
+  status?: string | null;
   notes?: string | null;
-  created_at: string; // timestamp with time zone
-  updated_at: string; // timestamp with time zone
-  // Fields from previous interface not directly in new schema but kept for potential future use or if schema expands:
-  company_name?: string | null;
-  company_industry?: string | null;
-  company_website?: string | null;
-  company_notes?: string | null;
-  county?: string | null;
-  country?: string | null;
-  lead_score?: number | null;
-  assigned_to?: string | null;
-  last_contacted_date?: string | null; // separate from updated_at
-  next_follow_up_date?: string | null;
-  conversion_date?: string | null;
-  lost_reason?: string | null;
-  tags?: string[] | null;
-  custom_fields?: Record<string, any> | null;
-  property_sf?: number | null; // old name for square_footage, kept if used in old data
-  // The 'lead_status' and 'lead_source' used in UI might map to 'status' and 'source' from the schema respectively.
-  // For clarity, the UI will use lead.status and lead.source which map to these schema fields.
-  // The table column header 'lead_status' will display data from 'lead.status'.
-  _primaryContact?: {
-    name: string | null;
-    email: string;
-    type: string;
-    contactType: 'owner' | 'agent';
-  } | null;
 }
 
-const initialNewLeadData: Partial<NormalizedLead> = {
+const initialNewLeadData: Partial<CrmLead> = {
   contact_name: '',
   contact_email: '',
+  property_address: '',
+  property_city: '',
+  property_state: '',
+  property_postal_code: null,
+  property_type: '',
+  beds: null,
+  baths: null,
+  year_built: null,
+  square_footage: null,
+  lot_size_sqft: null,
   notes: '',
   market_region: '',
-  status: 'UNQUALIFIED', // Default status for new leads
-  // Add other fields as necessary for editing/creation
+  status: 'NEW'
 };
 
 const LeadsView: React.FC = () => {
-  const [leads, setLeads] = useState<NormalizedLead[]>([]);
+  const [leads, setLeads] = useState<CrmLead[]>([]);
   const [marketRegions, setMarketRegions] = useState<string[]>([]);
   const [filterMarketRegion, setFilterMarketRegion] = useState<string>('All');
   const [tableSearchTerm, setTableSearchTerm] = useState('');
@@ -88,13 +64,13 @@ const LeadsView: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [rowsPerPage, setRowsPerPage] = useState<number>(25);
   const [totalLeads, setTotalLeads] = useState<number>(0);
-  const [sortField, setSortField] = useState<keyof NormalizedLead>('created_at');
+  const [sortField, setSortField] = useState<keyof CrmLead>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-  const [selectedLead, setSelectedLead] = useState<NormalizedLead | null>(null);
-  const [editFormData, setEditFormData] = useState<Partial<NormalizedLead>>(initialNewLeadData);
+  const [selectedLead, setSelectedLead] = useState<CrmLead | null>(null);
+  const [editFormData, setEditFormData] = useState<Partial<CrmLead>>(initialNewLeadData);
 
   // CSV Upload State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -104,96 +80,42 @@ const LeadsView: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const columnConfigurations: ColumnConfig[] = [
-    { key: 'contact_name', label: 'Contact Info', sortable: true },
-    { key: 'property_address', label: 'Property Address', sortable: true }, 
+    { key: 'id', label: 'ID', sortable: true },
     { key: 'market_region', label: 'Market Region', sortable: true },
-    { key: 'status', label: 'Lead Status', sortable: true },
-    { key: 'assessed_total', label: 'Assessed Value', sortable: true },
-    { key: 'mls_curr_status', label: 'MLS Status', sortable: true },
-    { key: 'mls_curr_days_on_market', label: 'Days on Market', sortable: true },
+    { key: 'contact_name', label: 'Contact Name', sortable: true },
+    { key: 'contact_email', label: 'Contact Email', sortable: true },
+    { key: 'property_address', label: 'Property Address', sortable: true },
+    { key: 'property_city', label: 'Property City', sortable: true },
+    { key: 'property_state', label: 'Property State', sortable: true },
+    { key: 'property_postal_code', label: 'Property Postal Code', sortable: true },
+    { key: 'property_type', label: 'Property Type', sortable: true },
+    { key: 'beds', label: 'Beds', sortable: true },
+    { key: 'baths', label: 'Baths', sortable: true },
+    { key: 'year_built', label: 'Year Built', sortable: true },
+    { key: 'square_footage', label: 'Square Footage', sortable: true },
+    { key: 'lot_size_sqft', label: 'Lot Size Sqft', sortable: true },
+    { key: 'assessed_total', label: 'Assessed Total', sortable: true },
+    { key: 'mls_curr_status', label: 'MLS Current Status', sortable: true },
+    { key: 'mls_curr_days_on_market', label: 'MLS Current Days on Market', sortable: true },
+    { key: 'status', label: 'Status', sortable: true },
   ];
 
   // Fetch Market Regions
   const fetchMarketRegions = useCallback(async () => {
     console.log('Fetching market regions...');
     try {
-      // First, get a count of distinct market regions to decide on the best approach
-      const { count, error: countError } = await supabase
-        .from('normalized_leads')
-        .select('market_region', { count: 'exact', head: true })
+      const { data, error } = await supabase
+        .from('market_regions')
+        .select('market_region')
         .not('market_region', 'is', null);
-
-      if (countError) throw countError;
       
-      console.log(`Found ${count} non-null market regions in database`);
-      
-      // If we have a reasonable number of distinct values, fetch them directly
-      if (count && count <= 1000) {
-        const { data, error } = await supabase
-          .from('normalized_leads')
-          .select('market_region')
-          .not('market_region', 'is', null)
-          .order('market_region', { ascending: true });
-          
-        if (error) throw error;
-        
-        const uniqueRegions = Array.from(
-          new Set(data.map(item => item.market_region).filter(Boolean))
-        ).sort() as string[];
-        
-        console.log(`Found ${uniqueRegions.length} unique market regions`);
-        setMarketRegions(uniqueRegions);
-      } else {
-        // If too many regions, use a more efficient approach with pagination
-        console.log('Large dataset detected, using paginated approach...');
-        const BATCH_SIZE = 1000;
-        let offset = 0;
-        const allRegions = new Set<string>();
-        let hasMore = true;
-        
-        while (hasMore) {
-          const { data, error } = await supabase
-            .from('normalized_leads')
-            .select('market_region')
-            .not('market_region', 'is', null)
-            .order('market_region', { ascending: true })
-            .range(offset, offset + BATCH_SIZE - 1);
-            
-          if (error) throw error;
-          
-          // Add new regions to our set (automatically handles duplicates)
-          data.forEach(item => {
-            if (item.market_region) {
-              allRegions.add(item.market_region);
-            }
-          });
-          
-          // If we got fewer items than requested, we've reached the end
-          if (!data || data.length < BATCH_SIZE) {
-            hasMore = false;
-          } else {
-            offset += BATCH_SIZE;
-          }
-        }
-        
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Convert set to array and sort
-        const sortedRegions = Array.from(allRegions).sort();
-        console.log(`Found ${sortedRegions.length} unique market regions`);
-        setMarketRegions(sortedRegions);
-      }
-    } catch (err) {
-      console.error('Error fetching market regions:', err);
+      if (error) throw error;
+      setMarketRegions(data ? data.map(item => item.market_region) : []);
+    } catch (error) {
+      console.error('Error fetching market regions:', error);
       setMarketRegions([]);
     }
-  }, [setMarketRegions]); // Fix variable scope issue by adding setMarketRegions to the dependency array
-
-  // Check if a lead has any valid email address
-  const hasValidEmail = (lead: NormalizedLead) => {
-    return !!lead.contact_email || !!lead.mls_curr_list_agent_email;
-  };
+  }, [setMarketRegions]);
 
   // Get status badge color based on status
   const getStatusBadge = (status: string | null | undefined) => {
@@ -222,7 +144,7 @@ const LeadsView: React.FC = () => {
     setError(null);
     try {
       let query = supabase
-        .from('useful_leads')
+        .from('crm_leads')
         .select('*', { count: 'exact' });
 
       // Apply market region filter if one is selected
@@ -267,11 +189,11 @@ const LeadsView: React.FC = () => {
     }
   }, [filterMarketRegion, sortField, sortDirection, currentPage, rowsPerPage, tableSearchTerm]);
 
-  const fetchNormalizedLeads = async () => {
+  const fetchCrmLeads = async () => {
     setIsLoading(true);
     try {
       const { data, error } = await supabase
-        .from('normalized_leads')
+        .from('crm_leads')
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -313,7 +235,7 @@ const LeadsView: React.FC = () => {
   }, [tableSearchTerm, filterMarketRegion]);
 
   // Handlers
-  const handleSort = (field: keyof NormalizedLead) => {
+  const handleSort = (field: keyof CrmLead) => {
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
@@ -323,7 +245,7 @@ const LeadsView: React.FC = () => {
     setCurrentPage(1); // Reset to first page on sort change
   };
 
-  const handleOpenModal = (lead: NormalizedLead) => {
+  const handleOpenModal = (lead: CrmLead) => {
     setSelectedLead(lead);
     setEditFormData(lead);
     setIsModalOpen(true);
@@ -349,12 +271,12 @@ const LeadsView: React.FC = () => {
     setIsLoading(true); // Consider a more specific loading state like isSaving
     try {
       const { error: updateError } = await supabase
-        .from('normalized_leads')
+        .from('crm_leads')
         .update(editFormData)
         .eq('id', selectedLead.id);
       if (updateError) throw updateError;
 
-      await fetchNormalizedLeads(); // Refresh data
+      await fetchCrmLeads(); // Refresh data
       handleCloseModal();
     } catch (err: any) {
       console.error('Error saving lead:', err);
@@ -372,7 +294,7 @@ const LeadsView: React.FC = () => {
     setIsLoading(true);
     try {
       const { error } = await supabase
-        .from('normalized_leads')
+        .from('crm_leads')
         .delete()
         .eq('id', selectedLead.id);
 
@@ -428,7 +350,7 @@ const LeadsView: React.FC = () => {
       setUploadStatus(`Successfully uploaded ${result.count || 0} leads.`);
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = ''; // Reset file input
-      await fetchNormalizedLeads(); // Refresh leads list
+      await fetchCrmLeads(); // Refresh leads list
     } catch (err: any) {
       console.error('Upload error:', err);
       setUploadStatus(`Upload failed: ${err.message}`);
@@ -437,7 +359,7 @@ const LeadsView: React.FC = () => {
   };
 
   // Sort Indicator Component
-  const SortIndicator = ({ field }: { field: keyof NormalizedLead | '' }) => {
+  const SortIndicator = ({ field }: { field: keyof CrmLead | '' }) => {
     if (sortField !== field) return null;
     return sortDirection === 'asc' ? <ChevronUp size={16} className="inline ml-1" /> : <ChevronDown size={16} className="inline ml-1" />;
   };
@@ -600,10 +522,10 @@ const LeadsView: React.FC = () => {
               {columnConfigurations.map(col => (
                 <th 
                   key={col.key} 
-                  onClick={() => col.sortable !== false && handleSort(col.key as keyof NormalizedLead)}
-                  className={col.sortable !== false ? 'cursor-pointer hover:bg-base-300' : ''}
+                  onClick={() => col.sortable && handleSort(col.key)}
+                  className={col.sortable ? 'cursor-pointer hover:bg-base-300' : ''}
                 >
-                  {col.label} {col.sortable !== false && <SortIndicator field={col.key as keyof NormalizedLead} />}
+                  {col.label} {col.sortable && <SortIndicator field={col.key} />}
                 </th>
               ))}
             </tr>

@@ -15,6 +15,10 @@ interface UserContextType {
   error: string | null;
 }
 
+interface ErrorWithMessage {
+  message: string;
+}
+
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 const getUserRole = (user: User | null): string => {
@@ -43,6 +47,15 @@ const getUserRole = (user: User | null): string => {
   console.log("[getUserRole] No valid role found. Defaulting to 'user' for domain user.");
   return 'user'; // Default to 'user' for valid domain users
 };
+
+function isErrorWithMessage(error: unknown): error is ErrorWithMessage {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof (error as ErrorWithMessage).message === 'string'
+  );
+}
 
 export const UserProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -99,51 +112,36 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       } catch (err) {
         console.error('Error in auth state change handler:', err);
         if (isMounted) {
-          setError('Authentication error occurred');
+          if (isErrorWithMessage(err)) {
+            setError(err.message);
+          } else {
+            setError(String(err));
+          }
         }
       }
     });
 
     const initializeAuth = async () => {
-      if (!isMounted) return;
-      
       try {
-        console.log("[UserProvider] initializeAuth: Attempting to get Supabase session...");
-        const currentSession = await getSupabaseSession();
-        if (!isMounted) return; // Re-check after await
-        console.log("[UserProvider] initializeAuth: getSupabaseSession resolved. Session User ID:", currentSession ? currentSession.user.id : 'null');
-        
-        if (!isMounted) return;
-        
-        if (currentSession?.user) {
-          const userRole = getUserRole(currentSession.user);
-          
-          setSession(currentSession);
-          setUser(currentSession.user);
-          setRole(userRole);
-          
-          // Handle redirections based on current path and role
-          if (pathname === '/' || pathname === '/login') {
-            router.replace('/dashboard');
-          } else if (userRole === 'guest' && !pathname.startsWith('/crm')) {
-            router.replace('/crm');
-          }
-        } else {
-          setSession(null);
-          setUser(null);
-          setRole('guest');
-          
-          // Redirect to login if on protected pages
-          if (pathname !== '/' && pathname !== '/login' && !pathname.startsWith('/auth')) {
-            router.replace('/');
-          }
-        }
-        
+        const {
+          data: { session },
+          error: sessionError
+        } = await supabase.auth.getSession();
+
+        if (sessionError) throw sessionError;
+
+        setSession(session);
+        setUser(session?.user ?? null);
+        setRole(session?.user ? getUserRole(session.user) : null);
         setError(null);
       } catch (err) {
         console.error("Error initializing auth:", err);
         if (isMounted) {
-          setError("Failed to initialize authentication");
+          if (isErrorWithMessage(err)) {
+            setError(err.message);
+          } else {
+            setError(String(err));
+          }
         }
       } finally {
         if (isMounted) {
@@ -156,12 +154,14 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
     return () => {
       isMounted = false;
-      void authListener?.subscription?.unsubscribe().catch((error: unknown) => {
-        const errorMessage = error instanceof Error 
-          ? error.message 
-          : String(error);
-        console.error('Unsubscribe error:', errorMessage);
-      });
+      if (authListener?.subscription) {
+        authListener.subscription.unsubscribe().catch((error: unknown) => {
+          console.error(
+            "Error unsubscribing auth listener:", 
+            isErrorWithMessage(error) ? error.message : String(error)
+          );
+        });
+      }
     };
   }, [pathname, router]);
 
