@@ -156,7 +156,12 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
     return () => {
       isMounted = false;
-      void authListener?.subscription?.unsubscribe(); // Explicitly mark as fire-and-forget
+      void authListener?.subscription?.unsubscribe().catch((error: unknown) => {
+        const errorMessage = error instanceof Error 
+          ? error.message 
+          : String(error);
+        console.error('Unsubscribe error:', errorMessage);
+      });
     };
   }, [pathname, router]);
 

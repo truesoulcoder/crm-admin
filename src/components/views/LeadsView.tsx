@@ -1,13 +1,10 @@
 'use client'
 
-import { ChevronUp, ChevronDown, Edit3, Trash2, PlusCircle, Search, UploadCloud, AlertTriangle, XCircle, Save, Eye, Mail, Phone, MapPin } from 'lucide-react';
-import React, { useState, useEffect, useCallback, useMemo, ChangeEvent, FormEvent, useRef } from 'react';
+import { ChevronUp, ChevronDown, Trash2, Search, UploadCloud, AlertTriangle, XCircle, Save } from 'lucide-react';
+import React, { useState, useEffect, useCallback, ChangeEvent, FormEvent, useRef } from 'react';
 
-// Using shared Supabase client
-import { Badge } from 'react-daisyui';
 import { supabase } from '@/lib/supabase/client';
 
-// Define types (adjust based on your actual schema)
 interface ColumnConfig {
   key: keyof NormalizedLead | string; // Allow string for keys not directly in NormalizedLead if needed, but prefer keyof for type safety
   label: string;
@@ -623,12 +620,7 @@ const LeadsView: React.FC = () => {
                   <td>{lead.contact_email}</td>
                   <td>{lead.market_region}</td>
                   <td>{lead.property_address}</td>
-                  <td>{lead.status}</td>
-                  <td className="text-right">
-                    <Badge variant={lead.converted ? 'success' : 'warning'}> 
-                      {lead.converted ? 'Converted' : 'Pending'}
-                    </Badge>
-                  </td>
+                  <td>{lead.converted}</td>
                 </tr>
               ))
             )}

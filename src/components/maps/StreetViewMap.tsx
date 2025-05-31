@@ -50,6 +50,18 @@ const StreetViewMapContent: React.FC<StreetViewMapProps & { isMapsApiLoaded: boo
   const geocoderRef = useRef<google.maps.Geocoder | null>(null);
   const streetViewServiceRef = useRef<google.maps.StreetViewService | null>(null);
 
+  const checkStreetViewAvailability = useCallback(async (latLng: google.maps.LatLngLiteral) => {
+    return new Promise<boolean>((resolve) => {
+      if (!streetViewServiceRef.current) return resolve(false);
+      streetViewServiceRef.current.getPanorama({
+        location: latLng,
+        radius: 50
+      }, (data, status) => {
+        resolve(status === 'OK' && data != null);
+      });
+    });
+  }, []);
+
   // Memoize the geocode function to prevent infinite re-renders
   const geocodeAddressAndCheckStreetViewMemoized = useCallback(
     async (addr: string) => {
@@ -105,21 +117,6 @@ const StreetViewMapContent: React.FC<StreetViewMapProps & { isMapsApiLoaded: boo
       streetViewServiceRef.current = null;
     };
   }, [address, geocodeAddressAndCheckStreetViewMemoized, isMapsApiLoaded]); // Dependency updated
-
-  const checkStreetViewAvailability = useCallback(async (latLng: google.maps.LatLngLiteral): Promise<boolean> => {
-    if (!streetViewServiceRef.current || !window.google?.maps?.StreetViewService) return false; // Added window.google.maps.StreetViewService check
-    try {
-      const { data } = await streetViewServiceRef.current.getPanorama({
-        location: latLng,
-        radius: 50,
-        source: window.google.maps.StreetViewSource.OUTDOOR, // Prefer outdoor images
-      });
-      return data.location?.latLng !== undefined;
-    } catch (error) {
-      console.warn('Street View check failed:', error);
-      return false;
-    }
-  }, []); // streetViewServiceRef.current will be initialized when isMapsApiLoaded is true
 
   useEffect(() => {
     // Use isMapsApiLoaded from props

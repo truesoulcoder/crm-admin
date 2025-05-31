@@ -1,7 +1,9 @@
 'use client';
 
 import clsx from 'clsx';
-import { LayoutDashboard, Users, FileText, Send, UserCog, Settings, Briefcase, Contact } from 'lucide-react';
+import { LayoutDashboard, Users, Settings, Contact } from 'lucide-react';
+// eslint-disable-next-line @next/next/no-img-element
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import React, { useState } from 'react';
@@ -9,14 +11,16 @@ import React, { useState } from 'react';
 import { useUser } from '@/contexts/UserContext'; // Added UserContext import
 import { LetterFx } from '@/once-ui/components';
 
-import type { CrmView } from '@/types/index';
-
 type ViewPath = {
-  [K in CrmView]: string;
+  dashboard: '/dashboard';
+  leads: '/leads';
+  senders: '/email-senders';
+  crm: '/crm';
+  settings: '/settings';
 };
 
 interface MenuItem {
-  view: CrmView;
+  view: keyof ViewPath;
   icon: React.ReactElement;
   label: string;
 }
@@ -52,12 +56,9 @@ const Sidebar: React.FC = () => {
   const viewToPath: ViewPath = {
     dashboard: '/dashboard',
     leads: '/leads',
-    campaigns: '/campaigns',
-    templates: '/templates',
     senders: '/email-senders',
     crm: '/crm',
-    settings: '/settings',
-    'email-analytics': '/dashboard/email-analytics'
+    settings: '/settings'
   };
 
   const getFilteredMenuItems = () => {
@@ -93,13 +94,7 @@ const Sidebar: React.FC = () => {
     return (
         <aside className="bg-base-200 text-base-content w-64 min-h-screen p-4 flex flex-col">
             <div className="flex items-center justify-center mb-8">
-                <img 
-                    src={companyLogoUrl || 'https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media//logo.png'} 
-                    alt="Company Logo" 
-                    width="180" 
-                    height="45" 
-                    className="object-contain" 
-                />
+                <Image src={'/default-logo.svg'} alt={'Company Logo'} width={120} height={40} priority />
             </div>
             <div className="mt-auto">
                 <p className="text-xs text-center text-base-content/70">
@@ -113,12 +108,12 @@ const Sidebar: React.FC = () => {
   return (
     <aside className="bg-base-200 text-base-content w-64 min-h-screen p-4 flex flex-col">
       <div className="flex items-center justify-center mb-8">
-        <img 
-          src={companyLogoUrl || 'https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media//logo.png'} 
-          alt="Company Logo" 
-          width="180" 
-          height="45" 
-          className="object-contain" 
+        <Image 
+          src={companyLogoUrl || '/default-logo.svg'}
+          alt="Company Logo"
+          width={120}
+          height={40}
+          priority
         />
       </div>
       <ul className="menu space-y-2 flex-1">

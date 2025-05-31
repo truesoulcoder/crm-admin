@@ -28,24 +28,15 @@ const MainAppShell: React.FC<MainAppShellProps> = ({ children }) => {
 
   return (
     <GoogleMapsLoader>
-      <div className="drawer lg:drawer-open">
-      <input id="sidebar-drawer-toggle" type="checkbox" className="drawer-toggle" />
-      <div className="drawer-content flex flex-col">
-        {/* Navbar */}
+      <RequireAuth>
+        <input id="sidebar-drawer-toggle" type="checkbox" className="drawer-toggle" />
         <Navbar onMenuClick={toggleMobileSidebar} />
-        {/* Main content area */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-base-100">
-          <RequireAuth>
-            {children}
-          </RequireAuth>
-        </main>
-      </div>
-      {/* Sidebar */}
-      <div className="drawer-side z-30">
+          <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-base-100">
+              {children}
+          </main>
         <label htmlFor="sidebar-drawer-toggle" aria-label="close sidebar" className="drawer-overlay"></label>
         <Sidebar />
-      </div>
-    </div>
+      </RequireAuth>
     </GoogleMapsLoader>
   );
 };

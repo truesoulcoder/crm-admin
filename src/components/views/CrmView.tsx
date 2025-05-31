@@ -184,42 +184,44 @@ const CrmLeads: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchLeads();
-    fetchMarketRegions();
+    void (async () => {
+      try {
+        await fetchLeads();
+        await fetchMarketRegions();
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      }
+    })();
   }, [fetchLeads, fetchMarketRegions]);
 
   // Handle Google Maps Autocomplete load & Geocoder initialization
   useEffect(() => {
-    if (isGoogleMapsLoaded && window.google?.maps?.places && window.google?.maps?.Geocoder) {
-      if (addressInputRef.current && !autocomplete) {
-        const autoCompInstance = new google.maps.places.Autocomplete(addressInputRef.current, {
-          types: ['address'],
-          componentRestrictions: { country: 'us' }, // Example: Restrict to US
-        });
-        autoCompInstance.addListener('place_changed', handlePlaceSelect); // handlePlaceSelect needs to be stable or wrapped in useCallback
-        setAutocomplete(autoCompInstance);
+    const initGoogleMaps = async () => {
+      try {
+        if (isGoogleMapsLoaded && window.google?.maps?.places && window.google?.maps?.Geocoder) {
+          if (addressInputRef.current && !autocomplete) {
+            const autoCompInstance = new google.maps.places.Autocomplete(addressInputRef.current, {
+              types: ['address'],
+            });
+            setAutocomplete(autoCompInstance);
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing Google Maps:', error);
       }
-      if (!geocoderRef.current) {
-        geocoderRef.current = new window.google.maps.Geocoder();
-      }
-    }
-    // Cleanup Autocomplete instance and listeners when component unmounts or Maps API is no longer loaded
-    return () => {
-      if (autocomplete) {
-        // google.maps.event.clearInstanceListeners(autocomplete); // Deprecated way
-        // Correct way: Autocomplete instance itself doesn't have a direct "clearListeners" or "unbindAll".
-        // Listeners added with addListener should ideally be stored and removed individually if needed,
-        // or rely on the component unmounting to clean up.
-        // For this case, simply nullifying might be enough if a new one is created on re-load.
-      }
-      // geocoderRef doesn't need explicit cleanup unless it had listeners.
     };
-  }, [isGoogleMapsLoaded, autocomplete]); // handlePlaceSelect removed from deps, ensure it's stable
+
+    initGoogleMaps();
+  }, [isGoogleMapsLoaded, autocomplete]);
 
   // Debounce search term
   useEffect(() => {
-    const debounceTimer = setTimeout(() => {
-        fetchLeads(); 
+    const debounceTimer = setTimeout(async () => {
+      try {
+        await fetchLeads();
+      } catch (error) {
+        console.error('Error fetching leads:', error);
+      }
     }, 500); // 500ms delay
 
     return () => clearTimeout(debounceTimer);

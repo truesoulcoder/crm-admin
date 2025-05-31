@@ -1,7 +1,7 @@
 'use client';
 
 import { PlayCircle, StopCircle, Mail, AlertTriangle, Info, CheckCircle, RefreshCw, MapPin } from 'lucide-react';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, JSX } from 'react';
 import { Button, Card, Alert, Input } from 'react-daisyui'; // Added Input
 
 import { supabase } from '@/lib/supabase/client';
@@ -19,6 +19,30 @@ interface LogEntry {
 }
 
 type EngineStatus = 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error' | 'test_sending';
+
+interface TestEmailResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  lead_id?: number;
+  subject?: string;
+}
+
+interface StartCampaignResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  attempted?: number;
+  succeeded?: number;
+  failed?: number;
+  processing_errors?: any[];
+}
+
+interface StopCampaignResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
 
 const Eli5EngineControlView: React.FC = (): JSX.Element => {
   const [engineStatus, setEngineStatus] = useState<EngineStatus>('idle');
@@ -72,7 +96,7 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
           addLog(message, 'engine', payload.new);
         }
       )
-      .subscribe((status, err) => {
+      .subscribe((status: string, err?: { message: string }) => {
         if (status === 'SUBSCRIBED') {
           addLog('Connected to ELI5 Engine real-time log stream.', 'success');
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -101,7 +125,7 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
         // No body needed for test-email as per current API design
       });
 
-      const result = await response.json();
+      const result: TestEmailResponse = await response.json();
 
       if (!response.ok) {
         throw new Error(result.error || `API request failed with status ${response.status}`);
@@ -115,11 +139,13 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
       } else {
         throw new Error(result.error || 'Test email API returned success:false');
       }
-    } catch (err: any) {
-      const errorMessage = `Error during test email: ${err.message}`;
-      addLog(errorMessage, 'error');
-      setError(errorMessage);
-      setEngineStatus('error'); // Set status to error
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        const errorMessage = error.message;
+        addLog(`Error during test email: ${errorMessage}`, 'error');
+        setError(errorMessage);
+        setEngineStatus('error'); // Set status to error
+      }
     } finally {
       setIsLoading(false);
       // Reset status to 'idle' only if not in an error state
@@ -159,7 +185,7 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ market_region: marketRegion /*, limit_per_run: 10 */ }), // limit_per_run is optional
       });
-      const startResult = await startResponse.json();
+      const startResult: StartCampaignResponse = await startResponse.json();
 
       if (!startResponse.ok) {
         throw new Error(startResult.error || `API request to start-campaign failed with status ${startResponse.status}`);
@@ -175,11 +201,13 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
       } else {
         throw new Error(startResult.error || 'Start campaign API returned success:false');
       }
-    } catch (err: any) {
-      const errorMessage = `Error during engine start sequence: ${err.message}`;
-      addLog(errorMessage, 'error');
-      setError(errorMessage);
-      setEngineStatus('error');
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        const errorMessage = error.message;
+        addLog(`Error during engine start sequence: ${errorMessage}`, 'error');
+        setError(errorMessage);
+        setEngineStatus('error');
+      }
     } finally {
       setIsLoading(false);
       // Do not reset to 'idle' here if it successfully started a batch ('running') or errored out.
@@ -193,7 +221,7 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
     setError(null);
     try {
       const response = await fetch('/api/eli5-engine/stop-campaign', { method: 'POST' });
-      const result = await response.json();
+      const result: StopCampaignResponse = await response.json();
 
       if (!response.ok) {
         throw new Error(result.error || `API request to stop-campaign failed with status ${response.status}`);
@@ -205,15 +233,68 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
       } else {
         throw new Error(result.error || 'Stop campaign API returned success:false');
       }
-    } catch (err: any) {
-      const errorMessage = `Error stopping engine: ${err.message}`;
-      addLog(errorMessage, 'error');
-      setError(errorMessage);
-      setEngineStatus('error'); 
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        const errorMessage = error.message;
+        addLog(`Error stopping engine: ${errorMessage}`, 'error');
+        setError(errorMessage);
+        setEngineStatus('error'); 
+      }
     } finally {
       setIsLoading(false);
       // If it's not an error, it should be 'stopped'. If error, it's 'error'.
       // No automatic reset to 'idle'.
+    }
+  };
+
+  const handleRefreshLogs = async (): Promise<void> => {
+    try {
+      addLog('Refreshing logs...', 'info');
+      // Add log refresh implementation here
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Refresh error:', error.message);
+      }
+    }
+  };
+
+  const handleStartClick = async (): Promise<void> => {
+    try {
+      await handleStartEngine();
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Error starting engine:', error.message);
+      }
+    }
+  };
+
+  const handleTestEmailClick = async (): Promise<void> => {
+    try {
+      await handleSendTestEmail();
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Error sending test email:', error.message);
+      }
+    }
+  };
+
+  const handleStopClick = async (): Promise<void> => {
+    try {
+      await handleStopEngine();
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Error stopping engine:', error.message);
+      }
+    }
+  };
+
+  const handleRefreshClick = async (): Promise<void> => {
+    try {
+      await handleRefreshLogs();
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error('Error refreshing logs:', error.message);
+      }
     }
   };
 
@@ -251,7 +332,7 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
               <Input 
                 id="marketRegionInput"
                 type="text" 
-                placeholder="e.g., FLORIDA" 
+                placeholder="e.g., Austin" 
                 value={marketRegion}
                 onChange={(e) => setMarketRegion(e.target.value.toUpperCase())}
                 className="input input-bordered w-full sm:w-auto"
@@ -263,7 +344,7 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
             <Button 
               color="primary" 
               startIcon={<Mail />} 
-              onClick={handleSendTestEmail}
+              onClick={handleTestEmailClick}
               loading={isLoading && engineStatus === 'test_sending'}
               disabled={isLoading && engineStatus !== 'test_sending'}
             >
@@ -272,7 +353,7 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
             <Button 
               color="success" 
               startIcon={<PlayCircle />} 
-              onClick={handleStartEngine}
+              onClick={handleStartClick}
               loading={isLoading && engineStatus === 'starting'}
               disabled={isLoading && engineStatus !== 'starting' || engineStatus === 'running' || !marketRegion.trim()}
             >
@@ -281,7 +362,7 @@ const Eli5EngineControlView: React.FC = (): JSX.Element => {
             <Button 
               color="error" 
               startIcon={<StopCircle />} 
-              onClick={handleStopEngine}
+              onClick={handleStopClick}
               loading={isLoading && engineStatus === 'stopping'}
               disabled={isLoading && engineStatus !== 'stopping' || engineStatus === 'idle' || engineStatus === 'stopped'}
             >
