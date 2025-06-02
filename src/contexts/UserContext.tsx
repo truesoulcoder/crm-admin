@@ -57,6 +57,13 @@ function isErrorWithMessage(error: unknown): error is ErrorWithMessage {
   );
 }
 
+function getErrorMessage(error: unknown): string {
+  if (isErrorWithMessage(error)) return error.message;
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'Unknown error';
+}
+
 export const UserProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -67,7 +74,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname() || '';
 
   useEffect(() => {
-    let isMounted = true;
+    const isMounted = true;
     console.log("[UserProvider] Initializing. Current path:", pathname);
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, newSession) => {
@@ -112,11 +119,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       } catch (err) {
         console.error('Error in auth state change handler:', err);
         if (isMounted) {
-          if (isErrorWithMessage(err)) {
-            setError(err.message);
-          } else {
-            setError(String(err));
-          }
+          setError(getErrorMessage(err));
         }
       }
     });
@@ -137,11 +140,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       } catch (err) {
         console.error("Error initializing auth:", err);
         if (isMounted) {
-          if (isErrorWithMessage(err)) {
-            setError(err.message);
-          } else {
-            setError(String(err));
-          }
+          setError(getErrorMessage(err));
         }
       } finally {
         if (isMounted) {
@@ -152,17 +151,22 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
 
     initializeAuth();
 
-    return () => {
-      isMounted = false;
-      if (authListener?.subscription) {
-        authListener.subscription.unsubscribe().catch((error: unknown) => {
-          console.error(
-            "Error unsubscribing auth listener:", 
-            isErrorWithMessage(error) ? error.message : String(error)
-          );
-        });
-      }
-    };
+//    return () => {
+//      isMounted = false;
+//      const subscription = authListener?.subscription;
+//      if (subscription?.unsubscribe) {
+//        try {
+//          const result = subscription.unsubscribe();
+//          if (typeof result?.catch === 'function') {
+//            result.catch((error: unknown) => {
+//              console.error("Error unsubscribing auth listener:", getErrorMessage(error));
+//            });
+//          }
+//        } catch (err: unknown) {
+//          console.error('Error during auth cleanup:', getErrorMessage(err));
+//        }
+//      }
+//    };
   }, [pathname, router]);
 
   if (isLoading && !session) {
