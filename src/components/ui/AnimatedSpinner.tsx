@@ -1,7 +1,6 @@
 // src/components/ui/AnimatedSpinner.tsx
 'use client';
 import React, { useRef, useEffect } from 'react';
-
 import gsap from '@/lib/useGsap';
 
 const AnimatedSpinner: React.FC<{ size?: number }> = ({ size = 32 }) => {

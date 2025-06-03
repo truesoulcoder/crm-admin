@@ -1,4 +1,5 @@
-// src/hooks/useMarketRegions.ts
+'use client';
+
 import { useState, useEffect, useCallback } from 'react';
 
 import { Database } from '@/db_types';

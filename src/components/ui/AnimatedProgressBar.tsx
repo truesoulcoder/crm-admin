@@ -1,7 +1,6 @@
 // src/components/ui/AnimatedProgressBar.tsx
 'use client';
 import React, { useRef, useEffect } from 'react';
-
 import gsap from '@/lib/useGsap';
 
 interface AnimatedProgressBarProps {

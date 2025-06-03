@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import '@/styles/dealpigtext-animation.css';
+import '../../styles/dealpigtext-animation.css';
 
 interface AnimatedDealpigTextProps {
   width?: string;

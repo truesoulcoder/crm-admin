@@ -39,7 +39,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts"
-, "database.types", "src/services/campaignEngine.old", "tailwind.config.ts", "src/app/dashboard/layout.tsx", "src/app/api/engine/email-metrics/email-metrics-summary.old", "src/app/api/engine/send-email/send-email.old"  ],
+  ],
   "exclude": [
     "node_modules"
   ]

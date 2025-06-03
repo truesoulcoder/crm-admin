@@ -1,5 +1,6 @@
 // src/app/senders/page.tsx
 'use client';
+
 import dynamic from 'next/dynamic';
 
 const EmailSendersView = dynamic(

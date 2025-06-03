@@ -1,10 +1,12 @@
 // src/app/api/leads/upload/route.ts
 import { randomUUID } from 'crypto';
-import { parse } from 'papaparse';
-import { createServerClient } from '@/lib/supabase/client';
-import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
+
+import { NextRequest, NextResponse } from 'next/server';
+import { parse } from 'papaparse';
+
+import { createAdminServerClient } from '@/lib/supabase/server';
 
 // Max execution time for this API route (in seconds)
 export const maxDuration = 60; // 1 minute
@@ -15,7 +17,7 @@ const processCSV = async (
   chunkSize: number,
   processChunk: (chunk: any[], isLastChunk: boolean) => Promise<void>
 ) => {
-  return new Promise<void>(async (resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     try {
       let originalHeaders: string[] = [];
       let headerParseError: Error | null = null;
@@ -149,7 +151,7 @@ type LeadStagingRow = Record<string, any>;
 export async function POST(request: NextRequest) {
   console.log('API: /api/leads/upload POST request received.');
 
-  const supabase = createServerClient();
+  const supabase = createAdminServerClient();
   const { data: { user }, error: userError } = await supabase.auth.getUser();
 
   if (userError || !user) {
@@ -187,9 +189,9 @@ export async function POST(request: NextRequest) {
   const chunkFilePath = path.join(tempDir, `chunk_${chunkIndex}.bin`);
 
   let objectPath: string | null = null;
-  const supabaseAdmin = createServerClient();
+  const supabaseAdmin = createAdminServerClient();
   
-  supabase.auth.setSession({
+  await supabaseAdmin.auth.setSession({
     access_token: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
     refresh_token: ''
   });

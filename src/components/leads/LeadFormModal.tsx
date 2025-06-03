@@ -1,8 +1,7 @@
-import 'daisyui/dist/full.css';
 // External dependencies
 import { MapPin, X } from 'lucide-react';
-import { useState, useEffect, useCallback, ChangeEvent } from 'react'; 
-
+import { useState, useEffect, useCallback, ChangeEvent, useRef } from 'react';
+ 
 import { useGoogleMapsApi } from '@/components/maps/GoogleMapsLoader';
 import { Database } from '@/db_types';
 
@@ -76,6 +75,8 @@ const LeadFormModal = ({
     notes: lead.notes ?? ''
   } as LeadFormData);
 
+  const modalContentRef = useRef<HTMLDivElement>(null);
+
   const initStreetView = useCallback(async () => {
     if (!formData.property_address || !mapsLoaded || loadError) return;
 
@@ -103,6 +104,22 @@ const LeadFormModal = ({
   useEffect(() => {
     void initStreetView();
   }, [initStreetView]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      if (modalContentRef.current && !modalContentRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -148,7 +165,7 @@ const LeadFormModal = ({
 
   return (
     <div className="modal modal-open">
-      <div className="modal-box w-11/12 max-w-4xl">
+      <div ref={modalContentRef} className="modal-box w-11/12 max-w-4xl">
         <button 
           className="btn btn-sm btn-circle absolute right-2 top-2"
           onClick={onClose}

@@ -2,7 +2,6 @@
 
 import { useState, useTransition, useRef, useEffect } from 'react';
 
-// External dependencies
 import { supabase } from '@/lib/supabase/client';
 
 // Define the expected response structure from the upload API
@@ -32,8 +31,8 @@ export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing
 
   useEffect(() => {
     try {
-      successAudioRef.current = new Audio('https://ygkbhfdqvrluegsrjpaj.supabase.co/storage/v1/object/public/media/success.mp3'); 
-      failureAudioRef.current = new Audio('https://ygkbhfdqvrluegsrjpaj.supabase.co/storage/v1/object/public/media/fail.mp3');
+      successAudioRef.current = new Audio('https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media/success.mp3'); 
+      failureAudioRef.current = new Audio('https://oviiqouhtdajfwhpwbyq.supabase.co/storage/v1/object/public/media/failed.mp3');
       successAudioRef.current.load();
       failureAudioRef.current.load();
     } catch (err) {
@@ -67,98 +66,47 @@ export default function LeadUploader({ onUploadSuccess, addMessage, isProcessing
     setMessage(`Uploading file: ${selectedFile.name} for market: ${marketRegion}...`); 
 
     const formData = new FormData();
-    formData.append('market_region', marketRegion.trim()); // Keep this for initial validation or if needed by API before chunking
+    formData.append('file', selectedFile);
+    formData.append('market_region', marketRegion.trim()); 
 
     startTransition(async () => {
-      if (!selectedFile) return; // Should be caught by earlier validation, but good practice
+      try {
+        const res = await fetch('/api/leads/upload', { method: 'POST', body: formData });
+        const result: UploadResponse = await res.json(); 
 
-      const uploadId = crypto.randomUUID();
-      const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB
-      const fileName = selectedFile.name;
-      const totalChunks = Math.ceil(selectedFile.size / CHUNK_SIZE);
-
-      setMessage(`Preparing to upload ${fileName}...`);
-
-      const reader = new FileReader();
-
-      reader.onload = async (e_reader) => {
-        if (!e_reader.target?.result) {
-          setMessage('Failed to read file.');
-          if (addMessage) addMessage('error', 'Failed to read file.');
-          if (failureAudioRef.current) failureAudioRef.current.play().catch(err => console.warn('Failure audio error:', err));
-          return;
-        }
-
-        const buffer = e_reader.target.result as ArrayBuffer;
-
-        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-          const start = chunkIndex * CHUNK_SIZE;
-          const end = Math.min(start + CHUNK_SIZE, selectedFile.size);
-          const chunk = buffer.slice(start, end);
-          const chunkBlob = new Blob([chunk], { type: selectedFile.type });
-
-          const chunkFormData = new FormData();
-          chunkFormData.append('file', chunkBlob, fileName); // Server expects 'file'
-          chunkFormData.append('market_region', marketRegion.trim());
-          chunkFormData.append('chunkIndex', chunkIndex.toString());
-          chunkFormData.append('totalChunks', totalChunks.toString());
-          chunkFormData.append('uploadId', uploadId);
-          chunkFormData.append('fileName', fileName); // Explicitly send fileName
-
-          setMessage(`Uploading chunk ${chunkIndex + 1} of ${totalChunks} for ${fileName}...`);
-
-          try {
-            const res = await fetch('/api/leads/upload', {
-              method: 'POST',
-              body: chunkFormData,
-            });
-            const result: UploadResponse = await res.json();
-
-            if (!result.ok) {
-              const errorMsg = result.error || `Chunk ${chunkIndex + 1} upload failed.`;
-              const fullErrorMsg = `Upload failed: ${errorMsg}`;
-              setMessage(fullErrorMsg);
-              if (addMessage) addMessage('error', fullErrorMsg);
-              if (failureAudioRef.current) failureAudioRef.current.play().catch(err => console.warn('Failure audio error:', err));
-              return; // Stop on first error
-            }
-
-            if (result.warning && addMessage) {
-              addMessage('warning', result.warning);
-            }
-            
-            // If it's the last chunk and upload was successful
-            if (chunkIndex === totalChunks - 1) {
-              const successMsg = result.message || 'File uploaded successfully!';
-              setMessage(successMsg);
-              if (addMessage) addMessage('success', successMsg);
-              if (onUploadSuccess) {
-                const count = typeof result.details === 'number' ? result.details : (result.details?.count as number | undefined);
-                onUploadSuccess(fileName, count);
-              }
-              if (successAudioRef.current) {
-                successAudioRef.current.play().catch(err => console.warn('Success audio error:', err));
-              }
-            }
-          } catch (err) {
-            console.error('Chunk upload fetch error:', err);
-            const errorMsg = err instanceof Error ? err.message : String(err);
-            const fullErrorMsg = `Upload failed during chunk ${chunkIndex + 1}: ${errorMsg}`;
-            setMessage(fullErrorMsg);
-            if (addMessage) addMessage('error', fullErrorMsg);
-            if (failureAudioRef.current) failureAudioRef.current.play().catch(err => console.warn('Failure audio error:', err));
-            return; // Stop on error
+        if (result.ok) {
+          const successMsg = result.message || 'Upload successful!';
+          setMessage(successMsg);
+          if (addMessage) addMessage('success', successMsg);
+          if (onUploadSuccess && selectedFile) {
+            const count = typeof result.details === 'number' ? result.details : (result.details?.count as number | undefined);
+            onUploadSuccess(selectedFile.name, count);
+          }
+          if (successAudioRef.current) {
+            successAudioRef.current.play().catch(err => console.warn('Success audio error:', err));
+          }
+          if (result.warning && addMessage) {
+            addMessage('warning', result.warning);
+          }
+        } else {
+          const errorMsg = result.error || 'Unknown upload error';
+          const fullErrorMsg = `Upload failed: ${errorMsg}`;
+          setMessage(fullErrorMsg);
+          if (addMessage) addMessage('error', fullErrorMsg);
+          if (failureAudioRef.current) {
+            failureAudioRef.current.play().catch(err => console.warn('Failure audio error:', err));
           }
         }
-      };
-
-      reader.onerror = () => {
-        setMessage('Error reading file.');
-        if (addMessage) addMessage('error', 'Error reading file.');
-        if (failureAudioRef.current) failureAudioRef.current.play().catch(err => console.warn('Failure audio error:', err));
-      };
-
-      reader.readAsArrayBuffer(selectedFile);
+      } catch (err) {
+        console.error('Upload fetch error:', err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const fullErrorMsg = `Upload failed: ${errorMsg}`;
+        setMessage(fullErrorMsg);
+        if (addMessage) addMessage('error', fullErrorMsg);
+        if (failureAudioRef.current) {
+          failureAudioRef.current.play().catch(err => console.warn('Failure audio error:', err));
+        }
+      }
     });
   }
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 import { supabase } from '@/lib/supabase/client';
-import { Campaign, CampaignJob, JobStatus } from '@/types/campaign';
+import { Campaign, CampaignJobs, JobStatus } from '@/types/campaign';
 
 function isJobStatus(status: string): status is JobStatus {
   return ['pending', 'processing', 'completed', 'failed'].includes(status);
@@ -9,7 +9,7 @@ function isJobStatus(status: string): status is JobStatus {
 
 export function useCampaigns() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [jobs, setJobs] = useState<CampaignJob[]>([]);
+  const [jobs, setJobs] = useState<CampaignJobs[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +64,7 @@ const fetchJobs = useCallback(async (campaignId: string) => {
   } catch (err) {
     setError('Failed to load jobs');
     console.error('Error fetching jobs:', err);
-    return [] as CampaignJob[];
+    return [] as CampaignJobs[];
   } finally {
     setIsLoading(false);
   }

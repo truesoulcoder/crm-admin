@@ -9,10 +9,3 @@ dealpig-sender-13e3b5ed13ab.json
 .vercel
 .vscode
 memory.json
-generate-key.js
-src/services/campaignEngine.old
-src/app/api/_engine
-src/app/_crondonkey/
-src/services/_gmailService.ts
-src/components/views/_Eli5EngineControlView.tsx
-src/components/_crondonkey

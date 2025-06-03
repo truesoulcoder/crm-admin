@@ -1,4 +1,4 @@
-import { getAdminSupabaseClient } from './supabaseAdminService';
+import { createAdminServerClient } from '@/lib/supabase/server';
 
 /**
  * Inserts a system event log entry into the system_event_logs table.
@@ -21,8 +21,8 @@ export async function logSystemEvent({
   campaign_id?: string;
   user_id?: string;
 }) {
-  const supabase = getAdminSupabaseClient();
-  await supabase.from('system_event_logs').insert({
+  const supabase = createAdminServerClient();
+  const { error } = await (await supabase).from('system_event_logs').insert({
     event_type,
     message,
     details: details ? (typeof details === 'string' ? details : JSON.stringify(details)) : null,

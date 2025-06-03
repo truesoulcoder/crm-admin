@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState } from 'react';
-import '@/styles/dealpig-animation.css';
+import '../../styles/dealpig-animation.css';
 
 interface AnimatedDealpigProps {
   width?: string;

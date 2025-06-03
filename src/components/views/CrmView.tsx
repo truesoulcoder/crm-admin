@@ -321,12 +321,48 @@ const convertNumericFieldsToStrings = (data: Record<string, any>): Record<string
         handleCloseModal();
         await fetchLeads();
       } else {
-        setError(result.error || 'Failed to save lead.');
-        toast.error(`Failed to save lead: ${result.error}`);
+        let errorMessage = 'Failed to save lead.'; // Default error message
+        const errorPayload: unknown = result.error;
+
+        if (errorPayload) {
+          if (errorPayload instanceof Error) {
+            errorMessage = errorPayload.message;
+          } else if (typeof errorPayload === 'string') {
+            errorMessage = errorPayload;
+          } else if (typeof errorPayload === 'object' && errorPayload !== null) {
+            // Check for a 'message' property in the object
+            if ('message' in errorPayload && typeof (errorPayload as { message?: unknown }).message === 'string') {
+              errorMessage = (errorPayload as { message: string }).message;
+            } else {
+              console.error('Unhandled object error type from action:', errorPayload);
+              errorMessage = 'An error object without a clear message was returned.';
+            }
+          } else {
+            // Handle other truthy primitive types (e.g., number, boolean true)
+            console.error('Unhandled primitive error type from action:', String(errorPayload));
+            errorMessage = `An unexpected error value was returned: ${String(errorPayload)}`;
+          }
+        }
+        setError(errorMessage);
+        const messagePrefix = "Failed to save lead: ";
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- errorMessage is confirmed string by prior checks
+        const confirmedErrorMessage: string = errorMessage as string; // Intermediate const
+        const fullMessageString: string = messagePrefix + confirmedErrorMessage;
+        toast.error(fullMessageString);
       }
-    } catch (error) {
-      console.error('Error saving lead:', error);
-      setError('An unexpected error occurred while saving the lead.');
+    } catch (e: unknown) { // Catch block with typed error
+      const caughtErrorMessage = 'An unexpected error occurred while saving the lead.'; // Changed to const
+      if (e instanceof Error) {
+        console.error('Error saving lead:', e.message, e.stack);
+        // Optionally, use e.message for setError if more specific info is desired for UI
+        // caughtErrorMessage = e.message;
+      } else if (typeof e === 'string') {
+        console.error('Error saving lead (string):', e);
+        // caughtErrorMessage = e;
+      } else {
+        console.error('Error saving lead (unknown type):', e);
+      }
+      setError(caughtErrorMessage); // Keep UI error generic for truly unexpected issues
       toast.error('Failed to save lead. Please try again.');
     } finally {
       setIsSaving(false);
