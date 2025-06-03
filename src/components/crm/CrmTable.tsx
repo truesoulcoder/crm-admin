@@ -30,10 +30,6 @@ export interface Lead {
   property_address_street?: string; // crm_leads
   property_address_city?: string;   // crm_leads
   property_address_state?: string;  // crm_leads
-  property_address_zip?: string;    // crm_leads
-  property_address?: string;        // normalized_leads
-  property_city?: string;           // normalized_leads
-  property_state?: string;          // normalized_leads
   property_postal_code?: string;    // normalized_leads
   
   // Property details
@@ -80,7 +76,7 @@ const CrmTable: React.FC<CrmTableProps> = ({
       lead.property_address_street,
       lead.property_address_city,
       lead.property_address_state,
-      lead.property_address_zip
+      lead.property_postal_code
     ].filter(Boolean).join(', ');
   };
 

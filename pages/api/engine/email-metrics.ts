@@ -184,7 +184,7 @@ export default async function handler(
 
     try {
       // Get the Supabase client instance
-      const client = await supabase;
+      const client = supabase;
       
       // Type assertions for Supabase client methods
       const supabaseClient = client as unknown as {
