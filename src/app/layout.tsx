@@ -32,7 +32,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html data-theme="dark" lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <UserProvider>
           <ClientLayout>{children}</ClientLayout> {/* ClientLayout wraps children and includes MainAppShell */}
