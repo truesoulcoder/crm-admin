@@ -1,23 +1,23 @@
 'use client';
-// External dependencies
+
 import { PlusCircle, Edit3, Trash2, ShieldAlert, Mail, Upload } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react'; 
 
-import type { Sender } from '@/types/index';
+import type { senders } from '@/db_types';
 
 const SendersView: React.FC = () => {
   // State for the senders list and loading
-  const [senders, setSenders] = useState<Sender[]>([]);
+  const [senders, setSenders] = useState<senders[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   // State for the add/edit modal
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingSender, setEditingSender] = useState<Sender | null>(null);
+  const [editingSender, setEditingSender] = useState<senders | null>(null);
   const [senderFormData, setSenderFormData] = useState({ 
-    name: '', 
-    email: '' 
+    sender_name: '', 
+    sender_email: '' 
   });
   const [modalError, setModalError] = useState<string | null>(null);
   
@@ -39,8 +39,8 @@ const SendersView: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      console.log('Fetching senders from /api/email-senders...');
-      const response = await fetch('/api/email-senders');
+      console.log('Fetching senders from /api/senders...');
+      const response = await fetch('/api/senders');
       console.log('Response status:', response.status);
       
       if (!response.ok) {
@@ -61,13 +61,12 @@ const SendersView: React.FC = () => {
       const validatedSenders = data.map(sender => ({
         id: sender.id || '',
         user_id: sender.user_id || '',
-        name: sender.name || '',
-        email: sender.email || '',
+        sender_name: sender.sender_name || '',
+        sender_email: sender.sender_email || '',
         is_active: sender.is_active ?? true,
         is_default: sender.is_default ?? false,
         created_at: sender.created_at || new Date().toISOString(),
         updated_at: sender.updated_at || new Date().toISOString(),
-        photo_url: sender.photo_url,
         status_message: sender.status_message
       }));
       
@@ -97,16 +96,16 @@ const SendersView: React.FC = () => {
   // Modal handlers
   const openModalToAdd = () => {
     setEditingSender(null);
-    setSenderFormData({ name: '', email: '' });
+    setSenderFormData({ sender_name: '', sender_email: '' });
     setModalError(null);
     setIsModalOpen(true);
   };
 
-  const openModalToEdit = (sender: Sender) => {
+  const openModalToEdit = (sender: senders) => {
     setEditingSender(sender);
     setSenderFormData({ 
-      name: sender.name || '', 
-      email: sender.email || '' 
+      sender_name: sender.sender_name || '', 
+      sender_email: sender.sender_email || '' 
     });
     setModalError(null);
     setIsModalOpen(true);
@@ -115,7 +114,7 @@ const SendersView: React.FC = () => {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingSender(null);
-    setSenderFormData({ name: '', email: '' });
+    setSenderFormData({ sender_name: '', sender_email: '' });
     setModalError(null);
   };
 
@@ -129,18 +128,18 @@ const SendersView: React.FC = () => {
     e.preventDefault();
     setModalError(null);
 
-    if (!senderFormData.name.trim() || !senderFormData.email.trim()) {
+    if (!senderFormData.sender_name.trim() || !senderFormData.sender_email.trim()) {
       setModalError('Both name and email are required.');
       return;
     }
     
-    if (!/\S+@\S+\.\S+/.test(senderFormData.email)) {
+    if (!/\S+@\S+\.\S+/.test(senderFormData.sender_email)) {
       setModalError('Please enter a valid email address.');
       return;
     }
 
     const method = editingSender ? 'PUT' : 'POST';
-    const url = editingSender ? `/api/email-senders/${editingSender.id}` : '/api/email-senders';
+    const url = editingSender ? `/api/senders/${editingSender.id}` : '/api/senders';
 
     try {
       const response = await fetch(url, {
@@ -169,7 +168,7 @@ const SendersView: React.FC = () => {
     
     setError(null);
     try {
-      const response = await fetch(`/api/email-senders/${senderId}`, { method: 'DELETE' });
+      const response = await fetch(`/api/senders/${senderId}`, { method: 'DELETE' });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to delete sender');
@@ -180,12 +179,12 @@ const SendersView: React.FC = () => {
     }
   };
 
-  const handleToggleSenderActiveStatus = async (sender: Sender) => {
+  const handleToggleSenderActiveStatus = async (sender: senders) => {
     const newStatus = !sender.is_active;
     setError(null);
     
     try {
-      const response = await fetch(`/api/email-senders/${sender.id}`, {
+      const response = await fetch(`/api/senders/${sender.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_active: newStatus }),
@@ -221,20 +220,26 @@ const SendersView: React.FC = () => {
         }
         
         // Parse CSV (assuming first row is header)
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-        const nameIndex = headers.findIndex(h => h.includes('name'));
-        const emailIndex = headers.findIndex(h => h.includes('email'));
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace('[required]', '').replace('[read only]', '').trim());
         
-        if (nameIndex === -1 || emailIndex === -1) {
-          throw new Error('CSV must contain "Name" and "Email" columns');
+        const firstNameIndex = headers.findIndex(h => h.includes('first name'));
+        const lastNameIndex = headers.findIndex(h => h.includes('last name'));
+        const emailAddressIndex = headers.findIndex(h => h.includes('email address'));
+        
+        if (firstNameIndex === -1 || lastNameIndex === -1 || emailAddressIndex === -1) {
+          throw new Error('CSV must contain "First Name", "Last Name", and "Email Address" columns. Please check your CSV headers.');
         }
         
         const preview = lines.slice(1).map(line => {
           const values = line.split(',');
+          const firstName = values[firstNameIndex]?.trim() || '';
+          const lastName = values[lastNameIndex]?.trim() || '';
+          const email = values[emailAddressIndex]?.trim() || '';
+          
           return {
-            name: values[nameIndex]?.trim() || '',
-            email: values[emailIndex]?.trim() || '',
-            status: 'Pending'
+            name: `${firstName} ${lastName}`.trim(),
+            email, // Use property shorthand
+            status: 'Pending' // Assuming status is 'Pending' for new uploads
           };
         });
         
@@ -266,12 +271,12 @@ const SendersView: React.FC = () => {
         if (!row.email) continue; // Skip rows without email
         
         try {
-          const response = await fetch('/api/email-senders', {
+          const response = await fetch('/api/senders', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              name: row.name,
-              email: row.email,
+              sender_name: row.name, // Use row.name from csvPreview
+              sender_email: row.email, // Use row.email from csvPreview
               is_active: true
             }),
           });
@@ -396,8 +401,8 @@ const SendersView: React.FC = () => {
             <table className="table w-full">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Email</th>
+                  <th>Sender Name</th>
+                  <th>Sender Email</th>
                   <th className="text-center">Status</th>
                   <th className="text-right">Actions</th>
                 </tr>
@@ -464,7 +469,7 @@ const SendersView: React.FC = () => {
                   type="text"
                   name="name"
                   className="input input-bordered w-full"
-                  value={senderFormData.name}
+                  value={senderFormData.sender_name}
                   onChange={handleSenderFormChange}
                   required
                 />
@@ -477,7 +482,7 @@ const SendersView: React.FC = () => {
                   type="email"
                   name="email"
                   className="input input-bordered w-full"
-                  value={senderFormData.email}
+                  value={senderFormData.sender_email}
                   onChange={handleSenderFormChange}
                   required
                 />
@@ -525,7 +530,7 @@ const SendersView: React.FC = () => {
               <div className="form-control">
                 <label className="label">
                   <span className="label-text">CSV File</span>
-                  <span className="label-text-alt">Format: Name,Email</span>
+                  <span className="label-text-alt">Format: Sender Name,Sender Email</span>
                 </label>
                 <input
                   type="file"
@@ -550,8 +555,8 @@ const SendersView: React.FC = () => {
                     <table className="table table-zebra table-pin-rows">
                       <thead>
                         <tr>
-                          <th>Name</th>
-                          <th>Email</th>
+                          <th>Sender Name</th>
+                          <th>Sender Email</th>
                           <th>Status</th>
                         </tr>
                       </thead>
