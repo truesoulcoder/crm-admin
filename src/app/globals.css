@@ -1,17 +1,6 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-body {
-  @apply bg-base-200 min-h-screen font-sans antialiased;
-}
-
-/* General scrollbar styling for webkit browsers */
-/* Works on Chrome, Edge, Safari */
-::-webkit-scrollbar {
-  @apply w-2; /* width: 8px */
-}
-
-::-webkit-scrollbar-track {
-  @apply bg-base-200; /* Background of the scrollbar track */
+@daisyui {
+  themes: all;
 }

@@ -17,8 +17,8 @@ export function createClient() {
     supabaseAnonKey,
     {
       cookies: {
-        getAll() {
-          const allCookies = cookieStore.getAll();
+        async getAll() {
+          const allCookies = await cookieStore.getAll();
           return allCookies.map(cookie => ({ name: cookie.name, value: cookie.value }));
         },
         setAll(cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>) {
@@ -58,8 +58,8 @@ export function createAdminServerClient() {
 
   return createServerClient(supabaseUrl, supabaseServiceRoleKey, {
     cookies: {
-      getAll() {
-        const allCookies = cookieStore.getAll();
+      async getAll() {
+        const allCookies = await cookieStore.getAll();
         return allCookies.map(cookie => ({ name: cookie.name, value: cookie.value }));
       },
       setAll(cookiesToSet: Array<{ name: string; value: string; options: CookieOptions }>) {
